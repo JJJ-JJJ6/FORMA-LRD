@@ -180,7 +180,16 @@ class BaseAgent:
                     try:
                         return json.loads(cleaned)
                     except Exception:
-                        return cleaned
+                        pass
+                    # Fallback: LLM may return Python-style literals (single quotes)
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(cleaned)
+                        if isinstance(parsed, (dict, list)):
+                            return parsed
+                    except Exception:
+                        pass
+                    return cleaned
 
                 return raw_content
 
