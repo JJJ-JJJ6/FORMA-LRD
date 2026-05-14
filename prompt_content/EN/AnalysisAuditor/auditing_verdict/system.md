@@ -194,12 +194,8 @@ Does QSO hypothesis rely on broad emission lines (Lyα/C IV/Mg II)?
 
 ```
 AGN-characteristic emission lines (Ne[V]/Mg II/C III]) detected?
-├── No ─────────────────────────────────→ ELG preferred
-└── Yes → Both broad-line signs AND narrow-line combo present?
-    ├── No ─────────────────────────────→ ELG preferred
-    └── Yes → All broad lines width mismatch AND no alternative?
-        ├── Yes → ELG preferred
-        └── No  → Host AGN preferred
+├── No ─→ ELG preferred
+└── Yes → Host AGN preferred
 ```
 
 #### R2.3 ELG vs LRG Ambiguity
