@@ -310,7 +310,15 @@ Briefly list all input hypotheses, noting:
 
 #### Step V-2: Cross-Type Comprehensive Comparison
 
-According to R1 priority, perform a comprehensive comparison of all hypotheses (no numerical scoring needed; use "strong/moderate/weak" or "clean/partial/critical" to describe each dimension):
+**Step A: R2 Flowchart Quick Judgment**
+
+First, identify the cross-type ambiguity scenario at hand and apply the corresponding R2 flowchart (R2.1–R2.5). Walk through the flowchart branches step by step and state a clear priority conclusion.
+
+If the R2 flowchart yields a definitive conclusion (i.e., reaches a deterministic leaf node), adopt that conclusion directly and proceed to Step V-3.
+
+**Step B: Multi-Dimension Supplementary Assessment (only when R2 cannot reach a clear conclusion)**
+
+When the R2 flowchart condition is ambiguous (e.g., a borderline case) or multiple flowcharts give conflicting conclusions, perform a supplementary multi-dimension comparison following R1 priority (no numerical scoring; use "strong/moderate/weak" or "clean/partial/critical" to describe each dimension):
 
 - Physical coherence: strong / moderate / weak
 - Number of independent constraints: strong (≥3) / moderate (2) / weak (1)
@@ -318,7 +326,7 @@ According to R1 priority, perform a comprehensive comparison of all hypotheses (
 - width mismatch impact: negligible / minor / major
 - Continuum morphology match (auxiliary reference only): consistent / ambiguous / inconsistent
 
-Combine with R2 cross-type special rules to explain the key distinguishing points among the hypotheses.
+Combine the R2 preliminary conclusion with the above dimension assessments to reach the final judgment.
 
 #### Step V-3: Final Adjudication
 
