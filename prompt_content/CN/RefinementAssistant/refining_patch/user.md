@@ -50,12 +50,12 @@ Neighbors: {{ t.left_neighbor }} | {{ t.right_neighbor }}
 
 ---
 
-## 待修补的分析路径：{{ source_path }}
+## 待审查的假设：{{ source_path }}（{{ hypothesis_index }}/{{ hypothesis_total }}）
 
-该路径下的定量分析假设如下：
+该定量分析假设如下：
 
 ```json
-{{ hypotheses | tojson(indent=2) }}
+{{ hypothesis | tojson(indent=2) }}
 ```
 
 ---
@@ -66,4 +66,4 @@ Neighbors: {{ t.left_neighbor }} | {{ t.right_neighbor }}
 
 ---
 
-请根据上述质疑，直接输出修订后的假设列表 JSON 数组。
+请对上述质疑逐条提供文本回应。

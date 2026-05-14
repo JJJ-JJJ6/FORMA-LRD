@@ -31,6 +31,11 @@ class RefinementAssistant(BaseAgent):
         "ELG":      "patched_extract_ELG",
         "LRG/BGS":  "patched_extract_LRG",
     }
+    RESPONSE_KEYS = {
+        "QSO":      "patch_response_QSO",
+        "ELG":      "patch_response_ELG",
+        "LRG/BGS":  "patch_response_LRG",
+    }
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
@@ -52,17 +57,16 @@ class RefinementAssistant(BaseAgent):
     # ========================================================================
 
     async def _per_path_refining_patch(self, state: SpectroState) -> None:
-        """Iterate QSO/ELG/LRG paths and patch hypotheses based on per-path critiques.
+        """Iterate QSO/ELG/LRG paths and respond to per-hypothesis critiques.
 
-        For each path that has both valid hypotheses and a critique, calls the
-        refining_patch prompt. Patched results are stored in patched_extract_*.
-
-        For rounds > 1, reads hypotheses from patched_extract_* (previous round).
+        For each hypothesis that has a critique, calls the refining_patch prompt
+        to produce a text response. Responses are stored in patch_response_*.
+        No hypothesis fields are modified — only critique responses are generated.
         """
         for source_path, state_key in self.PATH_KEYS.items():
-            critique = state.get(self.CRITIQUE_KEYS[source_path])
-            if not critique:
-                print(f"[per-path patch] {source_path}: no critique, skipping")
+            critiques = state.get(self.CRITIQUE_KEYS[source_path])
+            if not critiques:
+                print(f"[per-path patch] {source_path}: no critiques, skipping")
                 continue
 
             hypotheses = self._get_hypotheses(state, state_key)
@@ -70,28 +74,32 @@ class RefinementAssistant(BaseAgent):
                 print(f"[per-path patch] {source_path}: no valid hypotheses, skipping")
                 continue
 
-            print(f"[per-path patch] {source_path}: patching {len(hypotheses)} hypothesis/hypotheses")
+            total = len(hypotheses)
+            responses = []
+            for i, (hypo, critique) in enumerate(zip(hypotheses, critiques)):
+                print(f"[per-path patch] {source_path}: responding for hypothesis {i+1}/{total}")
+                response = await self._respond_to_critique(state, source_path, hypo, critique, i, total)
+                responses.append(response if response else "")
 
-            patched = await self._patch_single_path(state, source_path, hypotheses, critique)
-            if patched is not None:
-                state[self.PATCHED_KEYS[source_path]] = {"step_F": patched}
-                print(f"[per-path patch] {source_path}: stored {len(patched)} patched hypothesis/hypotheses")
+            response_key = self.RESPONSE_KEYS[source_path]
+            state[response_key] = responses
+            print(f"[per-path patch] {source_path}: stored {len(responses)} response(s)")
 
     def _get_hypotheses(self, state: SpectroState, state_key: str):
-        """Extract the step_F hypothesis list. Prefers patched extracts (from previous rounds)."""
-        patched_key = f"patched_{state_key}"
-        for key in (patched_key, state_key):
-            data = state.get(key) or {}
-            step_f = data.get('step_F')
-            if step_f and any(item.get('Hypothesis') is not None for item in step_f):
-                return step_f
+        """Extract the step_F hypothesis list from the raw extract.
+        Always reads from the original (unpatched) extract."""
+        data = state.get(state_key) or {}
+        step_f = data.get('step_F')
+        if step_f and any(item.get('Hypothesis') is not None for item in step_f):
+            return step_f
         return None
 
-    async def _patch_single_path(
-        self, state: SpectroState, source_path: str, hypotheses: list, critique: str
-    ) -> list | None:
-        """Patch the hypotheses within a single path based on the critique.
-        Returns the patched hypothesis list (structured), or None on failure."""
+    async def _respond_to_critique(
+        self, state: SpectroState, source_path: str,
+        hypothesis: dict, critique: str, index: int, total: int,
+    ) -> str | None:
+        """Respond to a single critique for a single hypothesis.
+        Returns a natural-language response text (not a modified hypothesis)."""
         function_name = "refining_patch"
 
         continuum_description = state['continuum']['description']
@@ -111,28 +119,23 @@ class RefinementAssistant(BaseAgent):
             wl_right=wl_right,
             peaks=peaks,
             troughs=troughs,
-            hypotheses=hypotheses,
+            hypothesis=hypothesis,
             source_path=source_path,
             critique=critique,
+            hypothesis_index=index + 1,
+            hypothesis_total=total,
         )
 
         result = await self.call_llm_with_context(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            parse_json=True,
-            description=f"Per-path refining patch ({source_path})",
-            want_tools=True,
+            parse_json=False,
+            description=f"Per-path patch response ({source_path} [{index+1}/{total}])",
+            want_tools=False,
         )
 
-        if isinstance(result, list):
-            print(f"[per-path patch] {source_path}: patched to {len(result)} hypothesis/hypotheses")
-            return result
-        elif isinstance(result, dict) and 'Hypothesis' in result:
-            print(f"[per-path patch] {source_path}: single hypothesis patched")
-            return [result]
-        else:
-            print(f"[per-path patch] {source_path}: unexpected result type, returning original")
-            return hypotheses
+        print(f"[per-path patch] {source_path} [{index+1}/{total}]:\n{result}")
+        return result
 
     async def refining_final(self, state: SpectroState) -> SpectroState:
         """Generate the complete final analysis report from all pipeline stages."""

@@ -28,6 +28,16 @@ class AnalysisAuditor(BaseAgent):
         "ELG":      "critique_ELG",
         "LRG/BGS":  "critique_LRG",
     }
+    RESPONSE_KEYS = {
+        "QSO":      "patch_response_QSO",
+        "ELG":      "patch_response_ELG",
+        "LRG/BGS":  "patch_response_LRG",
+    }
+    DEBATE_HISTORY_KEYS = {
+        "QSO":      "debate_history_QSO",
+        "ELG":      "debate_history_ELG",
+        "LRG/BGS":  "debate_history_LRG",
+    }
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
@@ -63,13 +73,12 @@ class AnalysisAuditor(BaseAgent):
             return state
 
         await self.auditing_verdict(state)
-        self._writer.write_verdict(state)
         await self.verdict_extract(state)
         return state
 
     async def auditing_verdict(self, state: SpectroState) -> SpectroState:
         """Cross-type verdict: select the best hypothesis from extract_QSO/ELG/LRG.
-        Prefers patched extracts from per-path discussion rounds when available."""
+        Uses raw extracts only; per-hypothesis discussion Q&A is passed as supplementary context."""
         function_name = "auditing_verdict"
 
         continuum_description = state['continuum']['description']
@@ -79,19 +88,78 @@ class AnalysisAuditor(BaseAgent):
         peaks = state['peaks']
         troughs = state['troughs']
 
-        # Prefer patched extracts from per-path discussion rounds; fall back to raw extracts.
-        def _get_extract(state_key: str, patched_key: str):
-            patched_data = state.get(patched_key) or {}
-            patched_step_f = patched_data.get('step_F')
-            if patched_step_f:
-                return patched_step_f
+        # Use raw extracts only (never patched).
+        def _get_raw_extract(state_key: str):
             data = state.get(state_key) or {}
             step_f = data.get('step_F')
             return step_f if step_f else None
 
-        extract_QSO = _get_extract('extract_QSO', 'patched_extract_QSO')
-        extract_ELG = _get_extract('extract_ELG', 'patched_extract_ELG')
-        extract_LRG = _get_extract('extract_LRG', 'patched_extract_LRG')
+        extract_QSO = _get_raw_extract('extract_QSO')
+        extract_ELG = _get_raw_extract('extract_ELG')
+        extract_LRG = _get_raw_extract('extract_LRG')
+
+        # Collect per-hypothesis discussion Q&A pairs (all rounds)
+        def _build_discussion(debate_hist_key: str, critique_key: str, response_key: str):
+            """Build discussion list for the verdict template.
+
+            Merges all rounds from debate_history (completed rounds 1..N-1) plus the
+            final round's critique/response (which hasn't been accumulated yet into
+            debate_history). Returns a list of {critique, response} dicts — one per
+            hypothesis. For multi-round, critique/response contain all rounds concatenated.
+            """
+            debate_hist = state.get(debate_hist_key) or []
+            final_critiques = state.get(critique_key) or []
+            final_responses = state.get(response_key) or []
+
+            if not debate_hist and not final_critiques:
+                return None
+
+            # Single-round shortcut (most common case)
+            if not debate_hist:
+                result = []
+                for i in range(max(len(final_critiques), len(final_responses))):
+                    result.append({
+                        "critique": final_critiques[i] if i < len(final_critiques) else "",
+                        "response": final_responses[i] if i < len(final_responses) else "",
+                    })
+                return result if result else None
+
+            # Multi-round: determine the number of hypotheses
+            max_hypos = max(
+                max((len(rd.get("hypotheses", [])) for rd in debate_hist), default=0),
+                len(final_critiques),
+                len(final_responses),
+            )
+            if max_hypos == 0:
+                return None
+
+            result = []
+            for i in range(max_hypos):
+                all_critique_parts = []
+                all_response_parts = []
+                # Previous rounds
+                for rd in debate_hist:
+                    hypos = rd.get("hypotheses", [])
+                    if i < len(hypos):
+                        c = hypos[i].get("critique", "")
+                        r = hypos[i].get("response", "")
+                        if c:
+                            all_critique_parts.append(f"[Round {rd['round']}] {c}")
+                        if r:
+                            all_response_parts.append(f"[Round {rd['round']}] {r}")
+                # Final round
+                fc = final_critiques[i] if i < len(final_critiques) else ""
+                fr = final_responses[i] if i < len(final_responses) else ""
+                final_round_num = len(debate_hist) + 1
+                if fc:
+                    all_critique_parts.append(f"[Round {final_round_num}] {fc}")
+                if fr:
+                    all_response_parts.append(f"[Round {final_round_num}] {fr}")
+                result.append({
+                    "critique": "\n\n".join(all_critique_parts),
+                    "response": "\n\n".join(all_response_parts),
+                })
+            return result if result else None
 
         system_prompt, user_prompt = self.runtime.prompt_manager.load(
             state=state,
@@ -104,6 +172,9 @@ class AnalysisAuditor(BaseAgent):
             extract_QSO=extract_QSO,
             extract_ELG=extract_ELG,
             extract_LRG=extract_LRG,
+            discussion_QSO=_build_discussion('debate_history_QSO', 'critique_QSO', 'patch_response_QSO'),
+            discussion_ELG=_build_discussion('debate_history_ELG', 'critique_ELG', 'patch_response_ELG'),
+            discussion_LRG=_build_discussion('debate_history_LRG', 'critique_LRG', 'patch_response_LRG'),
             peaks=peaks,
             troughs=troughs,
         )
@@ -188,10 +259,17 @@ class AnalysisAuditor(BaseAgent):
     # ========================================================================
 
     async def _run_per_path_critique(self, state: SpectroState) -> None:
-        """Run one round of per-path critique for all paths that have valid hypotheses.
+        """Run one round of per-hypothesis critique for all paths that have valid hypotheses.
 
-        Critiques are stored in state['critique_QSO/ELG/LRG'] and later
-        consumed by RefinementAssistant for patching.
+        Each hypothesis within a path is critiqued independently.
+        Critiques are stored as a list in state['critique_QSO/ELG/LRG'].
+
+        Before generating new critiques for round N (N>1), the previous round's
+        (critique, response) pairs are accumulated into debate_history so the new
+        critique can reference prior discussion.
+
+        debate_history structure:
+          [{round: 1, hypotheses: [{critique, response}, ...]}, ...]
         """
         for source_path, state_key in self.PATH_KEYS.items():
             hypotheses = self._get_hypotheses(state, state_key)
@@ -199,27 +277,71 @@ class AnalysisAuditor(BaseAgent):
                 print(f"[per-path critique] {source_path}: no valid hypotheses, skipping")
                 continue
 
-            print(f"[per-path critique] {source_path}: critiquing {len(hypotheses)} hypothesis/hypotheses")
+            # Accumulate previous round's discussion into debate_history
+            prev_critiques = state.get(self.CRITIQUE_KEYS[source_path]) or []
+            prev_responses = state.get(self.RESPONSE_KEYS[source_path]) or []
+            if prev_critiques or prev_responses:
+                debate_hist = state.get(self.DEBATE_HISTORY_KEYS[source_path]) or []
+                round_num = len(debate_hist) + 1
+                round_entry = {
+                    "round": round_num,
+                    "hypotheses": [
+                        {
+                            "critique": prev_critiques[j] if j < len(prev_critiques) else "",
+                            "response": prev_responses[j] if j < len(prev_responses) else "",
+                        }
+                        for j in range(max(len(prev_critiques), len(prev_responses)))
+                    ],
+                }
+                debate_hist.append(round_entry)
+                state[self.DEBATE_HISTORY_KEYS[source_path]] = debate_hist
+                print(f"[per-path critique] {source_path}: debate_history now has {len(debate_hist)} round(s)")
 
-            critique = await self._per_path_auditing_critique(state, source_path, hypotheses)
-            state[self.CRITIQUE_KEYS[source_path]] = critique
+            total = len(hypotheses)
+            critiques = []
+            full_history = state.get(self.DEBATE_HISTORY_KEYS[source_path]) or []
+            for i, hypo in enumerate(hypotheses):
+                # Build per-hypothesis debate history: extract entry for hypothesis i from each round
+                hypo_debate = []
+                for rd in full_history:
+                    hypos = rd.get("hypotheses", [])
+                    if i < len(hypos) and (hypos[i].get("critique") or hypos[i].get("response")):
+                        hypo_debate.append({
+                            "round": rd["round"],
+                            "critique": hypos[i]["critique"],
+                            "response": hypos[i]["response"],
+                        })
+                print(f"[per-path critique] {source_path}: critiquing hypothesis {i+1}/{total}")
+                critique = await self._per_path_auditing_critique(
+                    state, source_path, hypo, i, total,
+                    debate_history=hypo_debate if hypo_debate else None,
+                )
+                critiques.append(critique)
+
+            state[self.CRITIQUE_KEYS[source_path]] = critiques
 
     def _get_hypotheses(self, state: SpectroState, state_key: str):
-        """Extract the step_F hypothesis list from a state extract key.
-        Prefers patched extracts (from previous discussion rounds) over raw extracts.
+        """Extract the step_F hypothesis list from the raw extract.
+        Always reads from the original (unpatched) extract.
         Returns None if no valid hypotheses exist."""
-        patched_key = f"patched_{state_key}"
-        for key in (patched_key, state_key):
-            data = state.get(key) or {}
-            step_f = data.get('step_F')
-            if step_f and any(item.get('Hypothesis') is not None for item in step_f):
-                return step_f
+        data = state.get(state_key) or {}
+        step_f = data.get('step_F')
+        if step_f and any(item.get('Hypothesis') is not None for item in step_f):
+            return step_f
         return None
 
     async def _per_path_auditing_critique(
-        self, state: SpectroState, source_path: str, hypotheses: list
+        self, state: SpectroState, source_path: str,
+        hypothesis: dict, index: int, total: int,
+        debate_history: list | None = None,
     ) -> str | None:
-        """Critique the hypotheses within a single path."""
+        """Critique a single hypothesis within a path.
+
+        Args:
+            debate_history: List of {round, critique, response} dicts from
+                previous discussion rounds for this specific hypothesis.
+                None on the first round.
+        """
         function_name = "auditing_critique"
 
         continuum_description = state['continuum']['description']
@@ -235,19 +357,22 @@ class AnalysisAuditor(BaseAgent):
             feature_description=feature_description,
             wl_left=wl_left,
             wl_right=wl_right,
-            hypotheses=hypotheses,
+            hypothesis=hypothesis,
             source_path=source_path,
+            hypothesis_index=index + 1,
+            hypothesis_total=total,
+            debate_history=debate_history,
         )
 
         result = await self.call_llm_with_context(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             parse_json=False,
-            description=f"Per-path critique ({source_path})",
+            description=f"Per-path critique ({source_path} [{index+1}/{total}])",
             want_tools=False,
         )
 
-        print(f"[per-path critique] {source_path}:\n{result}")
+        print(f"[per-path critique] {source_path} [{index+1}/{total}]:\n{result}")
         return result
 
 

@@ -163,6 +163,7 @@ The following priority rules apply to the **cross-comparison of QSO/ELG/LRG**:
     *   A host galaxy-dominated AGN should have strong characteristic AGN emission lines (Ne [V], C III], Mg II) and may be accompanied by broad emission lines; Balmer series emission lines may be classified as narrow or intermediate, but usually have large widths. If there is no typical AGN emission line, be sure to consider whether this could be an ELG at the same redshift with the same line matching?
     *   An ELG should have narrow emission lines (O [III] doublet amplitude ratio approx 1:3, O [II], Hβ/Hα) and should not show genuine broad lines;
     *   An LRG/BGS should have absorption lines (Ca K/Ca H/G-band/Mg b/Na D, etc.), preferably accompanied by a strong or moderate 4000 Å break. Ca K/Ca H are the most characteristic features of LRG/BGS — once matched, prioritize LRG/BGS. Even if Ca K/H is not matched, if other absorption lines are present (G-band, Mg b, Na D, etc.), LRG/BGS should also be considered. If no absorption lines are present at all, be sure to consider whether this could be an ELG at the same redshift with the same line matching.
+    *   **IMPORTANT — Adopted_pairs preservation**: The `Adopted_pairs` in each input summary are the authoritative conclusions of the upstream F-a/F-b analysis. When you select a hypothesis, you MUST reproduce its Adopted_pairs exactly as given in the input. Do NOT remove entries from Adopted_pairs because you consider them weak or speculative — express such concerns in `Remaining_doubts` instead. Removing lines from Adopted_pairs and then using their absence as a criterion creates a self-fulfilling criticism loop.
 2.  **Number of independent constraints**: The more independent lines supporting a hypothesis, the more credible it is. A single spectral line cannot form a valid physical constraint.
 3.  **Missing lines situation**: If important spectral lines theoretically fall within the observed range but are not matched, this should be questioned.
 4.  **Impact of width mismatch**: A broad peak matching a narrow line, or a narrow peak matching a broad line, should be questioned. However, an intermediate match does not constitute a veto.
@@ -263,7 +264,7 @@ You will receive three sets of summary data:
 - `Key_evidence`: list of supporting evidence, 2–4 items
 - `Remaining_doubts`: list of remaining doubts, 0–2 items
 - `Suggested_redshift`: suggested redshift value (number or null)
-- `Adopted_pairs`: list of finally adopted line pairs, each containing `line`, `obs_wavelength`, `z`
+- `Adopted_pairs`: list of finally adopted line pairs, each containing `line`, `obs_wavelength`, `z` — **these are the authoritative conclusions of the upstream F-a/F-b analysis; do NOT add, remove, or modify entries**
 
 **The three sets of summaries are respectively labeled with their sources:**
 - `extract_QSO`: summary of the QSO path analysis (if this path was not run, it is null or empty)
@@ -271,6 +272,9 @@ You will receive three sets of summary data:
 - `extract_LRG/BGS`: summary of the LRG path analysis (if this path was not run, it is null or empty)
 
 If a path summary is null or contains the phrase "Cannot confirm", it is considered that the path has no valid hypothesis; it is skipped and does not participate in the final competition.
+
+**You may additionally receive per-hypothesis discussion records:**
+- `discussion_QSO`, `discussion_ELG`, `discussion_LRG`: arrays of `{critique, response}` objects, one per hypothesis. These record the critique→patch debate for each hypothesis. Use this as supplementary context when evaluating a hypothesis's robustness — but the Adopted_pairs and other fields in the extract remain authoritative.
 
 ---
 

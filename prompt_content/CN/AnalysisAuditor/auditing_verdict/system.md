@@ -161,6 +161,7 @@ LRG（亮红星系）和 BGS（亮星系样本）的光谱特征来自其以老�
 
 1. **物理连贯性**：谱线组合是否符合对应天体类型的典型特征。
    - 典型 QSO 应有宽发射线（Lyα/C IV/C III]/Mg II），不应全为窄线且无 Mg II；**典型 QSO 的 Adopted_pairs 中不应存在显著吸收线**（宿主星系主导 AGN 可伴有吸收线，但必须同时存在典型 AGN 发射线 Ne [V]/Mg II/C III]）；
+   - **重要 —— Adopted_pairs 不可删改**：各输入摘要中的 `Adopted_pairs` 是上游 F-a/F-b 分析的权威结论。当你选定某个假设时，必须原样复制其 Adopted_pairs。不得因认为某条谱线弱或可疑而将其从 Adopted_pairs 中移除——将此类疑虑写入 `Remaining_doubts` 即可。从 Adopted_pairs 中删除谱线，再以其缺失为判据，会形成自证预言式的错误循环。
    - 宿主星系主导的 AGN 应有强烈的 AGN 特征发射线（Ne [V]、C III]、Mg II），并可能伴有宽发射线；Balmer 系发射线可能被识别为 narrow 或 intermediate 分类，但通常宽度较大。如不存在 AGN 特征发射线，需考虑是否是同红移、同谱线匹配的 ELG。
    - ELG 应有窄发射线（O [III] 双线幅值比约 1:3，O [II]，Hβ/Hα），不应出现真正的宽线；
    - LRG/BGS 应存在吸收线（Ca K/Ca H/G-band/Mg b/Na D 等），最好伴随 strong 或 moderate 的 4000 Å break。Ca K/Ca H 是 LRG/BGS 的标志性特征，一旦匹配到应优先考虑 LRG/BGS；即使未匹配到 Ca K/H，若存在其他吸收线（G-band、Mg b、Na D 等），也应考虑 LRG/BGS。若完全无吸收线，需考虑是否是同红移、同谱线匹配的 ELG。
@@ -262,7 +263,7 @@ QSO假设的Adopted_pairs中有吸收线?
 - `Key_evidence`：支持证据列表，2–4 条
 - `Remaining_doubts`：残余疑虑列表，0–2 条
 - `Suggested_redshift`：建议红移值（数字或 null）
-- `Adopted_pairs`：最终采纳谱线配对列表，每项含 `line`、`obs_wavelength`、`z`
+- `Adopted_pairs`：最终采纳谱线配对列表，每项含 `line`、`obs_wavelength`、`z` —— **这些是上游 F-a/F-b 分析的权威结论；不得增删或修改**
 
 **三组摘要分别标注来源：**
 - `extract_QSO`：QSO 路径分析摘要（若该路径未运行，则为 null 或空）
@@ -270,6 +271,9 @@ QSO假设的Adopted_pairs中有吸收线?
 - `extract_LRG/BGS`：LRG 路径分析摘要（若该路径未运行，则为 null 或空）
 
 若某路径摘要为 null 或包含「无法确证」，视为该路径无有效假设，跳过，不参与最终竞争。
+
+**你可能会额外收到各假设的讨论记录：**
+- `discussion_QSO`、`discussion_ELG`、`discussion_LRG`：`{critique, response}` 对象数组，每个假设对应一条。这些记录了各假设的 critique→patch 辩论过程。在评估假设的稳健性时用作补充参考——但 extract 中的 Adopted_pairs 和其他字段仍为权威依据。
 
 ---
 

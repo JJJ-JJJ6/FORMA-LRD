@@ -228,8 +228,11 @@
                 "wl_right",
                 "continuum_description",
                 "feature_description",
-                "hypotheses",
-                "source_path"
+                "hypothesis",
+                "source_path",
+                "hypothesis_index",
+                "hypothesis_total",
+                "debate_history"
             ]
         },
         "verdict_extract": {
@@ -248,6 +251,9 @@
                 "extract_QSO",
                 "extract_ELG",
                 "extract_LRG",
+                "discussion_QSO",
+                "discussion_ELG",
+                "discussion_LRG",
                 "peaks",
                 "troughs"
             ]
@@ -279,9 +285,11 @@
                 "feature_description",
                 "peaks",
                 "troughs",
-                "hypotheses",
+                "hypothesis",
                 "source_path",
-                "critique"
+                "critique",
+                "hypothesis_index",
+                "hypothesis_total"
             ]
         }
     },

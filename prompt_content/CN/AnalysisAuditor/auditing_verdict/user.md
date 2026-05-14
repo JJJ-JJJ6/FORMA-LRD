@@ -73,6 +73,22 @@ Neighbors:
 {{ extract_QSO | tojson(indent=2) }}
 ```
 
+{% if discussion_QSO %}
+#### QSO 讨论记录（逐假设 critique ↔ patch 回应）
+
+{% for d in discussion_QSO %}
+**假设 {{ loop.index }}**
+
+*Critique：*
+{{ d.critique }}
+
+*Patch 回应：*
+{{ d.response }}
+
+---
+{% endfor %}
+{% endif %}
+
 ---
 
 ### ELG 路径摘要（extract_ELG）
@@ -81,6 +97,22 @@ Neighbors:
 {{ extract_ELG | tojson(indent=2) }}
 ```
 
+{% if discussion_ELG %}
+#### ELG 讨论记录（逐假设 critique ↔ patch 回应）
+
+{% for d in discussion_ELG %}
+**假设 {{ loop.index }}**
+
+*Critique：*
+{{ d.critique }}
+
+*Patch 回应：*
+{{ d.response }}
+
+---
+{% endfor %}
+{% endif %}
+
 ---
 
 ### LRG 路径摘要（extract_LRG）
@@ -88,6 +120,22 @@ Neighbors:
 ```json
 {{ extract_LRG | tojson(indent=2) }}
 ```
+
+{% if discussion_LRG %}
+#### LRG 讨论记录（逐假设 critique ↔ patch 回应）
+
+{% for d in discussion_LRG %}
+**假设 {{ loop.index }}**
+
+*Critique：*
+{{ d.critique }}
+
+*Patch 回应：*
+{{ d.response }}
+
+---
+{% endfor %}
+{% endif %}
 
 ---
 

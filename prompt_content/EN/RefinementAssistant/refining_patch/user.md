@@ -50,12 +50,12 @@ No significant trough features
 
 ---
 
-## Analysis Path to be Revised: {{ source_path }}
+## Hypothesis under Review: {{ source_path }} ({{ hypothesis_index }}/{{ hypothesis_total }})
 
-The quantitative analysis hypotheses for this path are as follows:
+The quantitative analysis hypothesis is as follows:
 
 ```json
-{{ hypotheses | tojson(indent=2) }}
+{{ hypothesis | tojson(indent=2) }}
 ```
 
 ---
@@ -66,4 +66,4 @@ The quantitative analysis hypotheses for this path are as follows:
 
 ---
 
-Please directly output the revised hypothesis list as a JSON array based on the above critiques.
+Please provide a text response to the above critiques, point by point.

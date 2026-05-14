@@ -89,9 +89,15 @@ class SpectroState(MessagesState):
     patched_extract_QSO: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
     patched_extract_ELG: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
     patched_extract_LRG: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
-    critique_QSO: Optional[str] = None                    # Per-path critique result (QSO)
-    critique_ELG: Optional[str] = None                    # Per-path critique result (ELG)
-    critique_LRG: Optional[str] = None                    # Per-path critique result (LRG)
+    critique_QSO: Optional[List[str]] = None              # Per-hypothesis critique results (QSO)
+    critique_ELG: Optional[List[str]] = None              # Per-hypothesis critique results (ELG)
+    critique_LRG: Optional[List[str]] = None              # Per-hypothesis critique results (LRG)
+    patch_response_QSO: Optional[List[str]] = None        # Per-hypothesis patch responses (QSO)
+    patch_response_ELG: Optional[List[str]] = None        # Per-hypothesis patch responses (ELG)
+    patch_response_LRG: Optional[List[str]] = None        # Per-hypothesis patch responses (LRG)
+    debate_history_QSO: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (QSO)
+    debate_history_ELG: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (ELG)
+    debate_history_LRG: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (LRG)
     current_discussion_round: int = 0                     # Current critique+patch round counter
     verdict: Optional[str] = None                         # AnalysisAuditor auditing_verdict output
     verdict_extract: Optional[List[Dict[str, Any]]] = None  # AnalysisAuditor verdict_extract output
