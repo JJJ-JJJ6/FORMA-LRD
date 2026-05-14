@@ -212,6 +212,99 @@ class ResultWriter:
                     else json.dumps(patched, indent=2, ensure_ascii=False))
             f.write('\n')
 
+    def write_discussion(self, state: SpectroState) -> None:
+        """写出完整的多轮讨论记录（critique ↔ patch response）。
+
+        按 "假设 → 讨论" 的结构组织：三个路径的所有假设平铺在一个文件里，
+        每个假设先输出其 JSON 内容，再输出该假设的全部讨论轮次。
+
+        文件名格式：{file_name}_discussion.txt
+        """
+        output_dir, file_name = self._resolve_output_dir(state), state.get('file_name', 'unknown')
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, f"{file_name}_discussion.txt")
+
+        _PATHS = {
+            "QSO": ("extract_QSO", "debate_history_QSO", "critique_QSO", "patch_response_QSO"),
+            "ELG": ("extract_ELG", "debate_history_ELG", "critique_ELG", "patch_response_ELG"),
+            "LRG/BGS": ("extract_LRG", "debate_history_LRG", "critique_LRG", "patch_response_LRG"),
+        }
+
+        has_content = False
+        with open(path, 'w', encoding=self.encoding) as f:
+            f.write(f"{'='*60}\n  DISCUSSION RECORD\n{'='*60}\n\n")
+
+            for path_name, (extract_key, hist_key, crit_key, resp_key) in _PATHS.items():
+                debate_hist = state.get(hist_key) or []
+                final_critiques = state.get(crit_key) or []
+                final_responses = state.get(resp_key) or []
+
+                if not debate_hist and not final_critiques:
+                    continue
+
+                # Get hypotheses from extract
+                extract_data = state.get(extract_key) or {}
+                hypotheses = extract_data.get('step_F') or []
+
+                num_hypos = max(
+                    len(hypotheses),
+                    len(final_critiques),
+                    len(final_responses),
+                    max((len(rd.get("hypotheses", [])) for rd in debate_hist), default=0),
+                )
+                if num_hypos == 0:
+                    continue
+
+                has_content = True
+
+                for hi in range(num_hypos):
+                    # ── Hypothesis header ──
+                    f.write(f"{'─'*60}\n")
+                    f.write(f"[{path_name}] Hypothesis #{hi+1}\n")
+                    f.write(f"{'─'*60}\n")
+
+                    # Hypothesis content
+                    if hi < len(hypotheses):
+                        f.write(json.dumps(hypotheses[hi], indent=2, ensure_ascii=False))
+                    else:
+                        f.write("(no hypothesis data)")
+                    f.write("\n\n")
+
+                    # ── Discussion for this hypothesis ──
+                    # Previous rounds from debate_history
+                    for rd in debate_hist:
+                        round_num = rd.get("round", "?")
+                        hypos_in_rd = rd.get("hypotheses", [])
+                        if hi < len(hypos_in_rd):
+                            entry = hypos_in_rd[hi]
+                            crit = entry.get("critique") or ""
+                            resp = entry.get("response") or ""
+                        else:
+                            crit, resp = "", ""
+                        f.write(f"  Round {round_num} Critique:\n")
+                        f.write(f"    {crit}\n\n" if not '\n' in crit
+                                else "".join(f"    {l}\n" for l in crit.splitlines()) + "\n")
+                        f.write(f"  Round {round_num} Response:\n")
+                        f.write(f"    {resp}\n\n" if not '\n' in resp
+                                else "".join(f"    {l}\n" for l in resp.splitlines()) + "\n")
+
+                    # Final round
+                    if final_critiques:
+                        final_round_num = len(debate_hist) + 1
+                        crit = final_critiques[hi] if hi < len(final_critiques) else ""
+                        resp = final_responses[hi] if hi < len(final_responses) else ""
+                        f.write(f"  Round {final_round_num} Critique:\n")
+                        f.write(f"    {crit}\n\n" if '\n' not in (crit or "")
+                                else "".join(f"    {l}\n" for l in (crit or "").splitlines()) + "\n")
+                        f.write(f"  Round {final_round_num} Response:\n")
+                        f.write(f"    {resp}\n\n" if '\n' not in (resp or "")
+                                else "".join(f"    {l}\n" for l in (resp or "").splitlines()) + "\n")
+
+                    f.write("\n")
+
+        if not has_content:
+            os.remove(path)
+
     def write_final_report(self, state: SpectroState) -> None:
         """写出 final_report.txt（在 RefinementAssistant.refining_final 结束后调用）"""
         report = state.get('final_report')

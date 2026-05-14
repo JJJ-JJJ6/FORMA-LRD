@@ -72,6 +72,8 @@ class AnalysisAuditor(BaseAgent):
             print("[AnalysisAuditor] All paths inconclusive — skipping verdict.")
             return state
 
+        # Save full discussion record before entering verdict
+        self._writer.write_discussion(state)
         await self.auditing_verdict(state)
         await self.verdict_extract(state)
         return state
