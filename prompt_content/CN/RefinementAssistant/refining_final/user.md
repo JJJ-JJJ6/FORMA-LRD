@@ -19,6 +19,7 @@
 {% for p in peaks %}
 
 Wavelength: {{ p.wavelength }}
+Wavelength_error: {{ p.wavelength_err }}
 Amplitude: {{ p.amplitude }}
 Amplitude rank: {{ p.amplitude_rank }}
 Width in Å: {{ p.FWHM_A }}
@@ -43,6 +44,7 @@ Does it touch the edge: {{ p.quality_boundary_touch }}
 {% for t in troughs %}
 
 Wavelength: {{ t.wavelength }}
+Wavelength_error: {{ t.wavelength_err }}
 Amplitude: {{ t.amplitude }}
 Amplitude rank: {{ t.amplitude_rank }}
 Width in Å: {{ t.FWHM_A }}

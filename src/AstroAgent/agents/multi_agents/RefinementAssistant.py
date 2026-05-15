@@ -184,7 +184,7 @@ class RefinementAssistant(BaseAgent):
             user_prompt=user_prompt,
             parse_json=False,
             description="Refining final report",
-            want_tools=False,
+            want_tools=True,
         )
 
         state['final_report'] = result

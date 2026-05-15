@@ -25,6 +25,57 @@ Your tasks are:
 
 ---
 
+## Redshift RMS Calculation
+
+Before writing the report, you MUST compute the redshift error σ_z using the MCP tool `calculate_rms_for_redshift_tool`. Follow these steps strictly:
+
+### Step 1: Select the reference line
+
+From the 1st-place verdict result, examine `Adopted_pairs`. Select the line with the **lowest ionization state** as the reference line for error calculation. Use the ionization-state ordering below (lower number = lower ionization):
+
+| Priority | Line | Rest Wavelength (Å) | Type |
+|----------|------|---------------------|------|
+| 1 (lowest) | Ca K_abs | 3934.8 | absorption (neutral) |
+| 2 | Ca H_abs | 3969.6 | absorption (neutral) |
+| 3 | G-band_abs | 4305.6 | absorption (neutral) |
+| 4 | Mg_abs | 5176.7 | absorption (neutral) |
+| 5 | Na D_abs | 5895.6 | absorption (neutral) |
+| 6 | O[II] | 3727.0 | emission (O⁺, ~13.6 eV) |
+| 7 | S[II]a / S[II]b | 6718.3 / 6732.7 | emission (S⁺) |
+| 8 | N[II]a / N[II]b | 6549.8 / 6585.3 | emission (N⁺) |
+| 9 | Hα / Hβ / Hγ / Hδ / Hε | 6564.6 / 4862.7 / 4341.7 / 4102.9 / 3970.1 | emission (H, ~13.6 eV) |
+| 10 | Mg II | 2800.0 | emission (Mg⁺, ~15.0 eV) |
+| 11 | O[III]a / O[III]b | 4960.3 / 5008.2 | emission (O⁺⁺, ~35.1 eV) |
+| 12 | He II | 1640.0 | emission (He⁺, ~54.4 eV) |
+| 13 | C III] | 1909.0 | emission (C⁺⁺, ~47.9 eV) |
+| 14 | C IV | 1549.0 | emission (C⁺⁺⁺, ~64.5 eV) |
+| 15 | Ne[V] | 3426.0 | emission (Ne⁺⁺⁺⁺, ~97.1 eV) |
+| 16 (highest) | Lyα | 1216.0 | emission (H, Lyman series) |
+
+**Tie-breaking**: If multiple lines share the same priority, prefer the line with the highest amplitude (from the peak/trough data in the user prompt).
+
+### Step 2: Look up the wavelength error
+
+In the **Part 1** of the user prompt, locate the peak or trough whose `Wavelength` matches the **observed wavelength** of the selected reference line (from `Adopted_pairs`). Read its `Wavelength_error` value.
+
+If the reference line is an absorption line (from troughs) but no matching trough is found with a `wavelength_err`, try the nearest peak to that wavelength — absorption lines may have been detected as peaks in noisy spectra.
+
+**If no matching feature with `wavelength_err` is found**, skip the tool call and note in the report: "Error unknown".
+
+### Step 3: Call the MCP tool
+
+Call `calculate_rms_for_redshift_tool` with:
+- `wavelength_rest`: the rest wavelength of the selected reference line (Å)
+- `wavelength_error`: the `wavelength_err` value found in Step 2 (Å)
+
+The tool returns σ_z (redshift RMS).
+
+### Step 4: Report the result
+
+In **Section 5**, write the redshift as: `z = X.XXX ± Y.YYY` where Y.YYY is σ_z rounded to 3 decimal places. Round σ_z to the same precision (3 decimals).
+
+---
+
 ## Downgraded Inference Rules (activated only when quantitative analysis yields no valid conclusion)
 
 When all paths in Section 3 have no valid hypotheses (Hypothesis is null for all or the path was not run), and Section 4 has no adjudication/revision conclusion, a downgraded inference is performed for **Section 5** according to the following rules. The remaining sections are output as normal with the existing content (fields without content are filled with `null`):
