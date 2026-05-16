@@ -2185,6 +2185,6 @@ def brute_force_line_matching(state, tol_wavelength=None,
     # 过滤掉有效独立约束数 < 2 的候选
     # N_emission / N_absorption 已经是 min(独立波长数, 独立线名数)，
     # 因此此处过滤同时排除「单峰多线冲突」和「单线多峰」两种无效情况。
-    results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 2]
+    results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 3]
 
     return results
