@@ -35,13 +35,14 @@ The spectral classification of QSOs involves the following two main cases:
 
 ### Case 2: Host Galaxy-Dominated AGN
 
-* **Spectral Morphology**: The continuum is dominated by the host galaxy and the appearance may resemble ELG/LRG/BGS; however, the presence of broad-line components (especially in the Mg II region) or high-ionization narrow lines (Ne [V], C III], etc.) is a typical characteristic of AGN.
+* **Spectral Morphology**: The continuum is dominated by the host galaxy, which may appear relatively flat or show a redward rise (like early-type galaxies), but can also be blue-falling. The continuum alone is not a reliable discriminator for this type.
 * **Emission-Line Features**: **Must contains at least one of the strong AGN-characteristic emission lines below**:
-    - Ne [V] (3426 Å) — strong AGN indicator
+    - Ne [V] (3426 Å) — strong AGN indicator, almost absent in non-AGN
     - C III] (1909 Å)
-    - Mg II (2800 Å) — may appear as a broad emission line superimposed on the host galaxy's narrow absorption lines
+    - Mg II (2800 Å) — may appear as a broad emission line
   Otherwise, consider: Could this spectrum be an ELG?
-* **Spectral Complexity**: Broad emission lines superimposed with narrow absorption lines, especially in the Mg II region where a broad emission line is superimposed on the host galaxy's narrow absorption lines; the peak/trough-finding algorithm may identify this as a single broad line with a superimposed narrow absorption line, or misidentify it as two close broad lines, or overfit leading to spurious broad lines.
+* **Absorption Lines**: Absorption lines from the host galaxy (Ca K/H, G-band, Mg b, Na D, etc.) are **possible but NOT required**. Do NOT treat the absence of absorption lines as evidence against a host-dominated AGN classification — the primary discriminating criterion is the presence of AGN-characteristic emission lines.
+* **Spectral Complexity**: Broad emission lines may coexist with narrow emission lines. The peak-finding algorithm may misidentify complex profiles as multiple separate lines or overfit, leading to spurious peaks.
 
 ---
 
@@ -160,7 +161,7 @@ The following priority rules apply to the **cross-comparison of QSO/ELG/LRG**:
 
 1.  **Physical coherence**: Whether the combination of spectral lines conforms to the typical characteristics of the corresponding object type.
     *   A typical QSO should have broad emission lines (Lyα/C IV/C III]/Mg II) and should not consist entirely of narrow lines without Mg II; **a typical QSO's Adopted_pairs should NOT contain significant absorption lines** (host galaxy-dominated AGN may have absorption lines, but must be accompanied by typical AGN emission lines Ne [V]/Mg II/C III]);
-    *   A host galaxy-dominated AGN should have strong characteristic AGN emission lines (Ne [V], C III], Mg II) and may be accompanied by broad emission lines; Balmer series emission lines may be classified as narrow or intermediate, but usually have large widths. If there is no typical AGN emission line, be sure to consider whether this could be an ELG at the same redshift with the same line matching?
+    *   A host galaxy-dominated AGN should have at least one of the strong characteristic AGN emission lines (Ne [V], C III], Mg II) and may be accompanied by broad emission lines. **If the hypothesis is classified as host galaxy-dominated AGN but NONE of the AGN-characteristic lines (Ne [V], C III], Mg II) appear in its Adopted_pairs, this is a fatal flaw — the hypothesis MUST be rejected.** Absorption lines (Ca K/H, G-band, Mg b) are possible but NOT required for host-dominated AGN; do NOT treat their absence as a rejection criterion.
     *   An ELG should have narrow emission lines (O [III] doublet amplitude ratio approx 1:3, O [II], Hβ/Hα) and should not show genuine broad lines;
     *   An LRG/BGS should have absorption lines (Ca K/Ca H/G-band/Mg b/Na D, etc.), preferably accompanied by a strong or moderate 4000 Å break. Ca K/Ca H are the most characteristic features of LRG/BGS — once matched, prioritize LRG/BGS. Even if Ca K/H is not matched, if other absorption lines are present (G-band, Mg b, Na D, etc.), LRG/BGS should also be considered. If no absorption lines are present at all, be sure to consider whether this could be an ELG at the same redshift with the same line matching.
     *   **IMPORTANT — Adopted_pairs preservation**: The `Adopted_pairs` in each input summary are the authoritative conclusions of the upstream F-a/F-b analysis. When you select a hypothesis, you MUST reproduce its Adopted_pairs exactly as given in the input. Do NOT remove entries from Adopted_pairs because you consider them weak or speculative — express such concerns in `Remaining_doubts` instead. Removing lines from Adopted_pairs and then using their absence as a criterion creates a self-fulfilling criticism loop.

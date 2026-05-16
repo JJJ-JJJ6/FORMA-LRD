@@ -37,8 +37,9 @@ The spectral classification of QSOs involves the following two main cases:
 
 ### Case 2: Host-Dominated AGN
 
-* **Spectral Morphology**: The continuum is dominated by the host galaxy, overall relatively flat or exhibiting galaxy characteristics.
+* **Spectral Morphology**: The continuum is dominated by the host galaxy, overall relatively flat or exhibiting galaxy characteristics. The continuum alone is not a reliable discriminator — the defining feature is the presence of AGN-characteristic emission lines.
 * **Emission-Line Features**: Must contains at least one of AGN-characteristic emission lines (Ne[V], Mg II, C III], etc.).
+* **Absorption Lines**: Absorption lines from the host galaxy (Ca K/H, G-band, Mg b) are possible but NOT required. Do NOT treat their absence as evidence against a host-dominated AGN classification.
 
 ---
 

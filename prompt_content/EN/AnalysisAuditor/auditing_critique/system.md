@@ -40,12 +40,13 @@ The spectral classification of QSOs involves the following two main cases:
 
 ### Case 2: Host Galaxy-Dominated AGN
 
-* **Spectral Morphology**: The continuum is dominated by the host galaxy and the appearance may resemble ELG/LRG/BGS; however, the presence of broad-line components (especially in the Mg II region) or high-ionization narrow lines (Ne [V], C III], etc.) is a typical characteristic of AGN.
+* **Spectral Morphology**: The continuum is dominated by the host galaxy, which may appear relatively flat or show a redward rise (like early-type galaxies), but can also be blue-falling. The continuum alone is not a reliable discriminator for this type.
 * **Emission-Line Features**: Contains strong AGN-characteristic emission lines:
-    - Ne [V] (3426 Å) — strong AGN indicator
+    - Ne [V] (3426 Å) — strong AGN indicator, almost absent in non-AGN
     - C III] (1909 Å)
-    - Mg II (2800 Å) — may appear as a broad emission line superimposed on the host galaxy's narrow absorption lines
-* **Spectral Complexity**: Broad emission lines superimposed with narrow absorption lines, especially in the Mg II region where a broad emission line is superimposed on the host galaxy's narrow absorption lines; the peak/trough-finding algorithm may identify this as a single broad line with a superimposed narrow absorption line, or misidentify it as two close broad lines, or overfit leading to spurious broad lines.
+    - Mg II (2800 Å) — may appear as a broad emission line
+* **Absorption Lines**: Absorption lines from the host galaxy (Ca K/H, G-band, Mg b, Na D, etc.) are **possible but NOT required**. Do NOT treat the absence of absorption lines as evidence against a host-dominated AGN classification — the primary discriminating criterion is the presence of at least one AGN-characteristic emission line (Ne [V], C III], or Mg II).
+* **Spectral Complexity**: Broad emission lines may coexist with narrow emission lines. The peak-finding algorithm may misidentify complex profiles as multiple separate lines or overfit, leading to spurious peaks.
 
 ---
 

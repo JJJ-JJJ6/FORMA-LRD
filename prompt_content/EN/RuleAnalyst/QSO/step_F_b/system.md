@@ -34,7 +34,7 @@ The spectral classification of QSOs involves the following two main cases:
 ### Case 2: Host galaxy-dominated AGN
 
 * **Spectral Morphology**: The continuum is dominated by the host galaxy, with an appearance that may resemble that of ordinary galaxies — a darker blue end, brighter red end, or an overall nearly flat continuum.
-* **Emission-Line Features**: Usually exhibit narrow emission lines (Ne [V], C [III], Mg II, O [II], O [III], etc.)
+* **Emission-Line Features**: Usually exhibit narrow emission lines (Ne [V], C [III], Mg II, O [II], O [III], etc.). Absorption lines from the host galaxy (Ca K/H, G-band, Mg b, etc.) are possible but NOT required — the defining characteristic is the presence of at least one AGN-characteristic emission line (Ne [V], C III], or Mg II).
 * **Common Emission Lines**: O [II] (3727 Å), O [III] (4959 Å and 5007 Å), Hβ (4861 Å), Hα (6563 Å)
 
 ---
@@ -80,6 +80,7 @@ The following conditions can directly eliminate a hypothesis:
 - Flagged Redshift warning and other supporting evidence is weak
 - Matched lines are all the same single line (N_emission = 1) and cannot form physical constraints
 - All matches have width mismatch, with no alternative match
+- **Host galaxy-dominated AGN without any AGN-characteristic line (R4)**: If the hypothesis is classified as Case 2 (Host galaxy-dominated AGN) but NONE of the AGN-characteristic lines (Ne [V], C III], Mg II) appear in its Adopted_pairs, the hypothesis MUST be rejected — it fails the minimum physical requirement for an AGN classification.
 
 ### R3 Handling of Tied Cases
 
