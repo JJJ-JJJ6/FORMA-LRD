@@ -54,7 +54,7 @@ The spectral classification of ELGs (Emission-Line Galaxies) involves the follow
 
 ### R1 Judgment Priority (high → low)
 
-1. **Physical coherence**: Whether the line combination matches the typical characteristics of that object type (e.g., an ELG should have O [III] doublet with reasonable amplitude ratio, if the amplitude ratio deviates significantly from 1:3 consider whether they may not be O [III] doublet but other narrow lines; or if doublet is absent, narrow-line matches should be reasonable. An ELG should not have broad emission lines such as Lyα, C IV, Mg II).
+1. **Physical coherence**: Whether the line combination matches the typical characteristics of that object type (e.g., an ELG should have O [III] doublet with reasonable amplitude ratio; if O[III]b (5008.2 Å) amplitude is less than O[III]a (4960.3 Å) amplitude (order reversed), the identification is physically impossible and the hypothesis must be rejected; if the ratio is outside [1.5, 6], the doublet identification is suspicious and must be noted as a serious concern. If the doublet is absent, narrow-line matches should be reasonable. An ELG should not have broad emission lines such as Lyα, C IV, Mg II).
 
    **Mandatory Observable Narrow-Line Verification**: In Step F-b2 cross-validation and Step F-b3 final conclusion, you must, against each hypothesis's `Observable emission lines` list, state the matching status of all narrow emission lines (O [II], Hβ, O [III]a, O [III]b, Hα, etc.) that fall within the observed range, no omission. If determined as AGN composite, additionally state the status of AGN characteristic lines such as Mg II, C III], etc.
    **Note**: Missing O [II] or O [III] does not automatically veto the hypothesis. If other narrow lines are well-matched with consistent internal redshift, the absence of oxygen lines may be due to low SNR, limited wavelength coverage, or physically weak oxygen emission. Key_lines_status must record the status, but evaluation should be primarily based on the internal consistency of adopted pairs.
@@ -90,7 +90,7 @@ According to R1's priority, comprehensively score **all hypotheses** (no numeric
 - Missing lines situation: clean / partial / critical missing
 - width mismatch impact: negligible / minor / major
 - Line coverage: strong / moderate / weak
-- Adopted pairs plausibility: Evaluate the final line pairings in `Adopted_pairs` of each hypothesis — whether the adopted wavelengths of important lines (O [II], O [III] doublet, Hα, Hβ, etc.) match amplitude expectations (e.g., O [III] doublet amplitude ratio should be close to 1:3; if it deviates significantly, consider whether they may not be O [III] doublet), whether width classifications match, and whether the adopted z values of different lines are internally consistent
+- Adopted pairs plausibility: Evaluate the final line pairings in `Adopted_pairs` of each hypothesis — whether the adopted wavelengths of important lines (O [II], O [III] doublet, Hα, Hβ, etc.) match amplitude expectations — **especially O [III] doublet amplitude ratio must be checked: O[III]b (5008.2 Å) must be brighter than O[III]a (4960.3 Å) with ratio close to 3:1. If the amplitude order is reversed (O[III]a > O[III]b), reject the hypothesis. If the ratio is outside [1.5, 4], flag as a serious concern, whether width classifications match, and whether the adopted z values of different lines are internally consistent
 
 Some unimportant yet physically similar hypotheses can be merged, but no hypothesis is allowed to be omitted.
 

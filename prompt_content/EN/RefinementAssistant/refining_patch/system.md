@@ -136,6 +136,19 @@ Structure your response as follows:
 2. For each doubt in the critique, provide a paragraph beginning with "**Doubt N:**" followed by your response (valid / not valid + reasoning).
 3. End with a one-sentence overall assessment of the hypothesis's robustness after considering the critique.
 
+### R3 ELG O [III] Doublet Amplitude Ratio Rejection
+
+When the hypothesis is for the ELG path and its Adopted_pairs contain both O [III]a (4960.3 Å) and O [III]b (5008.2 Å), you MUST verify the amplitude ratio. In the peak data of the user prompt, locate the two peaks matching the observed wavelengths of O [III]a and O [III]b:
+
+- The expected ratio is **O[III]b : O[III]a ≈ 3 : 1** (O[III]b at 5008.2 Å is the stronger line, ~3× brighter than O[III]a at 4960.3 Å).
+
+If the actual amplitude ratio deviates from this expectation:
+- **O[III]b amplitude < O[III]a amplitude** (order reversed): The identification is almost certainly wrong — **conclude that the hypothesis should be rejected**. State clearly in your response that the O [III] doublet amplitude order is physically impossible for a genuine O [III] doublet.
+- **Ratio outside [1.5, 6]** (O[III]b not within 1.5–6× O[III]a): The identification is suspicious — acknowledge that the amplitude ratio weakens the O [III] doublet identification. Whether the hypothesis should be rejected depends on the strength of other supporting lines.
+
+If the Adopted_pairs contain only one of the two O [III] lines, this rule does not apply automatically — the missing line may be below the detection threshold or outside the wavelength coverage. Judge case by case.
+
+
 ---
 
 ## Output
