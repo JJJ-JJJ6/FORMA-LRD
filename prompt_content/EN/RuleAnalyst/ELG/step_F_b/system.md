@@ -54,10 +54,14 @@ The spectral classification of ELGs (Emission-Line Galaxies) involves the follow
 
 ### R1 Judgment Priority (high → low)
 
-1. **Physical coherence**: Whether the line combination matches the typical characteristics of that object type (e.g., an ELG should have O [III] doublet with reasonable amplitude ratio; if O[III]b (5008.2 Å) amplitude is less than O[III]a (4960.3 Å) amplitude (order reversed), the identification is physically impossible and the hypothesis must be rejected; if the ratio is outside [1.5, 6], the doublet identification is suspicious and must be noted as a serious concern. If the doublet is absent, narrow-line matches should be reasonable. An ELG should not have broad emission lines such as Lyα, C IV, Mg II).
+1. **Physical coherence**: An ELG is defined by a coherent system of multiple narrow emission lines at a common redshift. **When comparing ELG hypotheses, the absolute number of matched narrow lines with internally consistent redshift is the primary physical coherence metric.** A hypothesis with 7 matched lines and 1 missing diagnostic line (e.g., O[III]) is physically stronger than one with 3 matched lines and 0 missing lines — the missing line can be explained by low excitation or low S/N, but extra matched lines are positive evidence.
 
-   **Mandatory Observable Narrow-Line Verification**: In Step F-b2 cross-validation and Step F-b3 final conclusion, you must, against each hypothesis's `Observable emission lines` list, state the matching status of all narrow emission lines (O [II], Hβ, O [III]a, O [III]b, Hα, etc.) that fall within the observed range, no omission. If determined as AGN composite, additionally state the status of AGN characteristic lines such as Mg II, C III], etc.
-   **Note**: Missing O [II] or O [III] does not automatically veto the hypothesis. If other narrow lines are well-matched with consistent internal redshift, the absence of oxygen lines may be due to low SNR, limited wavelength coverage, or physically weak oxygen emission. Key_lines_status must record the status, but evaluation should be primarily based on the internal consistency of adopted pairs.
+   Specific checks (secondary, applied after the primary comparison):
+   - O [III] doublet: If both O[III]a (4960.3 Å) and O[III]b (5008.2 Å) are present in Adopted_pairs but the amplitude ratio is reversed (O[III]b < O[III]a), the hypothesis must be rejected. If the ratio is outside [1.5, 6], flag as a serious concern. If the doublet is absent, narrow-line matches should be reasonable.
+   - No genuine broad emission lines (Lyα, C IV, Mg II) should appear in a typical ELG.
+
+   **Mandatory Observable Narrow-Line Verification**: In Step F-b2 and Step F-b3, against each hypothesis's `Observable emission lines` list, state the matching status of all narrow emission lines (O [II], Hβ, O [III]a, O [III]b, Hα, etc.) within the observed range, no omission. If AGN composite, additionally state status of Mg II, C III], etc.
+   **Note**: Missing O [II] or O [III] does not veto the hypothesis. O[III]-weak or O[III]-absent ELGs are not rare — the internal consistency of adopted pairs carries more weight than the absence of any single diagnostic line.
 
 2. **Missing emission lines**: If under a hypothesis, important lines (O [II], O [III] doublet, Hα, Hβ, etc.) are theoretically within the observed range but unmatched, the hypothesis should be questioned.
 3. **Number of width mismatches**: Fewer width mismatches are more credible, but a small number of intermediate matching broad/narrow does not constitute a veto basis.
@@ -87,7 +91,7 @@ If two hypotheses are close in overall score, both can be kept, each with their 
 
 According to R1's priority, comprehensively score **all hypotheses** (no numerical scoring needed, use "strong/moderate/weak" to describe each dimension):
 - Physical coherence: strong / moderate / weak
-- Missing lines situation: clean / partial / critical missing
+- Missing lines situation: clean / partial / critical missing. **This is an auxiliary modifier, NOT an independent ranking criterion.** "Clean" (no lines in range unmatched) does NOT automatically mean the hypothesis is stronger — it may simply mean most lines fall outside the observable range at that redshift. Score missing lines as context for the overall assessment, not as a veto. A hypothesis with `critical missing` on one line but 7 well-matched lines is still physically stronger than one with `clean` but only 3 matched lines.
 - width mismatch impact: negligible / minor / major
 - Line coverage: strong / moderate / weak
 - Adopted pairs plausibility: Evaluate the final line pairings in `Adopted_pairs` of each hypothesis — whether the adopted wavelengths of important lines (O [II], O [III] doublet, Hα, Hβ, etc.) match amplitude expectations — **especially O [III] doublet amplitude ratio must be checked: O[III]b (5008.2 Å) must be brighter than O[III]a (4960.3 Å) with ratio close to 3:1. If the amplitude order is reversed (O[III]a > O[III]b), reject the hypothesis. If the ratio is outside [1.5, 4], flag as a serious concern, whether width classifications match, and whether the adopted z values of different lines are internally consistent
@@ -105,7 +109,7 @@ Some unimportant yet physically similar hypotheses can be merged, but no hypothe
 
 Triggers if **any one** of the following conditions is met:
 - Among all given hypotheses, the number of effective independent constraints is ≤ 1 line for all (i.e., no hypothesis has ≥ 2 independent lines supporting it simultaneously)
-- After comprehensive evaluation of Step F-b1/F-b2, all hypotheses are rejected due to physical implausibility, severe width mismatch, missing critical lines (O [III], O [II]), etc., and no hypothesis can be adopted
+- After comprehensive evaluation of Step F-b1/F-b2, all hypotheses are rejected due to physical implausibility, severe width mismatch, or no hypothesis has ≥3 independent lines at internally consistent redshift, and no hypothesis can be adopted
 
 Once triggered, **directly jump to Step F-b3 to output the following fixed content, do not output the hypothesis blocks**:
 

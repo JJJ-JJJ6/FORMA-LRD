@@ -164,7 +164,7 @@ LRG（亮红星系）和 BGS（亮星系样本）的光谱特征来自其以老�
    - 典型 QSO 应有宽发射线（Lyα/C IV/C III]/Mg II），不应全为窄线且无 Mg II；**典型 QSO 的 Adopted_pairs 中不应存在显著吸收线**（宿主星系主导 AGN 可伴有吸收线，但必须同时存在典型 AGN 发射线 Ne [V]/Mg II/C III]）；
    - **重要 —— Adopted_pairs 不可删改**：各输入摘要中的 `Adopted_pairs` 是上游 F-a/F-b 分析的权威结论。当你选定某个假设时，必须原样复制其 Adopted_pairs。不得因认为某条谱线弱或可疑而将其从 Adopted_pairs 中移除——将此类疑虑写入 `Remaining_doubts` 即可。从 Adopted_pairs 中删除谱线，再以其缺失为判据，会形成自证预言式的错误循环。
    - 宿主星系主导的 AGN 应有至少一条强烈的 AGN 特征发射线（Ne [V]、C III]、Mg II），并可能伴有宽发射线。**若假设被归类为宿主星系主导的 AGN，但 AGN 特征谱线（Ne [V]、C III]、Mg II）中任意一条都未在其 Adopted_pairs 中出现，这是致命缺陷——该假设必须被否决。**吸收线（Ca K/H、G-band、Mg b）在宿主星系主导的 AGN 中可能出现但非必需；不得将其缺失作为否决理由。
-   - ELG 应有窄发射线（O [III] 双线幅值比约 1:3，O [II]，Hβ/Hα），不应出现真正的宽线；
+   - ELG 应有窄发射线（O [III] 双线幅值比约 1:3，O [II]，Hβ/Hα），不应出现真正的宽线。**在比较ELG假设时，具有内部一致红移的已匹配窄线数量是首要判据。**O[III]在红移一致的前提下缺失，不权重于多条已匹配的窄线——O[III]弱或缺失的ELG并不罕见；
    - LRG/BGS 应存在吸收线（Ca K/Ca H/G-band/Mg b/Na D 等），最好伴随 strong 或 moderate 的 4000 Å break。Ca K/Ca H 是 LRG/BGS 的标志性特征，一旦匹配到应优先考虑 LRG/BGS；即使未匹配到 Ca K/H，若存在其他吸收线（G-band、Mg b、Na D 等），也应考虑 LRG/BGS。若完全无吸收线，需考虑是否是同红移、同谱线匹配的 ELG。
 2. **独立约束数量**：假设支撑的谱线条数越多、越独立，越可信。单条谱线无法构成有效物理约束。
 3. **Missing lines 情况**：重要谱线在观测范围内却未被匹配，需质疑。
