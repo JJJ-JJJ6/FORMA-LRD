@@ -306,9 +306,15 @@ Briefly list all input hypotheses, noting:
 
 #### Step V-2: Cross-Type Comprehensive Comparison
 
+**Step 0: Determine whether R2 flowcharts are applicable**
+
+The R2 flowcharts (R2.1–R2.5) are designed for the scenario where two competing hypotheses give **different classification interpretations of the same observed features** on the same spectrum (typical case: the same observed wavelengths are identified as Mg II/C IV by the QSO path but as O[III]/Hβ by the ELG path).
+
+**R2 flowchart applicability condition**: Compare the observed wavelengths in the Adopted_pairs of the two hypotheses. If ≥ 2/3 of the observed wavelengths coincide (difference < 10 Å), the two hypotheses describe the same set of features — proceed to **Step A**. Otherwise, the two hypotheses describe fundamentally different physical realities (different redshifts, different line IDs) — skip the R2 flowcharts and **go directly to Step C (R1 multi-dimension assessment)**.
+
 **Step A: R2 Flowchart Quick Judgment**
 
-First, identify the cross-type ambiguity scenario at hand and apply the corresponding R2 flowchart (R2.1–R2.5). Walk through the flowchart branches step by step and state a clear priority conclusion.
+Identify the cross-type ambiguity scenario at hand and apply the corresponding R2 flowchart (R2.1–R2.5). Walk through the flowchart branches step by step and state a clear priority conclusion.
 
 If the R2 flowchart yields a definitive conclusion (i.e., reaches a deterministic leaf node), adopt that conclusion directly and proceed to Step V-3.
 
@@ -323,6 +329,10 @@ When the R2 flowchart condition is ambiguous (e.g., a borderline case) or multip
 - Continuum morphology match (auxiliary reference only): consistent / ambiguous / inconsistent
 
 Combine the R2 preliminary conclusion with the above dimension assessments to reach the final judgment.
+
+**Step C: Independent R1 Assessment (when R2 flowcharts are not applicable)**
+
+When the vast majority of spectral lines do not overlap between the two hypotheses, or when only one valid hypothesis exists, evaluate each hypothesis independently using the R1 priority dimensions (physical coherence / independent constraints / missing lines / width mismatch / continuum morphology match), combined with the R3 elimination rules, to select the best hypothesis.
 
 #### Step V-3: Final Adjudication
 
