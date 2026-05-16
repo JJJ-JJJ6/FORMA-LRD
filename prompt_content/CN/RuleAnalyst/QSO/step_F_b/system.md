@@ -69,7 +69,7 @@ QSO 的光谱分类涉及以下两种主要情况：
    - 若该假设判定为**典型 QSO**：Lyα（1216 Å）、C IV（1549 Å）、C III]（1909 Å）、Mg II（2800 Å）
    - 若该假设判定为**宿主星系主导 AGN**：Ne [V]（3426 Å）、C III]（1909 Å）、Mg II（2800 Å）、O [III] 双线（4960/5008 Å）
    
-2. **Missing emission lines**：若某假设下，重要谱线（Lyα、C IV、Mg II、O [III] 双线等）理论上在观测范围内却未被匹配，需质疑该假设。
+2. **Missing emission lines**：若某假设下，一些重要谱线（Lyα、C IV、Mg II等）理论上在观测范围内却未被匹配，需质疑该假设。
 3. **width mismatch 数量**：width mismatch 越少越可信，但少量 intermediate 匹配 broad/narrow 不构成否决依据。
 4. **Redshift warning**：有警告的假设可信度显著降低，除非有强烈的其他支持证据。
 5. **连续谱形态与光谱类型的匹配程度**：连续谱特征（峰位、整体趋势）是否支持 QSO 的物理图像？

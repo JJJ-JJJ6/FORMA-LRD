@@ -161,7 +161,7 @@ LRG（亮红星系）和 BGS（亮星系样本）的光谱特征来自其以老�
 以下优先级规则适用于**跨 QSO/ELG/LRG 的综合比较**：
 
 1. **物理连贯性**：谱线组合是否符合对应天体类型的典型特征。
-   - 典型 QSO 应有宽发射线（Lyα/C IV/C III]/Mg II），不应全为窄线且无 Mg II；**典型 QSO 的 Adopted_pairs 中不应存在显著吸收线**（宿主星系主导 AGN 可伴有吸收线，但必须同时存在典型 AGN 发射线 Ne [V]/Mg II/C III]）；
+   - 典型 QSO 应有宽发射线（Lyα/C IV/C III]/Mg II），不应全为窄线且无 Mg II；**典型 QSO 的 Adopted_pairs 中不应存在显著吸收线**（宿主星系主导 AGN 可伴有吸收线，但必须同时存在典型 AGN 发射线 Ne [V]/Mg II/C III]）；**在 Lyα 蓝侧未探测到 Lyα 森林或 Gunn-Peterson trough 不能否定 Lyα 证认或 QSO 分类——Lyα 森林可探测性取决于分辨率、信噪比等。不得将 Lyα 森林缺失用作否决判据。**；
    - **重要 —— Adopted_pairs 不可删改**：各输入摘要中的 `Adopted_pairs` 是上游 F-a/F-b 分析的权威结论。当你选定某个假设时，必须原样复制其 Adopted_pairs。不得因认为某条谱线弱或可疑而将其从 Adopted_pairs 中移除——将此类疑虑写入 `Remaining_doubts` 即可。从 Adopted_pairs 中删除谱线，再以其缺失为判据，会形成自证预言式的错误循环。
    - 宿主星系主导的 AGN 应有至少一条强烈的 AGN 特征发射线（Ne [V]、C III]、Mg II），并可能伴有宽发射线。**若假设被归类为宿主星系主导的 AGN，但 AGN 特征谱线（Ne [V]、C III]、Mg II）中任意一条都未在其 Adopted_pairs 中出现，这是致命缺陷——该假设必须被否决。**吸收线（Ca K/H、G-band、Mg b）在宿主星系主导的 AGN 中可能出现但非必需；不得将其缺失作为否决理由。
    - ELG 应有窄发射线（O [III] 双线幅值比约 1:3，O [II]，Hβ/Hα），不应出现真正的宽线。**在比较ELG假设时，具有内部一致红移的已匹配窄线数量是首要判据。**O[III]在红移一致的前提下缺失，不权重于多条已匹配的窄线——O[III]弱或缺失的ELG并不罕见；

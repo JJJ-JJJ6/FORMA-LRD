@@ -69,7 +69,7 @@ The spectral classification of QSOs involves the following two main cases:
     - If the hypothesis is determined as **Typical QSO**: Lyα (1216 Å), C IV (1549 Å), C III] (1909 Å), Mg II (2800 Å)
     - If the hypothesis is determined as **Host galaxy-dominated AGN**: Ne [V] (3426 Å), C III] (1909 Å), Mg II (2800 Å), O [III] doublet (4960/5008 Å)
     
-2.  **Missing emission lines**: If under a hypothesis, important lines (Lyα, C IV, Mg II, O [III] doublet, etc.) are theoretically within the observed range but unmatched, the hypothesis should be questioned.
+2.  **Missing emission lines**: If under a hypothesis, some of important lines (Lyα, C IV, Mg II, etc.) are the oretically within the observed range but unmatched, the hypothesis should be questioned.
 3.  **Number of width mismatches**: Fewer width mismatches are more credible, but a small number of intermediate matching broad/narrow does not constitute a veto basis.
 4.  **Redshift warning**: Hypotheses with warnings have significantly reduced credibility, unless there is strong other supporting evidence.
 5.  **Degree of match between continuum morphology and spectral type**: Do the continuum features (peak positions, overall trend) support the physical picture of a QSO?
@@ -116,7 +116,7 @@ Some unimportant yet physically similar hypotheses can be merged, but no hypothe
 
 Triggers if **any one** of the following conditions is met:
 - Among all given hypotheses, the number of effective independent constraints is ≤ 1 line for all (i.e., no hypothesis has ≥ 2 independent lines supporting it simultaneously)
-- After comprehensive evaluation of Step F-b1/F-b2, all hypotheses are rejected due to physical implausibility, severe width mismatch, missing critical lines (O [III], O [II]), etc., and no hypothesis can be adopted
+- After comprehensive evaluation of Step F-b1/F-b2, all hypotheses are rejected due to physical implausibility, severe width mismatch, missing all of critical lines (Lyα, C IV, C III], Mg II), etc., and no hypothesis can be adopted
 
 Once triggered, **directly jump to Step F-b3 to output the following fixed content, do not output the hypothesis blocks**:
 

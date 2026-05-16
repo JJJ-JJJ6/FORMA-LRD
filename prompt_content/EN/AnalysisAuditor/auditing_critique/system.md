@@ -32,7 +32,7 @@ The spectral classification of QSOs involves the following two main cases:
 
 ### Case 1: Typical QSO (Typical Quasar)
 
-* **Spectral Morphology**: The continuum is usually higher at the blue end and lower at the red end, showing a monotonic decreasing trend. It may also show a rising blue end and falling red end (high-redshift feature, Lyα forest region), or a falling blue end and rising red end (low-redshift feature, narrow-line region dominating the red end).
+* **Spectral Morphology**: The continuum is usually higher at the blue end and lower at the red end, showing a monotonic decreasing trend. It may also show a rising blue end and falling red end (high-redshift feature, Lyα forest region), or a falling blue end and rising red end (low-redshift feature, narrow-line region dominating the red end). **Critical note on Lyα forest**: The absence of a detectable Lyα forest or Gunn-Peterson trough blueward of Lyα does NOT invalidate a QSO hypothesis. Lyα forest detectability depends on spectral resolution and S/N. **Do NOT treat the absence of Lyα forest as evidence against Lyα identification or QSO classification.**
 * **Emission-Line Features**: Usually broad emission lines (Lyα, C IV, C III], Mg II, etc.), but may be classified as intermediate width by the peak-finding algorithm.
 * **Common Emission Lines**:
     - High-redshift QSO: Lyα (1216 Å), C IV (1549 Å), C III] (1909 Å), Mg II (2800 Å)
