@@ -3,6 +3,7 @@
 # ====================
 data/
 test_set/
+.to_harness/
 
 # Paper
 _paper/

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VI.py — LLM-Spectro-Agent</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #53a8b6;
+    --text: #e0e0e0;
+    --text2: #a0a0b0;
+    --border: #2a2a4a;
+    --tag-bg: #1a1a3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 20px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 {
+    font-size: 2em;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 1.4em;
+    color: var(--accent2);
+    margin: 30px 0 12px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent2);
+  }
+  h3 {
+    font-size: 1.1em;
+    color: #ccd;
+    margin: 20px 0 8px;
+  }
+  h4 { color: var(--accent); margin: 16px 0 6px; }
+  .overview-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .overview-box p { margin: 4px 0; }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card h4 {
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-size: 1.05em;
+  }
+  .card ul { padding-left: 18px; }
+  .card li { margin: 4px 0; font-size: 0.9em; }
+  .graph {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 16px 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.9em;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.8;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9em;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  tr:hover { background: rgba(255,255,255,0.03); }
+  .note {
+    background: #1a2a1a;
+    border-left: 3px solid #4caf50;
+    padding: 8px 14px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9em;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:visited { color: #7ec8d0; }
+  a:hover { color: var(--accent); text-decoration: underline; }
+  .breadcrumb { font-size: 0.85em; margin-bottom: 16px; color: var(--text2); }
+  .breadcrumb a { color: var(--accent2); }
+  .toc { columns: 2; margin: 12px 0; padding-left: 24px; font-size: 0.9em; }
+  .toc li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../structure/code_architecture.html">← Back to Code Architecture</a>
+</div>
+
+<h1>VI.py — CV/数值算法工具箱</h1>
+
+<div class="overview-box">
+  <p><strong>文件路径:</strong> <code>src/AstroAgent/agents/multi_agents/utils/VI.py</code></p>
+  <p><strong>角色:</strong> 纯数值/CV 算法，不调用 LLM。被 <code>VisualInterpreter</code> agent 调用。</p>
+  <p><strong>依赖:</strong> OpenCV, PaddleOCR/Tesseract, scipy, astropy, numpy, pandas, PyWavelets</p>
+</div>
+
+<h2>目录</h2>
+<ol class="toc">
+  <li><a href="#ocr">OCR / 坐标轴刻度检测</a></li>
+  <li><a href="#border">边框检测与图像裁剪</a></li>
+  <li><a href="#remap">像素坐标重映射与拟合</a></li>
+  <li><a href="#spectrum">曲线提取与光谱重建</a></li>
+  <li><a href="#fits">FITS 光谱加载</a></li>
+  <li><a href="#continuum">Continuum 拟合</a></li>
+  <li><a href="#iterative">迭代特征检测 (入口)</a></li>
+  <li><a href="#bruteforce">暴力线匹配</a></li>
+</ol>
+
+<!-- ============================================================= -->
+<h2 id="ocr">1. OCR / 坐标轴刻度检测</h2>
+<!-- ============================================================= -->
+
+<h3>1.1 Tesseract (_detect_axis_ticks_tesseract, line 25)</h3>
+<p>对图像做 Gaussian 模糊 + 自适应阈值二值化，用 Tesseract 逐字识别数字。过滤出可转为 float 的文本，输出 (value, pixel_position, bbox_scale) 三元组。</p>
+<div class="note">
+  Tesseract 在光谱图上的数字识别效果较差。代码注释中标注 "Tesseract is not good. I prefer paddle."
+</div>
+
+<h3>1.2 PaddleOCR (_detect_axis_ticks_paddle, line 63)</h3>
+<p>使用 PaddleOCR 直接对整个图像做文字检测+识别（关闭文档方向分类和去翘曲），输出所有识别文本的中心坐标和包围盒尺寸。结果同时保存为图像和 JSON。</p>
+
+<!-- ============================================================= -->
+<h2 id="border">2. 边框检测与图像裁剪</h2>
+<!-- ============================================================= -->
+
+<h3>2.1 _detect_chart_border (line 96)</h3>
+<p>二值化 → 形态学闭运算去噪 → 找最大轮廓 → 按 margin 微调（默认 top=10/right=10/bottom=10/left=10）。返回 <code>{x, y, w, h}</code>。</p>
+
+<h3>2.2 _crop_img (line 146)</h3>
+<p>按 border_info 裁剪图像并保存。简单的 numpy slicing: <code>img[y:y+h, x:x+w]</code>。</p>
+
+<h3>2.3 迭代裁剪 (VisualInterpreter.border_detection_and_cropping)</h3>
+<p>裁剪后用 VLM 检查四边是否干净（无残留坐标轴/刻度/文字），不干净则增加对应边 margin（每次 +2px），直到四边都通过或 margin 达到上限 30px。</p>
+
+<!-- ============================================================= -->
+<h2 id="remap">3. 像素坐标重映射与拟合</h2>
+<!-- ============================================================= -->
+
+<h3>3.1 _remap_to_cropped_canvas (line 178)</h3>
+<p>将原图坐标系中的刻度位置映射到裁剪后的画布坐标: <code>(ox - x0, oy - y0)</code>，超出画布范围的 clamp 到边界。同时兼容 None 坐标。</p>
+
+<h3>3.2 _pixel_tickvalue_fitting (line 209)</h3>
+<p>对 x/y 轴分别做 <strong>加权线性拟合</strong> (scipy curve_fit): <code>value = a × pixel + b</code>。权重 = sigma_pixel / sqrt(conf_llm)。输入至少 2 个点，输出 a, b, rms, residuals。</p>
+
+<!-- ============================================================= -->
+<h2 id="spectrum">4. 曲线提取与光谱重建</h2>
+<!-- ============================================================= -->
+
+<h3>4.1 _process_and_extract_curve_points (line 265)</h3>
+<p>读取裁剪后的图像 → 转灰度 → 阈值 200 二值化 (THRESH_BINARY_INV)，白色区域的像素点即为光谱曲线点云。返回 (x, y) 坐标列表和灰度值列表。</p>
+
+<h3>4.2 _convert_to_spectrum (line 325)</h3>
+<div class="graph">
+像素点云 (x, y)
+  │
+  ├── a_y × y + b_y → flux
+  ├── a_x × x + b_x → wavelength
+  │
+  ├── [optional] 波段重叠区域去除 (find_overlap_regions)
+  │     └── 删掉落在重叠区的点
+  │
+  └── average_flux_by_wavelength() : 同波长取均值
+       │
+       └── 统计量: max/min unresolved flux, std, SNR, delta_flux
+</div>
+<p><strong>SNR 估计:</strong> SNR = mean_flux / std_flux (对每个波长)。取中位数 snr_medium 作为整体信噪比指标。</p>
+
+<!-- ============================================================= -->
+<h2 id="fits">5. FITS 光谱加载 (_load_spectrum_from_fits, line 426)</h2>
+<p>支持两种 FITS 格式：</p>
+<table>
+  <tr><th>格式</th><th>结构</th><th>示例</th></tr>
+  <tr><td>多波段分波段</td><td>每个波段独立的 WAVELENGTH/FLUX/IVAR/SNR/MASK HDU</td><td>DESI (B,R,Z), CSST (U,V,I)</td></tr>
+  <tr><td>单表格</td><td>单个 BinTableHDU 包含 WAVELENGTH/FLUX 列</td><td>常见光谱 catalog</td></tr>
+</table>
+<p>多波段格式的处理流程：读取各波段 → 质量 mask (specmask==0 & ivar>0) → 去除波段重叠区 → 按波长排序去重（同波长取均值）→ 高斯平滑 (σ=2)。</p>
+<p>波段名称和波长范围从 .env 中的 ARM_NAME / ARM_WAVELENGTH_RANGE 读取，未配置则报错。</p>
+
+<!-- ============================================================= -->
+<h2 id="continuum">6. Continuum 拟合</h2>
+<!-- ============================================================= -->
+
+<h3>6.1 run_continuum_fitting (line 870)</h3>
+<p>用 specutils 的 Chebyshev1D 多项式拟合连续谱。阶数可手动指定或自动选择。计算 <code>residual_flux = flux - continuum</code>。还额外计算对数导数 dlnF/dλ，根据导数符号划分单调区间，生成自然语言描述。</p>
+
+<h3>6.2 run_continuum_fitting_masked (line 1028)</h3>
+<p>先用已检测到的峰/谷区域（中心 ±3σ，σ = FWHM_A / 2.355）mask 掉特征区域，然后在剩余"干净"光谱上拟合 continuum。可用点数 &lt; 20 时回退为全谱拟合。拟合后在完整波长数组上插值评估。</p>
+
+<h3>6.3 generate_continuum_description (line 951)</h3>
+<p>根据 monotonic regions 生成自然语言描述，例如：<br>
+<em>"The continuum has a value of 2.027 at 4000.0 Å, monotonically increases from 4000.0 Å to 5010.1 Å, reaching 3.499 at 5010.1 Å; ..."</em></p>
+
+<!-- ============================================================= -->
+<h2 id="iterative">7. 迭代特征检测 (入口)</h2>
+<!-- ============================================================= -->
+
+<h3>run_iterative_feature_detection (line 1192)</h3>
+<p><strong>先找吸收谷，再找发射峰。</strong>吸收线更窄更深，率先 mask 掉可避免宽发射线干扰。详细算法见独立页面。</p>
+<div class="card-grid">
+  <div class="card">
+    <h4>吸收线检测参数 (absorb)</h4>
+    <ul>
+      <li>窗口: window_width, window_overlap</li>
+      <li>Δχ²: delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold</li>
+      <li>FWHM: fwhm_min, fwhm_max</li>
+      <li>SNR 深度: snr_depth_threshold</li>
+      <li>Smoothed: smooth_sigma_trough, smooth_prominence_frac_trough</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>发射线检测参数 (emission)</h4>
+    <ul>
+      <li>窗口: window_width, window_overlap</li>
+      <li>Δχ²: delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold</li>
+      <li>FWHM: fwhm_min, fwhm_max</li>
+      <li>系统误差: sys_err_frac (第二遍回退)</li>
+      <li>Smoothed: smooth_sigma, smooth_prominence_frac</li>
+    </ul>
+  </div>
+</div>
+<p style="margin-top:8px;"><a href="feature_detection.html">→ Full feature detection algorithm details</a></p>
+
+<!-- ============================================================= -->
+<h2 id="bruteforce">8. 暴力线匹配 (brute_force_line_matching, line 1688)</h2>
+<!-- ============================================================= -->
+
+<div class="overview-box">
+  <p><strong>目的:</strong> 对已检测到的峰/谷做物理谱线标注，生成红移假设供 LLM 做定量分析</p>
+  <p><strong>静止系谱线表:</strong> 19 条发射线 (Lyα ~ S[II]b) + 15 条吸收线 (Ca K/H ~ Hα_abs)</p>
+</div>
+
+<h3>8.1 三相流程</h3>
+<div class="card-grid">
+  <div class="card">
+    <h4>Phase 1: 逐峰逐线锚定</h4>
+    <p>对每个峰（或 lrg_bgs 模式下的每个谷），假设它是某条静止系谱线，计算红移 <code>z = λ_obs / λ_rest − 1</code>。</p>
+    <p>用 z 预测所有其他谱线的观测位置，在容差内匹配峰/谷。每条匹配记录为 <code>(obs_wl, line_name, z)</code> 三元组。</p>
+  </div>
+  <div class="card">
+    <h4>Phase 2: Union-Find 去重</h4>
+    <p>节点 = <code>(wavelength, line_name)</code> 对。同一假设内所有节点互联。每个连通分量 = 一个独立的物理场景。</p>
+  </div>
+  <div class="card">
+    <h4>Phase 3: 格式化输出</h4>
+    <p>按 N_emission + N_absorption 降序排列。有效独立约束数 &lt; 2 的假设被丢弃。</p>
+  </div>
+</div>
+
+<h3>8.2 三模式</h3>
+<table>
+  <tr><th>Mode</th><th>锚定峰</th><th>锚定线表</th><th>容差</th><th>缺失线报告</th></tr>
+  <tr><td><code>qso</code></td><td>全部峰</td><td>全部 19 条发射线（含 BLR 宽线）</td><td>100Å</td><td>缺失发射线</td></tr>
+  <tr><td><code>elg</code></td><td>仅窄峰</td><td>全部 19 条发射线</td><td>30Å</td><td>缺失发射线</td></tr>
+  <tr><td><code>lrg_bgs</code></td><td>窄峰 + <strong>谷锚定</strong></td><td>非 broad 发射线 (13条) + 吸收线</td><td>30Å</td><td>缺失吸收线</td></tr>
+</table>
+
+<div class="note">
+  <strong>lrg_bgs 谷锚定:</strong> LRG/BGS 以吸收线为主要特征，因此额外遍历每个谷作为吸收线锚点，计算红移后验证其余谷和窄峰是否吻合。
+</div>
+
+<h3>8.3 每条假设的输出字段</h3>
+<table>
+  <tr><th>字段</th><th>说明</th></tr>
+  <tr><td><code>Hypothesis</code></td><td>锚定对字符串，如 "3788.0-Lyα, 4840.0-C IV"</td></tr>
+  <tr><td><code>z_max / z_min / z_spread</code></td><td>组内所有匹配对的红移统计</td></tr>
+  <tr><td><code>Emission / Absorption matches</code></td><td>格式化匹配列表 (含 Amp, FWHM, width_class, ⚠ width mismatch)</td></tr>
+  <tr><td><code>N_emission / N_absorption</code></td><td><strong>min(独立波长数, 独立线名数)</strong>——保守估计有效独立约束数</td></tr>
+  <tr><td><code>Redshift warning</code></td><td>z too low for QSO/Galaxy (低于 min_redshift 阈值)</td></tr>
+  <tr><td><code>Missing lines</code></td><td>观测范围内未被匹配的关键谱线及预测位置</td></tr>
+  <tr><td><code>Observable lines</code></td><td>所有在观测范围内的谱线及其匹配状态 (matched / NOT matched)</td></tr>
+  <tr><td><code>Dn4000</code></td><td>分别用 z_max 和 z_min 计算的 4000Å Break 指标、strength、三段斜率</td></tr>
+</table>
+
+<h3>8.4 关键细节</h3>
+
+<h4>D_n(4000) 4000Å Break</h4>
+<p>观测系→静止系转换后计算 <code>Dn4000 = mean_flux(4000-4100) / mean_flux(3850-3950)</code>。&lt;1.3 weak / 1.3-1.5 moderate / &gt;1.5 strong。同时输出三段线性斜率用于区分星族年龄。</p>
+
+<h4>宽度不匹配警告</h4>
+<p>宽线 (Lyα, C IV, C III], Mg II) 配窄峰 或 窄线 ([O III], [N II] 等) 配宽峰 → ⚠ width mismatch。"both" 类 (Balmer系) 跳过此校验。</p>
+
+<h4>发射线/吸收线宽窄分类</h4>
+<div class="card-grid">
+  <div class="card">
+    <h4>Broad (BLR 宽线区)</h4>
+    <ul><li>Lyα (1216.0)</li><li>C IV (1549.0)</li><li>C III] (1909.0)</li><li>Mg II (2800.0)</li></ul>
+  </div>
+  <div class="card">
+    <h4>Both (BLR+NLR)</h4>
+    <ul><li>He II (1640.4)</li><li>Hε, Hδ, Hγ, Hβ, Hα (Balmer)</li></ul>
+  </div>
+  <div class="card">
+    <h4>Narrow (NLR 窄线区)</h4>
+    <ul><li>Ne [V] (3426.0)</li><li>O [II] (3727.0)</li><li>O [III]a/b (4960/5008)</li><li>N [II]a/b (6550/6585)</li><li>S [II]a/b (6718/6733)</li></ul>
+  </div>
+</div>
+
+<h4>N_emission / N_absorption 的保守计数</h4>
+<p>取 <code>min(独立波长数, 独立线名数)</code>。防止"一峰配多线"（波长少于线名）和"一线配多峰"（线名少于波长）两种虚高情况。</p>
+
+<p style="margin-top:30px;">
+  <a href="feature_detection.html">→ Feature Detection Algorithm (feature_finder_precise.py)</a>
+</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Feature Detection Algorithm — LLM-Spectro-Agent</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #53a8b6;
+    --text: #e0e0e0;
+    --text2: #a0a0b0;
+    --border: #2a2a4a;
+    --tag-bg: #1a1a3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 20px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 {
+    font-size: 2em;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 1.4em;
+    color: var(--accent2);
+    margin: 30px 0 12px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent2);
+  }
+  h3 {
+    font-size: 1.1em;
+    color: #ccd;
+    margin: 20px 0 8px;
+  }
+  h4 { color: var(--accent); margin: 16px 0 6px; }
+  .overview-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .overview-box p { margin: 4px 0; }
+  .tag {
+    display: inline-block;
+    background: var(--tag-bg);
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.85em;
+    margin: 2px;
+  }
+  .tag.red { color: var(--accent); border-color: var(--accent); }
+  .graph {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 16px 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.9em;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.8;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9em;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  tr:hover { background: rgba(255,255,255,0.03); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+  }
+  .card h4 {
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-size: 1.05em;
+  }
+  .card ul { padding-left: 18px; }
+  .card li { margin: 4px 0; font-size: 0.9em; }
+  .note {
+    background: #1a2a1a;
+    border-left: 3px solid #4caf50;
+    padding: 8px 14px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9em;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:visited { color: #7ec8d0; }
+  a:hover { color: var(--accent); text-decoration: underline; }
+  .breadcrumb { font-size: 0.85em; margin-bottom: 16px; color: var(--text2); }
+  .breadcrumb a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../structure/code_architecture.html">← Back to Code Architecture</a>
+</div>
+
+<h1>9. Feature Detection Algorithm (找峰/找谷)</h1>
+
+<div class="overview-box">
+  <p><strong>实现文件:</strong> <code>src/AstroAgent/agents/multi_agents/utils/feature_finder_precise.py</code></p>
+  <p><strong>调用入口:</strong> <code>VisualInterpreter.run()</code> → <code>run_iterative_feature_detection()</code></p>
+  <p><strong>核心思路:</strong> CWT 多尺度初筛 + 滑动窗口 Δχ² 联合拟合 + 全局精修迭代剔除。找谷和找峰算法完全对称设计。</p>
+</div>
+
+<h2>9.1 调用链</h2>
+<div class="graph">
+VisualInterpreter.run()
+  │
+  ├── Phase A-D: 图像→光谱 (CV/OCR/拟合)
+  │
+  ├── Phase E: run_iterative_feature_detection()          ← 入口 (VI.py:1192)
+  │     │
+  │     ├── iterative_absorption_detection() × N轮        ← 先找谷
+  │     │     └── find_absorption_lines()
+  │     │           ├── Step 1: Chebyshev continuum 拟合
+  │     │           ├── Step 2: CWT(scales 1-80, mexh) + Smoothed residual 候选
+  │     │           ├── Step 3: 滑动窗口 Δχ² 迭代联合拟合
+  │     │           ├── Step 4: 跨窗口去重 (center &lt; 5Å)
+  │     │           └── Step 5: 全局 multi_gaussian 精修 (迭代剔除)
+  │     │
+  │     ├── ivar/snr 同步 mask 到剩余波长网格
+  │     │
+  │     └── iterative_emission_detection() × N轮          ← 在 mask 掉谷的光谱上找峰
+  │           └── find_emission_lines()
+  │                 ├── Step 1: Chebyshev continuum 拟合
+  │                 ├── Step 2: CWT + Smoothed residual 候选
+  │                 ├── Step 3: 滑动窗口 Δχ² 迭代联合拟合
+  │                 ├── Step 4: 跨窗口去重
+  │                 └── Step 5: 全局精修 (迭代剔除) + 两遍策略
+  │
+  └── Phase F: brute_force_line_matching()                ← 物理标注
+</div>
+
+<h2>9.2 为什么先找谷再找峰？</h2>
+<div class="note">
+  吸收线通常比发射线窄且深，在 residual 中信号更明确。先把谷找出来 mask 掉（中心 ±3σ），可以避免宽发射线"吞掉"旁边的窄吸收谷。然后在去掉吸收线的光谱上找发射峰，减少干扰。
+</div>
+
+<h2>9.3 共享基础设施</h2>
+
+<h3>Chebyshev 自动选阶 (select_chebyshev_degree)</h3>
+<p>遍历 min_degree~max_degree，取 <code>MAD×10 + (skew−0.5)²×5 + deg×0.2</code> 最小的阶数。MAD 衡量残差离散度，skew 偏好轻微偏斜的残差分布（理想约 0.5），deg 项防止过拟合。</p>
+
+<h3>误差准备 (_prepare_sigma)</h3>
+<p>优先级: <strong>ivar > effective_snr > 默认 SNR=7</strong>。支持附加连续谱系统误差分量（参考 DLA-Toolkit var_lss）：<code>σ_eff² = σ_pipe² + (continuum × ε)²</code>。仅在找峰第二遍回退时启用（ε=sys_err_frac，典型 0.02~0.05）。</p>
+
+<h3>质量控制标志 (bitwise flags)</h3>
+<table>
+  <tr><th>Flag</th><th>含义</th></tr>
+  <tr><td>FLAG_LOW_DELTA_CHI2 (1)</td><td>Δχ² 低于警告阈值</td></tr>
+  <tr><td>FLAG_BOUNDARY (2)</td><td>参数触碰边界 (FWHM/振幅越界)</td></tr>
+  <tr><td>FLAG_BAD_ERROR (4)</td><td>参数误差过大或拟合异常</td></tr>
+  <tr><td>FLAG_BLEND (8)</td><td>与相邻线混叠</td></tr>
+  <tr><td>FLAG_LOW_SNRS (16)</td><td>深度信噪比过低（仅吸收线）</td></tr>
+</table>
+
+<h3>宽窄分类</h3>
+<p>FWHM_km_s &lt; 1000 → <code>narrow</code>; 1000-2000 → <code>intermediate</code>; &gt; 2000 → <code>broad</code></p>
+
+<h2>9.4 找峰: find_emission_lines() — 五个步骤</h2>
+
+<h3>Step 1: Continuum 拟合</h3>
+<p>Chebyshev 多项式拟合→ <code>residual = flux − continuum</code>。所有后续操作在 residual 上进行。</p>
+
+<h3>Step 2: 双路候选峰生成</h3>
+<table>
+  <tr><th>候选源</th><th>方法</th><th>目标</th></tr>
+  <tr>
+    <td><strong>CWT 候选</strong></td>
+    <td>Mexican Hat 小波 (scales 1-80) → 取各尺度最大响应 → <code>find_peaks</code></td>
+    <td>窄/中等宽度峰，信噪比高</td>
+  </tr>
+  <tr>
+    <td><strong>Smoothed 候选</strong></td>
+    <td>对 residual 做大核高斯平滑 (σ=16) → <code>find_peaks</code> (prominence=0.1×range)</td>
+    <td><strong>宽低振幅峰</strong>——CWT 单尺度不显著，但 smoothed 整体形态明显</td>
+  </tr>
+</table>
+<p><strong>候选优先级:</strong> Smoothed 候选 &gt; CWT 候选。Smoothed 振幅下界检验更宽松（大核平滑压低峰值）。sigma 初始估计 = <code>(scipy 半高宽 / 2.355) × 平均波长间距 × 0.85</code>（退卷积修正）。</p>
+
+<h3>Step 3: 滑动窗口迭代拟合 (核心)</h3>
+<p>窗口 500Å，重叠 300Å。每窗口内：</p>
+<ol>
+  <li>拟合 null model（纯线性基线），得 χ²₀</li>
+  <li>依次添加候选峰，拟合 multi_gaussian + 线性基线，得 χ²₁</li>
+  <li>计算 <strong>归一化 Δχ² = (χ²₀ − χ²₁) / N_points</strong></li>
+  <li><strong>动态阈值:</strong> threshold = base × (1 + factor × n_accepted)——接受线越多，新候选门槛越高</li>
+</ol>
+
+<div class="card">
+<h4>接受条件链（全部通过才接受）</h4>
+<ol>
+  <li>Δχ² ≥ threshold</li>
+  <li>振幅 ∈ [0.8×residual@center, 1.5×residual@center]（smoothed 候选跳过下界）</li>
+  <li>FWHM ∈ [fwhm_min, fwhm_max]</li>
+  <li>参数相对误差 &lt; 50%</li>
+  <li>不与已接受峰混叠: 距离 ≥ blend_k × min(fwhm₁, fwhm₂)</li>
+</ol>
+<p><strong>混叠策略:</strong> 新峰与已接受峰冲突时，<strong>保留更宽的</strong>——宽峰更可能是物理的 BLR 发射线。</p>
+</div>
+
+<h3>Step 4: 跨窗口去重</h3>
+<p>重复峰（中心距离 &lt; 5Å）→ 保留 Δχ² 更大的。</p>
+
+<h3>Step 5: 全局精修 (迭代剔除)</h3>
+<p>将所有候选放入全局 multi_gaussian 模型联合拟合。逐峰计算局部 Δχ²（中心 ±150Å 窗口内 null vs null+gaussian 的 χ² 差）。剔除不达标峰，重复直到收敛。</p>
+
+<h3>两遍策略 (fallback)</h3>
+<table>
+  <tr><th></th><th>第一遍</th><th>第二遍</th></tr>
+  <tr><td>判据</td><td>严格 Δχ² 阈值</td><td>A/σ_A ≥ 3 <strong>并集</strong> Δχ²（降低弱信号漏检）</td></tr>
+  <tr><td>系统误差分量</td><td>无</td><td>σ_sys = continuum × sys_err_frac</td></tr>
+  <tr><td>触发条件</td><td>始终执行</td><td>第一遍结果 &lt; 2 条</td></tr>
+</table>
+
+<h2>9.5 找谷: find_absorption_lines() — 与找峰的差异</h2>
+<table>
+  <tr><th>方面</th><th style="color:var(--accent);">找峰 (Emission)</th><th style="color:var(--accent2);">找谷 (Absorption)</th></tr>
+  <tr><td>信号方向</td><td>residual 正值</td><td>residual <strong>负值</strong></td></tr>
+  <tr><td>CWT 输入</td><td>residual</td><td><strong>−residual</strong>（取反后找峰）</td></tr>
+  <tr><td>拟合模型</td><td><code>gaussian(amp, μ, σ)</code></td><td><strong><code>inverted_gaussian(amp, μ, σ)</code></strong> (向下凹陷)</td></tr>
+  <tr><td>局部基线</td><td>全局 continuum 的残差</td><td><strong>窗口内独立拟合局部 continuum</strong> (Chebyshev + σ-clipping 迭代)</td></tr>
+  <tr><td>额外条件</td><td>—</td><td>中心残差必须 &lt; 0; 深度 SNR ≥ 3.0</td></tr>
+  <tr><td>混叠策略</td><td>保留宽峰</td><td><strong>保留窄谷</strong>（窄吸收线更物理）</td></tr>
+  <tr><td>Smoothed 振幅检验</td><td>跳过下界</td><td>同时跳过下界和上界（谷展宽低平）</td></tr>
+  <tr><td>窗口宽度</td><td>500Å</td><td><strong>100Å</strong>（吸收线更窄）</td></tr>
+</table>
+
+<div class="note">
+  <strong>为什么吸收线需要独立拟合局部 continuum？</strong><br>
+  吸收线所在区域的连续谱可能被宽发射线扭曲，全局 continuum 的残差在局部不是好的零基线。因此在每个窗口内独立 fit 局部 continuum（Chebyshev + σ-clipping 迭代剔除吸收线点），然后在其局部残差上做 Δχ² 检验。
+</div>
+
+<h2>9.6 迭代检测 (iterative_emission/absorption_detection)</h2>
+<p>每轮将已检测特征区域（中心 ±3σ）从波长数组中<strong>删除</strong>，在剩余光谱上继续检测。默认 3 轮，某轮无新检测时提前终止。ivar/snr 数组同步 mask 以保持与波长数组一致。</p>
+
+<h2>9.7 Pseudopeak 标注</h2>
+<p>发射线中心 ±3σ 范围内覆盖的谷数量 ≥ pseudo_trough_threshold（默认 2）时，标记为伪峰（broad emission line 吃掉窄吸收线的情况）。</p>
+
+<p style="margin-top:30px;">
+  <a href="VI.html">Next: VI.py (CV/数值算法工具箱) →</a>
+</p>
+
+</div>
+</body>
+</html>
