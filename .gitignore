@@ -21,6 +21,9 @@ log/
 .arts/
 .codeartsdoer/
 
+# claude
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]
