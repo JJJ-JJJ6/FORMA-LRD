@@ -158,7 +158,7 @@ class WorkflowOrchestrator:
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
-        workflow.add_edge("visual_interpreter", "rule_analyst")
+        workflow.add_edge("visual_interpreter", END)  # TODO: 测试用，测完恢复为 rule_analyst
         workflow.add_edge("rule_analyst", "analysis_auditor_critique")
         workflow.add_edge("analysis_auditor_critique", "refinement_assistant_patch")
         # Loop: patch → critique if more rounds needed, else → verdict

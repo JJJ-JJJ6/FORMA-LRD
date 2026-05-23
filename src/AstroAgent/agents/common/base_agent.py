@@ -81,6 +81,9 @@ class BaseAgent:
         self._llm_vendor = _detect_vendor(runtime.configs.model.llm.get('base_url', ''))
         self._vlm_vendor = _detect_vendor(runtime.configs.model.vlm.get('base_url', ''))
 
+        # 流式输出配置
+        self._stream = runtime.configs.model.llm.get('stream', False)
+
     # --------------------------
     # Lazy agent creation
     # --------------------------
@@ -99,6 +102,16 @@ class BaseAgent:
             extra_body = _build_thinking_extra_body('disabled', vendor)
             return model.bind(extra_body=extra_body)
         return model
+
+    async def _stream_invoke(self, model, messages):
+        """流式调用模型，逐 token 打印到终端，返回累积的完整内容。"""
+        full_content = ""
+        async for chunk in model.astream(messages):
+            if chunk.content:
+                print(chunk.content, end="", flush=True)
+                full_content += chunk.content
+        print()  # 流结束后换行
+        return full_content
 
     async def _ensure_text_agent(self, tools):
         if self._text_agent is None:
@@ -150,8 +163,11 @@ class BaseAgent:
                     else:
                         # want_tools=False: call VLM directly (stateless)
                         vlm = self._apply_thinking(self._vis_model, self._vlm_thinking, self._vlm_vendor, want_tools=False)
-                        response = await vlm.ainvoke(messages)
-                        raw_content = response.content
+                        if self._stream:
+                            raw_content = await self._stream_invoke(vlm, messages)
+                        else:
+                            response = await vlm.ainvoke(messages)
+                            raw_content = response.content
                 else:
                     if want_tools:
                         tools = await self.runtime.get_tools()
@@ -164,8 +180,11 @@ class BaseAgent:
                     else:
                         # want_tools=False: call LLM directly (stateless)
                         llm = self._apply_thinking(self._text_model, self._llm_thinking, self._llm_vendor, want_tools=False)
-                        response = await llm.ainvoke(messages)
-                        raw_content = response.content
+                        if self._stream:
+                            raw_content = await self._stream_invoke(llm, messages)
+                        else:
+                            response = await llm.ainvoke(messages)
+                            raw_content = response.content
 
                 # ---------------- JSON parse ----------------
 

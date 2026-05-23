@@ -42,11 +42,11 @@ def plot_spectrum_snr(state: SpectroState):
     绘制双子图：上方为光谱 flux（含不确定性填充），下方为 Effective SNR。
     保存为 {file_name}_spectrum.png，并返回 fig。
     """
-    wavelength = state['spectrum']['new_wavelength']
-    flux = state['spectrum']['weighted_flux']
+    wavelength = state['spectrum']['wavelength']
+    flux = state['spectrum']['flux']
     flux_top = state['spectrum'].get('max_unresolved_flux')
     flux_bottom = state['spectrum'].get('min_unresolved_flux')
-    effective_snr = state['spectrum'].get('effective_snr')
+    effective_snr = state['spectrum'].get('snr')
     ivar = state['spectrum'].get('ivar')
 
     h, w = _get_figsize(state)
@@ -90,8 +90,8 @@ def plot_spec_extract(state: SpectroState):
     绘制单子图：光谱 flux 曲线 + 信息损失区域填充（来自 OpenCV 处理）。
     保存为 {file_name}_spec_extract.png。
     """
-    wavelength = state['spectrum']['new_wavelength']
-    flux = state['spectrum']['weighted_flux']
+    wavelength = state['spectrum']['wavelength']
+    flux = state['spectrum']['flux']
     flux_top = state['spectrum'].get('max_unresolved_flux', [])
     flux_bottom = state['spectrum'].get('min_unresolved_flux', [])
 
@@ -168,8 +168,8 @@ def plot_masked_spectrum(state: SpectroState):
     保存为 {file_name}_masked_spectrum.png。
     """
     spec = state.get("spectrum", {})
-    wavelengths = spec.get("new_wavelength", [])
-    flux = spec.get("weighted_flux", [])
+    wavelengths = spec.get("wavelength", [])
+    flux = spec.get("flux", [])
 
     h, w = _get_figsize(state)
 
@@ -213,8 +213,8 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
     
     # 获取数据
     spec = state["spectrum"]
-    wavelengths = np.array(spec["new_wavelength"])
-    flux = np.array(spec["weighted_flux"])
+    wavelengths = np.array(spec["wavelength"])
+    flux = np.array(spec["flux"])
     
     # 获取连续谱
     continuum = state.get('continuum', {})
@@ -261,15 +261,18 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
         if center is None or center <= 0:
             continue
         n_troughs += 1
-        
-        fwhm = trough.get('FWHM_A', trough.get('FWHM(Å)', 10.0))
+
+        fwhm = trough.get('FWHM_A', trough.get('FWHM(Å)', None))
+        if fwhm is None:
+            sigma_val = trough.get('sigma')
+            fwhm = sigma_val * SIGMA_TO_FWHM if sigma_val else 10.0
         amplitude = trough.get('amplitude', trough.get('深度', 0))
-        
-        # 绘制倒高斯拟合曲线
-        if amplitude > 0 and fwhm > 0:
+
+        # 绘制倒高斯拟合曲线（吸收线 amplitude 为负值，取绝对值判断）
+        if abs(amplitude) > 0 and fwhm > 0:
             sigma = fwhm / SIGMA_TO_FWHM
             wave_local = np.linspace(center - 3.5*sigma, center + 3.5*sigma, 200)
-            gaussian_profile = -amplitude * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
+            gaussian_profile = -abs(amplitude) * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
             ax2.plot(wave_local, gaussian_profile, color='tomato', linewidth=1.8, alpha=0.85)
         
         # 绘制特征位置垂直线
@@ -301,11 +304,14 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
             continue
         n_peaks += 1
         
-        fwhm = peak.get('FWHM_A', peak.get('FWHM(Å)', 10.0))
+        fwhm = peak.get('FWHM_A', peak.get('FWHM(Å)', None))
+        if fwhm is None:
+            sigma_val = peak.get('sigma')
+            fwhm = sigma_val * SIGMA_TO_FWHM if sigma_val else 10.0
         amplitude = peak.get('amplitude', peak.get('幅度', 0))
-        
+
         # 绘制高斯拟合曲线
-        if amplitude > 0 and fwhm > 0:
+        if abs(amplitude) > 0 and fwhm > 0:
             sigma = fwhm / SIGMA_TO_FWHM
             wave_local = np.linspace(center - 3.5*sigma, center + 3.5*sigma, 200)
             gaussian_profile = amplitude * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)

@@ -275,8 +275,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_qso
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:
@@ -347,8 +347,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_qso
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:
@@ -493,8 +493,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_galaxy
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:
@@ -565,8 +565,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_galaxy
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:
@@ -703,8 +703,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_galaxy
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:
@@ -774,8 +774,8 @@ class RuleAnalyst(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         tol_wavelength = self.runtime.configs.params.tol_wavelength_galaxy
         preliminary_classification = None
         for i in state['preliminary_classification_monkey']:

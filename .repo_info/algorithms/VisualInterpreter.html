@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisualInterpreter.py — LLM-Spectro-Agent</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #53a8b6;
+    --text: #e0e0e0;
+    --text2: #a0a0b0;
+    --border: #2a2a4a;
+    --tag-bg: #1a1a3e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 20px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 {
+    font-size: 2em;
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 1.4em;
+    color: var(--accent2);
+    margin: 30px 0 12px;
+    padding-left: 8px;
+    border-left: 3px solid var(--accent2);
+  }
+  h3 {
+    font-size: 1.1em;
+    color: #ccd;
+    margin: 20px 0 8px;
+  }
+  h4 { color: var(--accent); margin: 16px 0 6px; }
+  .overview-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .overview-box p { margin: 4px 0; }
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card h4 {
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-size: 1.05em;
+  }
+  .card ul { padding-left: 18px; }
+  .card li { margin: 4px 0; font-size: 0.9em; }
+  .graph {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin: 16px 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.9em;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.8;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9em;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  tr:hover { background: rgba(255,255,255,0.03); }
+  .note {
+    background: #1a2a1a;
+    border-left: 3px solid #4caf50;
+    padding: 8px 14px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9em;
+  }
+  .warn {
+    background: #2a1a1a;
+    border-left: 3px solid var(--accent);
+    padding: 8px 14px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.9em;
+  }
+  a { color: var(--accent2); text-decoration: none; }
+  a:visited { color: #7ec8d0; }
+  a:hover { color: var(--accent); text-decoration: underline; }
+  .breadcrumb { font-size: 0.85em; margin-bottom: 16px; color: var(--text2); }
+  .breadcrumb a { color: var(--accent2); }
+  .toc { columns: 2; margin: 12px 0; padding-left: 24px; font-size: 0.9em; }
+  .toc li { margin: 3px 0; }
+  .tag {
+    display: inline-block;
+    background: var(--tag-bg);
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.85em;
+    margin: 2px;
+  }
+  .tag.red { color: var(--accent); border-color: var(--accent); }
+  .phase-arrow {
+    text-align: center;
+    color: var(--accent);
+    font-size: 1.1em;
+    margin: 6px 0;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../structure/code_architecture.html">← Back to Code Architecture</a>
+</div>
+
+<h1>VisualInterpreter.py — 视觉解释 Agent</h1>
+
+<div class="overview-box">
+  <p><strong>文件路径:</strong> <code>src/AstroAgent/agents/multi_agents/VisualInterpreter.py</code></p>
+  <p><strong>角色:</strong> LangGraph workflow 的第一个 agent 节点。负责从输入图像/FITS 中提取光谱数据、检测特征、执行暴力线匹配。</p>
+  <p><strong>父类:</strong> <code>BaseAgent</code> — 提供 LLM/VLM 调用、重试、错误分类等基础设施</p>
+  <p><strong>调用关系:</strong> 编排 <code>utils/VI.py</code> 的数值算法 + 调用 VLM/LLM 做视觉判断和坐标映射</p>
+  <div style="margin-top:8px">
+    <span class="tag red">Agent 1 of 5</span>
+    <span class="tag">FITS + PNG dual channel</span>
+    <span class="tag">stream support</span>
+    <span class="tag">NPZ output</span>
+  </div>
+</div>
+
+<h2>目录</h2>
+<ol class="toc">
+  <li><a href="#overview">架构概览</a></li>
+  <li><a href="#run">主流程 run()</a></li>
+  <li><a href="#fits-channel">FITS 通道</a></li>
+  <li><a href="#png-channel">PNG 通道 (Phase A–C)</a></li>
+  <li><a href="#phase-d">Phase D: 迭代特征检测</a></li>
+  <li><a href="#phase-e">Phase E: Continuum 拟合</a></li>
+  <li><a href="#bruteforce">Phase F: 暴力线匹配</a></li>
+  <li><a href="#outputs">输出产物</a></li>
+  <li><a href="#design">设计原则</a></li>
+</ol>
+
+<!-- ============================================================= -->
+<h2 id="overview">1. 架构概览</h2>
+<!-- ============================================================= -->
+
+<div class="graph">
+                    ┌─────────────────────────┐
+                    │   VisualInterpreter.run() │
+                    │   (async, LangGraph node) │
+                    └────────────┬────────────┘
+                                 │
+              ┌──────────────────┴──────────────────┐
+              │                                      │
+    ┌─────────▼─────────┐              ┌─────────────▼─────────────┐
+    │  FITS 通道         │              │  PNG 通道                  │
+    │  load_spectrum     │              │                            │
+    │  _from_fits()      │              │  Phase A: 坐标轴检测       │
+    │  → spectrum dict   │              │    VLM detect + OCR +     │
+    │                    │              │    LLM combine + revise    │
+    └─────────┬──────────┘              │                            │
+              │                         │  Phase B: 裁剪             │
+              │                         │    检测边框 → 迭代裁剪 →   │
+              │                         │    VLM check_border       │
+              │                         │                            │
+              │                         │  Phase C: 光谱重建         │
+              │                         │    remap → pixel_to_value  │
+              │                         │    → convert_to_spectrum   │
+              └──────────────────────────┴────────────┬─────────────┘
+                                                      │
+                                         ┌────────────▼─────────────┐
+                                         │  共用后处理                │
+                                         │  plot_spec_extract        │
+                                         │  plot_spectrum_snr        │
+                                         │  save spectrum NPZ        │
+                                         └────────────┬─────────────┘
+                                                      │
+                                         ┌────────────▼─────────────┐
+                                         │  Phase D: 迭代特征检测    │
+                                         │  Phase E: Continuum 拟合  │
+                                         │  brute_force_line_matching │
+                                         └──────────────────────────┘
+</div>
+
+<div class="card-grid">
+  <div class="card">
+    <h4>类结构</h4>
+    <ul>
+      <li><code>agent_name = "VisualInterpreter"</code></li>
+      <li><code>__init__(runtime: RuntimeContainer)</code> — 注入运行时容器</li>
+      <li>10 个方法：1 个主流程 + 6 个 LLM 交互 + 2 个 OCR/裁剪辅助 + 1 个 FITS 加载</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>State 写入</h4>
+    <ul>
+      <li><code>state['spectrum']</code> — 光谱 dict (wavelength, flux, snr, ivar)</li>
+      <li><code>state['peaks']</code> / <code>state['troughs']</code> — 发射线/吸收线列表</li>
+      <li><code>state['continuum']</code> / <code>state['residual_spectrum']</code></li>
+      <li><code>state['brute_force_matching']</code> — 统一匹配结果</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================= -->
+<h2 id="run">2. 主流程 run() (line 208)</h2>
+<!-- ============================================================= -->
+
+<div class="overview-box">
+  <p><strong>签名:</strong> <code>async run(state: SpectroState, plot: bool = True) → SpectroState</code></p>
+  <p><strong>设计:</strong> 根据 <code>INPUT_FORMAT</code>（.env 配置）分发到 FITS 或 PNG 通道，然后执行共用的 Phase D/E 后处理管线。</p>
+</div>
+
+<div class="graph">
+run(state)
+  │
+  ├── INPUT_FORMAT == 'fits'?
+  │   YES → load_spectrum_from_fits(state) → 直接跳到 Phase D
+  │   NO  → PNG 通道:
+  │           Phase A: detect_axis_ticks → detect_axis_ticks_OCR
+  │                  → combine_axis_mapping → revise_axis_mapping
+  │           Phase B: border_detection_and_cropping
+  │           Phase C: _remap_to_cropped_canvas → _pixel_tickvalue_fitting
+  │                  → _convert_to_spectrum
+  │
+  ├── plot_spec_extract + plot_spectrum_snr
+  ├── save spectrum NPZ
+  │
+  ├── Phase D: run_iterative_feature_detection()
+  │     → state['peaks'], state['troughs']
+  │     → state['emission_records'], state['absorption_records']
+  ├── plot_features
+  │
+  ├── Phase E: run_continuum_fitting_masked()
+  │     → state['continuum'], state['residual_spectrum']
+  ├── plot_continuum + plot_residual_spectrum
+  │
+  └── brute_force_line_matching(state, tol_wavelength)
+        → state['brute_force_matching']
+        → ResultWriter.write_brute_force_matching(state)
+</div>
+
+<!-- ============================================================= -->
+<h2 id="fits-channel">3. FITS 通道 (line 52)</h2>
+<!-- ============================================================= -->
+
+<h3>load_spectrum_from_fits(state)</h3>
+<div class="overview-box">
+  <p><strong>State 赋值位置:</strong> agent 层唯一赋值点。从 utils/VI.py 获取纯 dict 后写入 state。</p>
+</div>
+<div class="graph">
+_runtime.configs.params → arm_name, arm_wavelength_range
+                         │
+                         ▼
+_load_spectrum_from_fits(state['file_path'], arm_names, arm_wavelength_ranges)
+                         │
+                         ▼ spectrum_dict {wavelength, flux, snr, ivar}
+                         │
+state['spectrum'] = spectrum_dict   ← agent 层赋值
+</div>
+
+<p>FITS 通道跳过 PNG 通道的 Phase A–C（坐标轴检测、裁剪、光谱重建），因为 FITS 数据本身已经是标定好的物理量。</p>
+
+<!-- ============================================================= -->
+<h2 id="png-channel">4. PNG 通道 (Phase A–C)</h2>
+<!-- ============================================================= -->
+
+<h3>Phase A: 坐标轴检测与校准 (line 62–145)</h3>
+<table>
+  <tr><th>步骤</th><th>方法</th><th>输入</th><th>输出 → State Key</th></tr>
+  <tr>
+    <td>A1. VLM 检测</td>
+    <td><code>detect_axis_ticks()</code></td>
+    <td>光谱图像</td>
+    <td><code>state['axis_info']</code></td>
+  </tr>
+  <tr>
+    <td>A2. OCR 检测</td>
+    <td><code>detect_axis_ticks_OCR()</code></td>
+    <td>光谱图像 (PaddleOCR 或 Tesseract)</td>
+    <td><code>state['OCR_detected_ticks']</code></td>
+  </tr>
+  <tr>
+    <td>A3. LLM 合并</td>
+    <td><code>combine_axis_mapping()</code></td>
+    <td>VLM 结果 + OCR 结果</td>
+    <td><code>state['tick_pixel_raw']</code></td>
+  </tr>
+  <tr>
+    <td>A4. LLM 修正</td>
+    <td><code>revise_axis_mapping()</code></td>
+    <td>tick_pixel_raw</td>
+    <td><code>state['tick_pixel_raw']</code> (更新)</td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>VLM 非光谱图检测:</strong> detect_axis_ticks() 中若 VLM 返回 "非光谱图" 或 "Non-spectrum"，直接 raise 终止流程。
+</div>
+
+<h3>Phase B: 图像裁剪 (line 175–202)</h3>
+
+<h4>border_detection_and_cropping(state)</h4>
+<p>迭代裁剪循环：</p>
+<div class="graph">
+初始化 margin = {top:20, right:10, bottom:15, left:10}
+  │
+  ▼
+_detect_chart_border(image_path, margin)  →  chart_border
+_crop_img(image_path, chart_border, crop_path)
+  │
+  ▼
+check_border(state)  ← VLM 判断四边是否干净
+  │
+  ├── 四边都干净? → stop
+  ├── 任一边 margin ≥ 30? → stop (上限保护)
+  └── 不干净的边 margin += 2 → 循环
+</div>
+
+<h3>Phase C: 光谱重建 (line 223–233, in run())</h3>
+<table>
+  <tr><th>步骤</th><th>函数</th><th>输出</th></tr>
+  <tr><td>C1. 坐标重映射</td><td><code>_remap_to_cropped_canvas(tick_pixel_raw, chart_border)</code></td><td><code>state['tick_pixel_remap']</code></td></tr>
+  <tr><td>C2. 像素→物理量拟合</td><td><code>_pixel_tickvalue_fitting(tick_pixel_remap)</code></td><td><code>state['pixel_to_value']</code></td></tr>
+  <tr><td>C3. 光谱提取</td><td><code>_convert_to_spectrum(crop_path, pixel_to_value, arm_name, arm_wavelength_range)</code></td><td><code>state['spectrum']</code></td></tr>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="phase-d">5. Phase D: 迭代特征检测 (line 248–316, in run())</h2>
+<!-- ============================================================= -->
+
+<p>从 state['spectrum'] 取出 wavelength, flux, ivar/snr，构建吸收线和发射线检测参数字典（<strong>全部来自 .env 配置</strong>，不硬编码），调用 <code>run_iterative_feature_detection()</code>。</p>
+
+<h3>参数来源</h3>
+<div class="card-grid">
+  <div class="card">
+    <h4>吸收线参数 (abs_*)</h4>
+    <ul>
+      <li>window_width, window_overlap</li>
+      <li>delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold</li>
+      <li>fwhm_min, fwhm_max</li>
+      <li>snr_depth_threshold</li>
+      <li>smooth_sigma_trough, smooth_prominence_frac_trough</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>发射线参数 (em_*)</h4>
+    <ul>
+      <li>window_width, window_overlap</li>
+      <li>delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold</li>
+      <li>fwhm_min, fwhm_max</li>
+      <li>sys_err_frac</li>
+      <li>smooth_sigma, smooth_prominence_frac</li>
+    </ul>
+  </div>
+</div>
+
+<h3>State 写入</h3>
+<table>
+  <tr><th>Key</th><th>来源</th><th>格式</th></tr>
+  <tr><td><code>state['peaks']</code></td><td>df_emission → list[dict]</td><td>发射线，按波长排序，含 amplitude_rank</td></tr>
+  <tr><td><code>state['troughs']</code></td><td>df_absorption → list[dict]</td><td>吸收线，按波长排序，含 amplitude_rank</td></tr>
+  <tr><td><code>state['emission_records']</code></td><td>records_emission</td><td>含近邻信息 (left_neighbor, right_neighbor)</td></tr>
+  <tr><td><code>state['absorption_records']</code></td><td>records_absorption</td><td>含近邻信息</td></tr>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="phase-e">6. Phase E: Continuum 拟合 (line 319–329, in run())</h2>
+<!-- ============================================================= -->
+
+<p>调用 <code>run_continuum_fitting_masked(wavelength, flux, peaks=emission_records, troughs=absorption_records, chebyshev_degree, ...)</code>。特征区域（中心 ±3σ）被 mask 掉后再拟合 Chebyshev 连续谱。Chebyshev 阶数可手动指定（<code>chebyshev_degree</code>）或自动选择（<code>chebyshev_min_degree</code> – <code>chebyshev_max_degree</code>）。</p>
+
+<p>拟合结果写入 <code>state['continuum']</code> 和 <code>state['residual_spectrum']</code>。</p>
+
+<!-- ============================================================= -->
+<h2 id="bruteforce">7. brute_force_line_matching (line 332–335, in run())</h2>
+<!-- ============================================================= -->
+
+<div class="overview-box">
+  <p><strong>统一单次调用</strong>（旧三模式 qso/elg/lrg_bgs 已 deprecated）：</p>
+  <pre>tol_wavelength = self.runtime.configs.params.tol_wavelength
+state['brute_force_matching'] = brute_force_line_matching(state, tol_wavelength)</pre>
+  <p>结果写入 <code>state['brute_force_matching']</code>（单一列表，每条假设含 emission + absorption matches）。通过 ResultWriter 保存为 <code>{file_name}_brute_force_matching.txt</code>。</p>
+</div>
+
+<div class="warn">
+  <strong>旧三模式代码已注释保留</strong>（VisualInterpreter.py line 337–354），可恢复。
+</div>
+
+<p>详情见 <a href="VI.html#bruteforce">VI.py — 暴力线匹配</a>。</p>
+
+<!-- ============================================================= -->
+<h2 id="outputs">8. 输出产物</h2>
+<!-- ============================================================= -->
+
+<p>VisualInterpreter 阶段产生的所有文件（保存在 <code>state['output_dir']</code>）：</p>
+
+<table>
+  <tr><th>文件</th><th>来源</th><th>格式</th></tr>
+  <tr><td><code>{file_name}_spectrum.npz</code></td><td>run() 中保存</td><td>NPZ (wavelength, flux, snr, ivar)</td></tr>
+  <tr><td><code>{file_name}_spec_extract.png</code></td><td>plot_spec_extract</td><td>PNG (多波段光谱可视化)</td></tr>
+  <tr><td><code>{file_name}_spectrum_snr.png</code></td><td>plot_spectrum_snr</td><td>PNG (光谱+SNR 双面板)</td></tr>
+  <tr><td><code>{file_name}_absorption.csv</code></td><td>run_iterative_feature_detection</td><td>CSV (吸收线目录)</td></tr>
+  <tr><td><code>{file_name}_emission.csv</code></td><td>run_iterative_feature_detection</td><td>CSV (发射线目录)</td></tr>
+  <tr><td><code>{file_name}_features.png</code></td><td>plot_features</td><td>PNG (峰/谷标注)</td></tr>
+  <tr><td><code>{file_name}_continuum.png</code></td><td>plot_continuum</td><td>PNG (连续谱拟合)</td></tr>
+  <tr><td><code>{file_name}_residual.png</code></td><td>plot_residual_spectrum</td><td>PNG (残差光谱)</td></tr>
+  <tr><td><code>{file_name}_brute_force_matching.txt</code></td><td>ResultWriter</td><td>文本 (格式化匹配结果)</td></tr>
+</table>
+
+<!-- ============================================================= -->
+<h2 id="design">9. 设计原则</h2>
+<!-- ============================================================= -->
+
+<div class="card-grid">
+  <div class="card">
+    <h4>State 赋值在 agent 层</h4>
+    <p>utils/ 下的所有函数返回纯数据（dict/array/list），不接收 state 也不修改 state。所有 state['...'] = ... 赋值在 VisualInterpreter agent 层完成。这使得 utils 函数可独立测试和复用。</p>
+  </div>
+  <div class="card">
+    <h4>双通道统一接口</h4>
+    <p>FITS 和 PNG 通道产出的 spectrum_dict 具有相同的 key schema（wavelength, flux, snr, ivar），Phase D–E 的后处理管线对两个通道完全透明。</p>
+  </div>
+  <div class="card">
+    <h4>参数外部化</h4>
+    <p>所有算法参数（特征检测阈值、容差、Chebyshev 阶数等）从 .env 经由 ParamsConfig 注入，不在代码中硬编码。</p>
+  </div>
+  <div class="card">
+    <h4>流式输出</h4>
+    <p>LLM/VLM 调用通过 BaseAgent._stream_invoke() 支持流式输出（.env 中 STREAM=true）。want_tools=True 的 agent 路径保持 ainvoke()。</p>
+  </div>
+</div>
+
+<p style="margin-top:30px;">
+  <a href="VI.html">→ VI.py — CV/数值算法工具箱 + 暴力线匹配</a> &nbsp;|&nbsp;
+  <a href="feature_detection.html">→ Feature Detection Algorithm (feature_finder_precise.py)</a> &nbsp;|&nbsp;
+  <a href="../structure/code_architecture.html">→ Code Architecture (overview)</a>
+</p>
+
+</div>
+</body>
+</html>

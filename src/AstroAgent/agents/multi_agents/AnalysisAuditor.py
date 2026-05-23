@@ -85,8 +85,8 @@ class AnalysisAuditor(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
         peaks = state['peaks']
         troughs = state['troughs']
 
@@ -348,8 +348,8 @@ class AnalysisAuditor(BaseAgent):
 
         continuum_description = state['continuum']['description']
         feature_description = state['qualitative_analysis']['lines']
-        wl_left = state['spectrum']['new_wavelength'][0]
-        wl_right = state['spectrum']['new_wavelength'][-1]
+        wl_left = state['spectrum']['wavelength'][0]
+        wl_right = state['spectrum']['wavelength'][-1]
 
         system_prompt, user_prompt = self.runtime.prompt_manager.load(
             state=state,
@@ -416,8 +416,8 @@ class AnalysisAuditor(BaseAgent):
 #         rms = state.get("pixel_to_value", {}).get("x", {}).get("rms", 0)
 #         tol = self.runtime.configs.params.tol_wavelength
 #         rule_analysis = state['rule_analysis_QSO']
-#         wl_left = state['spectrum']['new_wavelength'][0]
-#         wl_right = state['spectrum']['new_wavelength'][-1]
+#         wl_left = state['spectrum']['wavelength'][0]
+#         wl_right = state['spectrum']['wavelength'][-1]
 #         arm_name = self.runtime.configs.params.arm_name
 #         arm_wavelength_range = self.runtime.configs.params.arm_wavelength_range
 #         if arm_name:

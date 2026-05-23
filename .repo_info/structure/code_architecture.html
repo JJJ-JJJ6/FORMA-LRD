@@ -195,8 +195,9 @@
   <li><a href="#sec6">Prompt Loading</a></li>
   <li><a href="#sec7">Error Resilience</a></li>
   <li><a href="#sec8">MCP Tool</a></li>
+  <li><a href="../algorithms/VisualInterpreter.html">VisualInterpreter Agent (FITS/PNG双通道编排)</a></li>
   <li><a href="../algorithms/feature_detection.html">Feature Detection Algorithm (找峰/找谷)</a></li>
-  <li><a href="../algorithms/VI.html">VI.py (CV/数值算法工具箱 + 暴力线匹配)</a></li>
+  <li><a href="../algorithms/VI.html">VI.py (CV/数值算法工具箱 + 统一暴力线匹配)</a></li>
 </ol>
 
 <!-- ================================================================== -->
@@ -224,7 +225,7 @@ src/AstroAgent/
 │   │   ├── base_agent.py             ← BaseAgent: LLM/VLM 调用 + 重试 + 错误分类 + thinking 管理
 │   │   └── result_writer.py          ← 结果写入磁盘 (report, verdict, CSV, bruteforce)
 │   └── multi_agents/
-│       ├── VisualInterpreter.py      ← Agent 1: 视觉解释 (轴刻度→裁剪→光谱重建→特征检测→暴力匹配)
+│       ├── <a href="../algorithms/VisualInterpreter.html">VisualInterpreter.py</a>      ← Agent 1: 视觉解释 (FITS/PNG双通道→光谱重建→特征检测→连续谱→统一暴力匹配)
 │       ├── RuleAnalyst.py            ← Agent 2: 规则分析 (定性描述+初步分类 → 定量 Step F-a/F-b)
 │       ├── AnalysisAuditor.py        ← Agent 3a/3c: 审计 (per-path critique → 跨类型 verdict)
 │       ├── RefinementAssistant.py    ← Agent 3b/3d: 完善 (per-path patch → 最终报告)
@@ -286,9 +287,9 @@ START
   │
   ▼
 ┌─────────────────────────────────┐
-│  Stage 1: VisualInterpreter    │  VLM + OCR → 轴刻度 → 像素映射
-│  (visual_interpreter_node)     │  裁剪 → 光谱重建 → 特征检测 →
-│                                │  continuum拟合 → 暴力线匹配
+│  Stage 1: VisualInterpreter    │  FITS/PNG 双通道 → 光谱重建 →
+│  (visual_interpreter_node)     │  特征检测 → continuum拟合 →
+│                                │  统一暴力线匹配 (单次通过)
 └─────────────────────────────────┘
   │
   ▼
@@ -367,9 +368,7 @@ START
   <div class="card">
     <h4>Brute-force Hypotheses</h4>
     <ul>
-      <li><code>brute_force_matching_qso</code></li>
-      <li><code>brute_force_matching_elg</code></li>
-      <li><code>brute_force_matching_lrg_bgs</code></li>
+      <li><code>brute_force_matching</code> — 统一匹配结果列表（含 emission + absorption matches）</li>
     </ul>
   </div>
   <div class="card">
@@ -416,17 +415,22 @@ START
 <table>
   <tr><th>Phase</th><th>Steps</th><th>Method</th></tr>
   <tr>
-    <td>A: 坐标轴</td>
+    <td>FITS 通道</td>
+    <td>load_spectrum_from_fits: 多波段拼接 → quality mask → overlap mask → 高斯平滑</td>
+    <td>astropy + numpy + scipy (纯数值, 无 LLM)</td>
+  </tr>
+  <tr>
+    <td>PNG A: 坐标轴</td>
     <td>VLM detect → OCR detect → LLM combine → LLM revise</td>
     <td>VLM(qwen-vl-max) + PaddleOCR/Tesseract + LLM keep/reject</td>
   </tr>
   <tr>
-    <td>B: 裁剪</td>
+    <td>PNG B: 裁剪</td>
     <td>迭代检测边框 → 裁剪 → VLM check_border → 重试直到四边干净</td>
     <td>OpenCV + VLM gate; MAX_MARGIN=30px</td>
   </tr>
   <tr>
-    <td>C: 光谱重建</td>
+    <td>PNG C: 光谱重建</td>
     <td>remap ticks → pixel_to_value(加权线性拟合) → convert_to_spectrum</td>
     <td>OpenCV 轮廓检测 + 列平均 + SNR 估计</td>
   </tr>
@@ -442,8 +446,8 @@ START
   </tr>
   <tr>
     <td>F: 暴力匹配</td>
-    <td>每个 feature 依次锚定每条 rest 线 → 容忍度内收集 support → de-dup → 三模式并行</td>
-    <td>QSO(tol=100Å) / ELG(tol=30Å) / LRG_BGS(tol=30Å)</td>
+    <td>全部峰+谷锚定 → 全部发射线+吸收线匹配 → 统一 Union-Find 去重 → 7字段输出</td>
+    <td>单次通过, tol_wavelength (默认80Å)</td>
   </tr>
 </table>
 
@@ -529,7 +533,7 @@ prompt_manager.load(state, agent_name, function_name, **kwargs)
   <tr><th>Tool Name</th><th>Description</th><th>Invoked In</th></tr>
   <tr><td><code>calculate_rms_for_redshift_tool</code></td><td>σ_z = σ_λ / λ_rest</td><td>RefinementAssistant.refining_final (Phase 4)</td></tr>
 </table>
-<p>所有其他数值计算 (redshift, predict wl, tolerance matching) 都在 VisualInterpreter 的暴力匹配阶段预计算, 作为 LLM prompt 的权威输入字段, <em>不在运行时调用工具</em>。</p>
+<p>所有其他数值计算 (redshift, predict wl, tolerance matching) 都在 VisualInterpreter 的统一暴力匹配阶段预计算, 作为 LLM prompt 的权威输入字段, <em>不在运行时调用工具</em>。</p>
 
 <!-- ================================================================== -->
 <h2 id="sec9">9. Feature Detection Algorithm (找峰/找谷)</h2>
@@ -542,18 +546,18 @@ prompt_manager.load(state, agent_name, function_name, **kwargs)
   </div>
 </div>
 
-<h2 id="sec10">10. Brute-Force Line Matching (暴力线匹配)</h2>
+<h2 id="sec10">10. Brute-Force Line Matching (统一暴力线匹配)</h2>
 <div class="card-grid">
   <div class="card">
-    <h4>三相流程 + 三模式</h4>
-    <p>逐峰/谷锚定静止系谱线计算 z → Union-Find 去重合并冗余假设 → 格式化输出。</p>
-    <p>三模式 (qso/elg/lrg_bgs) 对应不同锚定峰选择和线表，包含 D_n(4000) 计算、缺失线报告、宽度不匹配警告。</p>
-    <p style="margin-top:8px;"><a href="../algorithms/VI.html">→ Full detail page</a></p>
+    <h4>统一单次通过 + Union-Find 去重</h4>
+    <p><strong>v2026-05 重构:</strong> 不再区分 qso/elg/lrg_bgs 三模式。使用全部峰 + 全部谷作为锚点，每次锚定计算红移后匹配所有发射线和吸收线（统一 tol_wavelength 容差）。Union-Find 去重后按 N_emission + N_absorption 降序排列。</p>
+    <p>输出精简为 7 字段（Hypothesis, z_max/min/spread, Emission/Absorption matches, N_emission, N_absorption）。旧三模式代码已注释保留。</p>
+    <p style="margin-top:8px;"><a href="../algorithms/VI.html#bruteforce">→ Full detail page</a> &nbsp;|&nbsp; <a href="../algorithms/VisualInterpreter.html">→ VisualInterpreter agent</a></p>
   </div>
 </div>
 
 <hr>
-<p style="color: var(--text2); font-size: 0.85em;">Generated 2026-05-19 for LLM-Spectro-Agent / FORMA paper revision</p>
+<p style="color: var(--text2); font-size: 0.85em;">Updated 2026-05-21 — unified brute-force matching, FITS/PNG dual channel, VisualInterpreter agent page</p>
 
 </div>
 </body>

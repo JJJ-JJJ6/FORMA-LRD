@@ -58,12 +58,17 @@ class SpectroState(MessagesState):
     # cleaned_peaks: Optional[List[Dict[str, float]]] = None
     # wiped_peaks: Optional[List[Dict[str, float]]] = None
     # cleaned_troughs: Optional[List[Dict[str, float]]] = None
+    brute_force_matching: Optional[List[Dict[str, Any]]] = None  # unified key (all peaks + all troughs, single pass)
+    # [deprecated] 3-mode keys — kept for rollback; will be removed after RuleAnalyst migration
     brute_force_matching_qso: Optional[List[Dict[str, Any]]] = None
     brute_force_matching_elg: Optional[List[Dict[str, Any]]] = None
     brute_force_matching_lrg_bgs: Optional[List[Dict[str, Any]]] = None
     absorption_records: Optional[List[Dict[str, Any]]] = None
     emission_records: Optional[List[Dict[str, Any]]] = None
     overlap_regions: Optional[Dict[str, List[float]]] = None
+    harness_results: Optional[List[Dict[str, Any]]] = None       # per-hypothesis harness output (report + feature_catalog)
+    ranked_hypotheses: Optional[List[Dict[str, Any]]] = None     # top-5 hypotheses ranked by global Δχ²
+    spectrum_npz_path: Optional[str] = None                      # path to saved spectrum .npz for harness use
     # ===========================
     # 🔹 可视化对象
     # ===========================

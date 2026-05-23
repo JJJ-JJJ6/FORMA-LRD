@@ -1,5 +1,4 @@
-# src/result_writer.py
-
+import csv
 import os
 import json
 from typing import Optional, Dict, Any
@@ -140,35 +139,165 @@ class ResultWriter:
 
     def write_brute_force_matching(self, state: SpectroState) -> None:
         """
-        将 brute_force_matching_qso（QSO）、brute_force_matching_elg（ELG）
-        和 brute_force_matching_lrg_bgs（LRG/BGS）分别写出为 .txt 文件。
+        将 brute_force_matching 写出为 .txt 文件。
         文件名格式：
-          {file_name}_brute_force_matching_qso.txt
-          {file_name}_brute_force_matching_elg.txt
-          {file_name}_brute_force_matching_lrg_bgs.txt
+          {file_name}_brute_force_matching.txt
         """
         output_dir = self._resolve_output_dir(state)
         os.makedirs(output_dir, exist_ok=True)
         file_name = state.get("file_name", "unknown")
 
-        _matching_items = (
-            ("brute_force_matching_qso",     "BRUTE FORCE MATCHING (QSO)"),
-            ("brute_force_matching_elg",     "BRUTE FORCE MATCHING (ELG)"),
-            ("brute_force_matching_lrg_bgs", "BRUTE FORCE MATCHING (LRG / BGS)"),
-        )
-        for state_key, title in _matching_items:
-            data = state.get(state_key)
-            if not data:
-                continue
-            suffix = state_key  # 直接用 state key 作为文件名后缀
-            path = os.path.join(output_dir, f"{file_name}_{suffix}.txt")
+        # single unified key
+        data = state.get('brute_force_matching')
+        if data:
+            path = os.path.join(output_dir, f"{file_name}_brute_force_matching.txt")
             with open(path, "w", encoding=self.encoding) as f:
-                f.write(f"{'='*60}\n  {title}\n{'='*60}\n\n")
+                f.write(f"{'='*60}\n  BRUTE FORCE MATCHING\n{'='*60}\n\n")
                 for idx, entry in enumerate(data, start=1):
                     f.write(f"--- Match #{idx} ---\n")
                     for key, value in entry.items():
                         f.write(f"  {key}: {value}\n")
                     f.write("\n")
+
+    def write_redshift_scoring(self, state: SpectroState) -> None:
+        """将 redshift_scoring 结果写出为 .txt 和 .csv 文件。"""
+        scoring = state.get('redshift_scoring')
+        if not scoring:
+            return
+        output_dir = self._resolve_output_dir(state)
+        os.makedirs(output_dir, exist_ok=True)
+        file_name = state.get("file_name", "unknown")
+        path = os.path.join(output_dir, f"{file_name}_redshift_scoring.txt")
+        csv_path = os.path.join(output_dir, f"{file_name}_redshift_scoring.csv")
+        split_z = scoring.get('split_z', 1.0)
+        top = scoring.get('top', 5)
+
+        # ── TXT ──────────────────────────────────────────────
+        with open(path, "w", encoding=self.encoding) as f:
+            f.write(f"{'='*60}\n  REDSHIFT SCORING (split at z={split_z:.1f}, top {top})\n{'='*60}\n\n")
+
+            for group_key, group_label in [('low_z', 'Low-z'), ('high_z', 'High-z')]:
+                group = scoring.get(group_key, [])
+                f.write(f"{'─'*60}\n")
+                f.write(f"  {group_label} (z {'<' if 'low' in group_key else '≥'} {split_z:.1f}): "
+                        f"{len(scoring.get('all_' + group_key, group))} candidates → top {top}\n")
+                f.write(f"{'─'*60}\n")
+                if not group:
+                    f.write("  (no candidates)\n\n")
+                    continue
+                f.write(f"{'Rank':<5s} {'z':>8s} {'Score':>10s} {'N_lines':>7s} "
+                        f"{'N_em':>5s} {'N_ab':>5s}  Hypothesis\n")
+                f.write("-" * 80 + "\n")
+                for rank, r in enumerate(group, start=1):
+                    hyp_short = r.get('hypothesis', '')[:40]
+                    f.write(f"{rank:<5d} {r['z']:8.4f} {r['score']:10.2f} {r['n_lines']:>7d} "
+                            f"{r.get('n_em', 0):>5d} {r.get('n_ab', 0):>5d}  {hyp_short}\n")
+                f.write("\n")
+
+                # 最优候选逐线诊断
+                best = group[0]
+                f.write(f"  Best: z={best['z']:.4f}  Score={best['score']:.2f}\n")
+                dets = best.get('details', [])
+                if dets:
+                    f.write(f"  {'Line':12s} {'形态':4s} {'Score':>7s} {'pred_Å':>8s} {'obs_Å':>8s} {'ΔÅ':>6s}\n")
+                    f.write("  " + "-" * 50 + "\n")
+                    for d in sorted(dets, key=lambda x: -x[2])[:10]:
+                        name, morph, sc, pred, obs = d[0], d[1], d[2], d[3], d[4]
+                        f.write(f"  {name:12s} {morph:4s} {sc:7.2f} {pred:8.1f} {obs:8.1f} {obs-pred:+6.1f}\n")
+                f.write("\n")
+
+        # ── CSV ──────────────────────────────────────────────
+        with open(csv_path, "w", newline="", encoding=self.encoding) as cf:
+            writer = csv.writer(cf)
+            writer.writerow(["file_name", "z_group", "rank", "z", "score", "n_lines",
+                             "n_em", "n_ab", "best_z", "hypothesis"])
+            for group_key, group_label in [('low_z', 'Low-z'), ('high_z', 'High-z')]:
+                group = scoring.get(group_key, [])
+                for rank, r in enumerate(group, start=1):
+                    writer.writerow([
+                        file_name,
+                        group_label,
+                        rank,
+                        f"{r['z']:.4f}",
+                        f"{r['score']:.2f}",
+                        r['n_lines'],
+                        r.get('n_em', 0),
+                        r.get('n_ab', 0),
+                        f"{group[0]['z']:.4f}" if group else "",
+                        r.get('hypothesis', ''),
+                    ])
+
+    def write_local_fitting(self, state: SpectroState, result: Dict[str, Any]) -> None:
+        """写出 per-hypothesis local fitting CSV 文件。
+
+        文件名格式：{file_name}_temp_localfit/{idx}_lines.csv
+        """
+        all_rows = result.get("all_rows") if result else []
+        if not all_rows:
+            return
+        output_dir = self._resolve_output_dir(state)
+        temp_dir = os.path.join(output_dir, f"{state.get('file_name', 'unknown')}_temp_localfit")
+        os.makedirs(temp_dir, exist_ok=True)
+        fieldnames = [
+            "name", "rest_wavelength", "predicted_obs", "fitted_center",
+            "fitted_center_err", "amplitude", "amplitude_err", "fitted_sigma",
+            "fwhm_km_s", "snr", "delta_chi2_per_n", "status"
+        ]
+        for idx, rows in enumerate(all_rows):
+            csv_path = os.path.join(temp_dir, f"{idx + 1}_lines.csv")
+            with open(csv_path, "w", newline="", encoding=self.encoding) as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                writer.writerows(rows)
+
+    def write_harness_results(self, state: SpectroState) -> None:
+        """写出 per-hypothesis harness 完整报告（.txt）。"""
+        results = state.get('harness_results')
+        if not results:
+            return
+        output_dir = self._resolve_output_dir(state)
+        os.makedirs(output_dir, exist_ok=True)
+        file_name = state.get("file_name", "unknown")
+        path = os.path.join(output_dir, f"{file_name}_harness_results.txt")
+        with open(path, "w", encoding=self.encoding) as f:
+            f.write(f"{'='*60}\n  HARNESS RESULTS  ({len(results)} hypotheses)\n{'='*60}\n\n")
+            for idx, hr in enumerate(results, start=1):
+                f.write(f"{'─'*60}\n")
+                f.write(f"Hypothesis #{idx}\n")
+                f.write(f"{'─'*60}\n")
+                f.write(hr.get("report", "(no report)"))
+                f.write("\n\n")
+                structured = hr.get("structured_output")
+                if structured:
+                    f.write("--- Structured output (JSON) ---\n")
+                    f.write(json.dumps(structured, indent=2, ensure_ascii=False))
+                    f.write("\n\n")
+
+    def write_ranked_hypotheses(self, state: SpectroState) -> None:
+        """写出 top-5 Δχ²-ranked hypotheses 及其 feature catalog（.txt）。"""
+        ranked = state.get('ranked_hypotheses')
+        if not ranked:
+            return
+        output_dir = self._resolve_output_dir(state)
+        os.makedirs(output_dir, exist_ok=True)
+        file_name = state.get("file_name", "unknown")
+        path = os.path.join(output_dir, f"{file_name}_ranked_hypotheses.txt")
+        with open(path, "w", encoding=self.encoding) as f:
+            f.write(f"{'='*60}\n  RANKED HYPOTHESES  (Δχ² ranking, top {len(ranked)})\n{'='*60}\n\n")
+            for r in ranked:
+                f.write(f"{'─'*60}\n")
+                f.write(f"Hypothesis #{r.get('hypothesis_idx', '?')}  "
+                        f"Δχ²={r.get('delta_chi2', '?')}  "
+                        f"n_lines={r.get('n_lines_used', 0)}\n")
+                f.write(f"{'─'*60}\n")
+                for line in r.get("lines", []):
+                    f.write(f"  {line.get('name', '?'):12s}  "
+                            f"center={line.get('center', '?'):.1f} Å  "
+                            f"SNR={line.get('local_snr', '?'):.1f}  "
+                            f"Δχ²/n={line.get('delta_chi2_per_n', '?'):.1f}  "
+                            f"status={line.get('status', '?')}\n")
+                f.write("\n")
+
 
     def write_verdict(self, state: SpectroState) -> None:
         """写出 auditing_verdict.txt（在 AnalysisAuditor.auditing_verdict 结束后调用）"""

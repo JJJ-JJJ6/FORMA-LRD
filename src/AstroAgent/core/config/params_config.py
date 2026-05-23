@@ -14,13 +14,16 @@ class ParamsConfig(BaseModel):
     arm_name: Optional[List[str]]
     arm_wavelength_range: Optional[List[List[float]]]
     ocr: str
-    tol_wavelength_qso: int
-    tol_wavelength_galaxy: int
+    tol_wavelength: int
+    # [deprecated] kept for rollback reference — replaced by single tol_wavelength above
+    # tol_wavelength_qso: int
+    # tol_wavelength_galaxy: int
     num_peaks: int
     num_troughs: int
     min_qso_redshift: float
     min_galaxy_redshift: float
     step_f_concurrency: int
+    harness_concurrency: int
     discussion_rounds: int
 
     # ── 吸收线检测参数 ──
@@ -68,13 +71,16 @@ class ParamsConfig(BaseModel):
             arm_name=arm_name,
             arm_wavelength_range=arm_wavelength_range,
             ocr=os.getenv("OCR") or "paddle",
-            tol_wavelength_qso=getenv_int("TOL_WAVELENGTH_QSO", 100),
-            tol_wavelength_galaxy=getenv_int("TOL_WAVELENGTH_GALAXY", 30),            
+            tol_wavelength=getenv_int("TOL_WAVELENGTH", 80),
+            # [deprecated] kept for rollback reference
+            # tol_wavelength_qso=getenv_int("TOL_WAVELENGTH_QSO", 100),
+            # tol_wavelength_galaxy=getenv_int("TOL_WAVELENGTH_GALAXY", 30),
             num_peaks=getenv_int("PEAKS_NUMBER", 10),
             num_troughs=getenv_int("TROUGHS_NUMBER", 15),
             min_qso_redshift=getenv_optional_float("MIN_QSO_REDSHIFT") or float('-inf'),
             min_galaxy_redshift=getenv_optional_float("MIN_GALAXY_REDSHIFT") or float('-inf'),
             step_f_concurrency=getenv_int("STEP_F_CONCURRENCY", 4),
+            harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
 
             # ── 吸收线检测参数 ──

@@ -1,4 +1,3 @@
-# import json
 import os
 import numpy as np
 # import pandas as pd
@@ -11,7 +10,7 @@ from AstroAgent.agents.common.result_writer import ResultWriter
 
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 
-from AstroAgent.agents.multi_agents.utils.usage import safe_to_bool
+from AstroAgent.agents.multi_agents.utils.usage import safe_to_bool, find_overlap_regions
 from AstroAgent.agents.multi_agents.utils.VI import (
     _detect_chart_border, _crop_img,
     _remap_to_cropped_canvas, _pixel_tickvalue_fitting,
@@ -22,6 +21,9 @@ from AstroAgent.agents.multi_agents.utils.VI import (
     run_iterative_feature_detection,
     brute_force_line_matching,
     _load_spectrum_from_fits,
+    run_local_fitting,
+    run_redshift_scoring,
+    run_redshift_scoring_v2,
 )
 from AstroAgent.agents.multi_agents.utils.plot import (
     plot_spec_extract,
@@ -52,11 +54,12 @@ class VisualInterpreter(BaseAgent):
     def load_spectrum_from_fits(self, state: SpectroState) -> SpectroState:
         """从 FITS 文件加载光谱数据，波段信息来自 .env 中的 ARM_NAME / ARM_WAVELENGTH_RANGE"""
         params = self.runtime.configs.params
-        return _load_spectrum_from_fits(
-            state,
+        state['spectrum'] = _load_spectrum_from_fits(
+            state['file_path'],
             arm_names=params.arm_name,
             arm_wavelength_ranges=params.arm_wavelength_range,
         )
+        return state
 
     async def detect_axis_ticks(self, state: SpectroState) -> SpectroState:
         """调用 VLM 检测坐标轴刻度"""
@@ -81,7 +84,7 @@ class VisualInterpreter(BaseAgent):
             description="Axis information",
             want_tools=False
         )
-        if axis_info == "非光谱图":
+        if axis_info == "非光谱图" or axis_info == "Non-spectrum":
             logging.error("The input image is not a spectral plot. LLM output: %s", axis_info)
             raise
         state["axis_info"] = axis_info
@@ -231,15 +234,33 @@ class VisualInterpreter(BaseAgent):
                     state['crop_path'], state['pixel_to_value'], arm_name, arm_wavelength_range
                 )
 
+            # ── Compute and store overlap regions ──────────────────────
+            overlap = find_overlap_regions(params.arm_name, params.arm_wavelength_range)
+            if overlap:
+                state['spectrum']['overlap_regions'] = list(overlap.values())
+
             plot_spec_extract(state)
             plot_spectrum_snr(state)
-            
+
+            # 保存光谱数组
+            spec = state["spectrum"]
+            save_data = {k: spec[k] for k in ("wavelength", "flux", "snr") if k in spec}
+            if spec.get("ivar") is not None:
+                save_data["ivar"] = spec["ivar"]
+            np.savez_compressed(
+                os.path.join(state['output_dir'], f"{state['file_name']}_spectrum.npz"),
+                **save_data,
+            )
+            state['spectrum_npz_path'] = os.path.join(
+                state['output_dir'], f"{state['file_name']}_spectrum.npz"
+            )
+
             # === Phase D: 迭代特征检测（在 continuum fitting 之前）===
             spec = state["spectrum"]
                         
-            # 优先使用 ivar，其次使用 effective_snr
+            # 优先使用 ivar，其次使用 snr
             ivar_data = spec.get("ivar", None)
-            effective_snr_data = spec.get("effective_snr", 7.0) if ivar_data is None else None
+            effective_snr_data = spec.get("snr", 7.0) if ivar_data is None else None
                         
             # ── 吸收线检测参数（覆盖 find_absorption_lines 默认值）──
             absorption_detection_params = {
@@ -282,8 +303,8 @@ class VisualInterpreter(BaseAgent):
             feature_result = run_iterative_feature_detection(
                 output_dir=state['output_dir'],
                 file_name=state['file_name'],
-                wavelength=spec["new_wavelength"],
-                flux=spec["weighted_flux"],
+                wavelength=spec["wavelength"],
+                flux=spec["flux"],
                 ivar=ivar_data,
                 effective_snr=effective_snr_data,
                 n_iterations=params.n_iterations if hasattr(params, 'n_iterations') else 3,
@@ -303,10 +324,11 @@ class VisualInterpreter(BaseAgent):
             # records 同样已按波长排序
             state['absorption_records'] = feature_result['records_absorption']
             state['emission_records'] = feature_result['records_emission']
-            
+
             # === Phase E: Continuum 拟合（将已检测峰/谷区域 mask掉后再拟合）===
-            run_continuum_fitting_masked(
-                state,
+            state['continuum'], state['residual_spectrum'] = run_continuum_fitting_masked(
+                spec["wavelength"],
+                spec["flux"],
                 peaks=state['emission_records'],
                 troughs=state['absorption_records'],
                 chebyshev_degree=params.chebyshev_degree if hasattr(params, 'chebyshev_degree') else None,
@@ -315,36 +337,41 @@ class VisualInterpreter(BaseAgent):
             )
             plot_continuum(state)
             plot_residual_spectrum(state)
-            
+
             plot_features(state)
 
-            tol_wavelength_qso = self.runtime.configs.params.tol_wavelength_qso
-            brute_force_matching_qso = brute_force_line_matching(
-                state, tol_wavelength_qso,
-                min_qso_redshift=self.runtime.configs.params.min_qso_redshift,
-                min_galaxy_redshift=self.runtime.configs.params.min_galaxy_redshift,
-                mode='qso'
+            tol_wavelength = self.runtime.configs.params.tol_wavelength
+            state['brute_force_matching'] = brute_force_line_matching(
+                state, tol_wavelength,
             )
-            state['brute_force_matching_qso'] = brute_force_matching_qso
-
-            tol_wavelength_galaxy = self.runtime.configs.params.tol_wavelength_galaxy
-            brute_force_matching_elg = brute_force_line_matching(
-                state, tol_wavelength_galaxy,
-                min_qso_redshift=self.runtime.configs.params.min_qso_redshift,
-                min_galaxy_redshift=self.runtime.configs.params.min_galaxy_redshift,
-                mode='elg'
-            )
-            state['brute_force_matching_elg'] = brute_force_matching_elg
-
-            brute_force_matching_lrg_bgs = brute_force_line_matching(
-                state, tol_wavelength_galaxy,
-                min_qso_redshift=self.runtime.configs.params.min_qso_redshift,
-                min_galaxy_redshift=self.runtime.configs.params.min_galaxy_redshift,
-                mode='lrg_bgs'
-            )
-            state['brute_force_matching_lrg_bgs'] = brute_force_matching_lrg_bgs
 
             ResultWriter().write_brute_force_matching(state)
+
+            # Phase E2: Redshift scoring — rank hypotheses for LLM triage
+            if state['brute_force_matching']:
+                scoring = run_redshift_scoring_v2(
+                    wavelength=spec["wavelength"],
+                    flux=spec["flux"],
+                    continuum_flux=state['continuum']['flux'],
+                    snr=spec["snr"],
+                    brute_force_matches=state['brute_force_matching'],
+                    split_z=1.0,
+                    top=5,
+                    peak_tol=30.0,
+                )
+                state['redshift_scoring'] = scoring
+                ResultWriter().write_redshift_scoring(state)
+
+            # Phase F: Local line fitting → new peaks/troughs + plot
+            # if state['brute_force_matching']:
+            #     result = run_local_fitting(
+            #         spec["wavelength"], spec["flux"], state['brute_force_matching']
+            #     )
+            #     ResultWriter().write_local_fitting(state, result)
+            #     state['peaks'] = result["peaks"]
+            #     state['troughs'] = result["troughs"]
+
+            # plot_features(state)
 
             return state
         except Exception as e:
