@@ -358,6 +358,7 @@ class VisualInterpreter(BaseAgent):
                     split_z=1.0,
                     top=5,
                     peak_tol=30.0,
+                    scoring_workers=self.runtime.configs.params.scoring_workers,
                 )
                 state['redshift_scoring'] = scoring
                 ResultWriter().write_redshift_scoring(state)

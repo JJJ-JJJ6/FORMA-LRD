@@ -25,6 +25,7 @@ class ParamsConfig(BaseModel):
     step_f_concurrency: int
     harness_concurrency: int
     discussion_rounds: int
+    scoring_workers: int  # redshift scoring 并行数，0=自动
 
     # ── 吸收线检测参数 ──
     abs_window_width: int
@@ -82,6 +83,7 @@ class ParamsConfig(BaseModel):
             step_f_concurrency=getenv_int("STEP_F_CONCURRENCY", 4),
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
+            scoring_workers=getenv_int("SCORING_WORKERS", 1),
 
             # ── 吸收线检测参数 ──
             abs_window_width=getenv_int("ABS_WINDOW_WIDTH", 100),

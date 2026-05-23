@@ -2,6 +2,7 @@ import csv
 import os
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from astropy.io import fits
@@ -2088,18 +2089,21 @@ def run_redshift_scoring(wavelength, flux, continuum_flux, snr,
 def run_redshift_scoring_v2(wavelength, flux, continuum_flux, snr,
                             brute_force_matches, split_z=1.0, top=5,
                             min_lines=3, half=20.0, blue_cut=4000.0,
-                            peak_tol=30.0):
+                            peak_tol=30.0, scoring_workers=1):
     """v2: 对每组假设的 z_list 逐 z 打分取 max，并按 primary peak 去重。
 
     与 v1 的关键区别：
     - 不再只对 z_center 打分，而是遍历 z_list 中的每个 z，取最高分作为该组得分。
     - 最优 z 作为该组的代表红移（后续 LLM 的 initial guess）。
     - 打完后按 primary observed wavelength 去重，同峰只留最高分。
+    - 并行打分：scoring_workers 控制线程数（0=自动）。
 
     Parameters
     ----------
     peak_tol : float
         primary observed wavelength 去重容差 (Å)，默认 30。
+    scoring_workers : int
+        并行线程数，0=自动（CPU 核数）。
     """
     wavelength = np.asarray(wavelength, dtype=np.float64)
     flux = np.asarray(flux, dtype=np.float64)
@@ -2108,27 +2112,46 @@ def run_redshift_scoring_v2(wavelength, flux, continuum_flux, snr,
 
     flux_norm = flux / np.maximum(continuum_flux, 1e-6)
 
-    # 对每组假设的 z_list 逐 z 打分，取 max
-    scored = []
-    for m in brute_force_matches:
+    # 构建 (hypothesis_index, z) 任务列表
+    tasks = []
+    for i, m in enumerate(brute_force_matches):
         z_list = m.get('z_list', [m.get('z_center', 0)])
-        if not z_list or all(z <= 0 for z in z_list):
-            continue
-
-        best_z, best_score, best_n_ib, best_det = 0, -1, 0, []
         for z in z_list:
-            if z <= 0:
-                continue
-            min_wl = blue_cut if z < split_z else 0.0
-            s, n_ib, det = _score_one_redshift(z, wavelength, flux_norm, snr,
-                                                half=half, min_wavelength=min_wl)
-            if s > best_score:
-                best_z, best_score, best_n_ib, best_det = z, s, n_ib, det
+            if z > 0:
+                tasks.append((i, z))
 
-        if best_n_ib < min_lines:
+    if not tasks:
+        return {'split_z': split_z, 'top': top, 'low_z': [], 'high_z': [],
+                'all_low_z': [], 'all_high_z': []}
+
+    # 并行打分
+    workers = scoring_workers if scoring_workers > 0 else os.cpu_count() or 4
+
+    def _score_one_task(args):
+        i, z = args
+        m = brute_force_matches[i]
+        min_wl = blue_cut if z < split_z else 0.0
+        s, n_ib, det = _score_one_redshift(z, wavelength, flux_norm, snr,
+                                            half=half, min_wavelength=min_wl)
+        return (i, z, s, n_ib, det)
+
+    # 按 hypothesis 聚合取 max
+    hyp_best = {}  # i -> {best_z, best_score, ...}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for i, z, s, n_ib, det in ex.map(_score_one_task, tasks):
+            if s <= 0:
+                continue
+            if i not in hyp_best or s > hyp_best[i]['score']:
+                hyp_best[i] = {'z': z, 'score': s, 'n_lines': n_ib, 'details': det}
+
+    # 收集结果
+    scored = []
+    for i, best in hyp_best.items():
+        if best['n_lines'] < min_lines:
             continue
-        scored.append({'z': best_z, 'score': best_score, 'n_lines': best_n_ib,
-                       'details': best_det,
+        m = brute_force_matches[i]
+        scored.append({'z': best['z'], 'score': best['score'],
+                       'n_lines': best['n_lines'], 'details': best['details'],
                        'hypothesis': m.get('Hypothesis', ''),
                        'n_em': m.get('N_emission', 0),
                        'n_ab': m.get('N_absorption', 0)})
