@@ -18,17 +18,12 @@ from AstroAgent.agents.multi_agents.utils.VI import (
     _detect_axis_ticks_tesseract,
     _detect_axis_ticks_paddle,
     run_continuum_fitting_masked,
+    run_iterative_feature_detection,
     brute_force_line_matching,
     _load_spectrum_from_fits,
     run_local_fitting,
     run_redshift_scoring,
     run_redshift_scoring_v2,
-)
-from AstroAgent.agents.multi_agents.utils.simple_feature_finder import (
-    run_simple_feature_detection,
-)
-from AstroAgent.agents.multi_agents.utils.cwt_feature_finder import (
-    run_cwt_feature_detection,
 )
 from AstroAgent.agents.multi_agents.utils.plot import (
     plot_spec_extract,
@@ -305,20 +300,7 @@ class VisualInterpreter(BaseAgent):
                 'smooth_prominence_frac': params.smooth_prominence_frac,
             }
                         
-            # 根据 FEATURE_FINDER 配置选择算法
-            if params.feature_finder == "cwt":
-                run_feature_detection = run_cwt_feature_detection
-                emission_detection_params.pop('smooth_sigma', None)
-                emission_detection_params.pop('smooth_prominence_frac', None)
-                emission_detection_params['snr_thresh'] = params.cwt_snr_thresh
-                emission_detection_params['min_ridge_length'] = params.cwt_min_ridge_length
-                emission_detection_params['n_scales'] = params.cwt_n_scales
-                emission_detection_params['min_scale'] = params.cwt_min_scale
-                emission_detection_params['max_scale'] = params.cwt_max_scale
-            else:
-                run_feature_detection = run_simple_feature_detection
-
-            feature_result = run_feature_detection(
+            feature_result = run_iterative_feature_detection(
                 output_dir=state['output_dir'],
                 file_name=state['file_name'],
                 wavelength=spec["wavelength"],

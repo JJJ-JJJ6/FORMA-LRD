@@ -26,6 +26,14 @@ class ParamsConfig(BaseModel):
     harness_concurrency: int
     discussion_rounds: int
     scoring_workers: int  # redshift scoring 并行数，0=自动
+    feature_finder: str  # "simple" (multi-scale consensus) or "cwt" (wavelet ridge detection)
+
+    # ── CWT 特征检测参数 ──
+    cwt_snr_thresh: float
+    cwt_min_ridge_length: int
+    cwt_n_scales: int
+    cwt_min_scale: float
+    cwt_max_scale: float
 
     # ── 吸收线检测参数 ──
     abs_window_width: int
@@ -84,6 +92,14 @@ class ParamsConfig(BaseModel):
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
             scoring_workers=getenv_int("SCORING_WORKERS", 1),
+            feature_finder=os.getenv("FEATURE_FINDER", "simple"),
+
+            # ── CWT 特征检测参数 ──
+            cwt_snr_thresh=getenv_float("CWT_SNR_THRESH", 5.0),
+            cwt_min_ridge_length=getenv_int("CWT_MIN_RIDGE_LENGTH", 2),
+            cwt_n_scales=getenv_int("CWT_N_SCALES", 24),
+            cwt_min_scale=getenv_float("CWT_MIN_SCALE", 1.0),
+            cwt_max_scale=getenv_float("CWT_MAX_SCALE", 80.0),
 
             # ── 吸收线检测参数 ──
             abs_window_width=getenv_int("ABS_WINDOW_WIDTH", 100),
