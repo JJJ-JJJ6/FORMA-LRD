@@ -152,7 +152,7 @@ def rank_hypotheses(
 
     for idx, hr in enumerate(harness_results):
         hyp_idx = hr.get("hypothesis_idx", idx)
-        csv_path = os.path.join(csv_dir, f"{hyp_idx + 1}_lines.csv")
+        csv_path = os.path.join(csv_dir, f"{hyp_idx}_lines.csv")
         usable_lines = _read_csv_lines(csv_path)
 
         if not usable_lines:

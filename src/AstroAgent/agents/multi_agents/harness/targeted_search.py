@@ -1,7 +1,7 @@
 """
-llm_targeted_harness.py — LLM-driven targeted line search harness.
+targeted_search.py — LLM-driven targeted line search harness.
 
-Equips an LLM with 6 spectrum-analysis tools (read_spectrum_region disabled) and a methodology skill prompt.
+Equips an LLM with 5 spectrum-analysis tools and a methodology skill prompt.
 The LLM autonomously confirms or refutes predicted spectral lines at a given
 redshift hypothesis through targeted Gaussian fitting.
 
@@ -13,7 +13,7 @@ Usage as module:
     print(result["feature_catalog"])
 
 Usage as CLI:
-    python llm_targeted_harness.py /data/spectrum.fits 2.3 --npz /data/spectrum.npz
+    python targeted_search.py /data/spectrum.fits 2.3 --npz /data/spectrum.npz
 """
 
 import json
@@ -29,8 +29,11 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
-from .tools import load_spectrum, predict_lines, fit_peak, write_report, write_lines_csv, compute_redshift
-# from .tools import read_spectrum_region  # DISABLED
+from .tools import (
+    fit_peak,
+    write_report, write_lines_csv, compute_redshift,
+    EMISSION_LINES, ABSORPTION_LINES, EMISSION_LINE_WIDTHS,
+)
 
 # ---------------------------------------------------------------------------
 # Retry configuration
@@ -77,8 +80,7 @@ def _load_skill() -> str:
 # Tool list
 # ---------------------------------------------------------------------------
 
-TOOLS = [load_spectrum, predict_lines, fit_peak, compute_redshift, write_report, write_lines_csv]
-# read_spectrum_region DISABLED — too expensive in tokens, breaks KV cache
+TOOLS = [fit_peak, compute_redshift, write_report, write_lines_csv]
 
 
 # ---------------------------------------------------------------------------
@@ -126,28 +128,150 @@ def _collect_fit_results(messages: List[Any]) -> List[Dict[str, Any]]:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+def _find_nearby_features(
+    rest_wl: float, obs_wl: float, z_min: float, z_max: float,
+    peaks: list, troughs: list,
+) -> str:
+    """Find peaks/troughs whose wavelength falls within the z-verification window
+    for a given rest-frame line:  [λ_rest×(1+z_min), λ_rest×(1+z_max)].
+
+    Results are sorted by distance to ``obs_wl`` (closest first).
+
+    Returns a compact string like ``peak@5001.2(amp=15.3)`` or ``—`` if none.
+    """
+    lo = rest_wl * (1.0 + z_min)
+    hi = rest_wl * (1.0 + z_max)
+    nearby = []
+    for p in (peaks or []):
+        pw = p.get('wavelength', 0)
+        if lo <= pw <= hi:
+            dist = abs(pw - obs_wl)
+            fwhm_a = p.get('FWHM_A', None)
+            fwhm_k = p.get('FWHM_km_s', None)
+            width_str = ""
+            if fwhm_a is not None and fwhm_k is not None:
+                width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
+            nearby.append((dist, f"peak@{pw:.1f}(amp={p.get('amplitude', 0):.1f}{width_str})"))
+    for t in (troughs or []):
+        tw = t.get('wavelength', 0)
+        if lo <= tw <= hi:
+            dist = abs(tw - obs_wl)
+            fwhm_a = t.get('FWHM_A', None)
+            fwhm_k = t.get('FWHM_km_s', None)
+            width_str = ""
+            if fwhm_a is not None and fwhm_k is not None:
+                width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
+            nearby.append((dist, f"trough@{tw:.1f}(amp={t.get('amplitude', 0):.1f}{width_str})"))
+    nearby.sort(key=lambda x: x[0])
+    return ", ".join(n[1] for n in nearby) if nearby else "—"
+
+
+def _build_predictions_section(
+    redshift: float,
+    z_min: float,
+    z_max: float,
+    wl_min: float,
+    wl_max: float,
+    peaks: list,
+    troughs: list,
+) -> str:
+    """Pre-compute predicted lines and cross-reference with detected features
+    using the z-verification window for each line."""
+    rows = []
+
+    for name, rest_wl in EMISSION_LINES.items():
+        obs_wl = rest_wl * (1.0 + redshift)
+        if wl_min is not None and obs_wl < wl_min:
+            continue
+        if wl_max is not None and obs_wl > wl_max:
+            continue
+        rows.append((
+            obs_wl,
+            f"| {name} | {rest_wl:.1f} | {obs_wl:.1f} | em | "
+            f"{EMISSION_LINE_WIDTHS.get(name, 'narrow')} | "
+            f"{_find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)} |",
+        ))
+
+    for name, rest_wl in ABSORPTION_LINES.items():
+        obs_wl = rest_wl * (1.0 + redshift)
+        if wl_min is not None and obs_wl < wl_min:
+            continue
+        if wl_max is not None and obs_wl > wl_max:
+            continue
+        rows.append((
+            obs_wl,
+            f"| {name} | {rest_wl:.1f} | {obs_wl:.1f} | abs | "
+            f"absorption | "
+            f"{_find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)} |",
+        ))
+
+    if not rows:
+        return "\n## Predicted Lines\n\n(No predicted lines fall within the observed wavelength range.)\n"
+
+    rows.sort(key=lambda r: r[0])
+
+    lo_ex = 1216.0 * (1.0 + z_min)
+    hi_ex = 1216.0 * (1.0 + z_max)
+    header = (
+        f"| Name | λ_rest (Å) | λ_obs (Å) | Type | Width | Features in z-window "
+        f"[{lo_ex:.1f}..{hi_ex:.1f} Å for Lyα] (amp, FWHM) |\n"
+        "|------|-----------|----------|------|-------|----------------------------------------------|"
+    )
+    return "\n## Predicted Lines at z = {:.4f}\n\n{}\n{}\n".format(
+        redshift, header, "\n".join(r[1] for r in rows)
+    )
+
+
 def _build_user_message(
     redshift: float,
     fits_path: str,
     npz_path: str,
+    *,
+    wavelength_min: float = None,
+    wavelength_max: float = None,
+    snr_median: float = None,
+    peaks: list = None,
+    troughs: list = None,
     z_min: float = None,
     z_max: float = None,
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
 ) -> str:
-    _z_min = z_min if z_min is not None else round(redshift - 0.005, 4)
-    _z_max = z_max if z_max is not None else round(redshift + 0.005, 4)
+    _z_min = z_min if z_min is not None else round(redshift - 0.1, 4)
+    _z_max = z_max if z_max is not None else round(redshift + 0.1, 4)
+
+    # ── Spectrum summary (replaces load_spectrum tool call) ──
+    spec_lines = [
+        f"| Wavelength range | {wavelength_min:.1f} – {wavelength_max:.1f} Å |"
+        if wavelength_min is not None and wavelength_max is not None
+        else "| Wavelength range | (not provided) |",
+    ]
+    if snr_median is not None:
+        spec_lines.append(f"| Median SNR | {snr_median:.1f} |")
+
     _masked_msg = ""
     if masked_regions:
         regions_desc = ", ".join(f"[{s:.1f}, {e:.1f}]" for s, e in masked_regions)
+        spec_lines.append(f"| Masked regions | {regions_desc} |")
         _masked_msg = (
-            f"\nMasked wavelength regions: {regions_desc}\n"
-            f"These regions were removed due to arm overlap or quality cuts. "
+            f"\nThese regions were removed due to arm overlap or quality cuts. "
             f"The spectrum has NO data in these ranges — do not expect to find lines there.\n"
         )
+
+    spectrum_summary = (
+        "## Spectrum Summary\n\n"
+        + "\n".join(spec_lines)
+        + "\n"
+    )
+
+    predictions_section = _build_predictions_section(
+        redshift, _z_min, _z_max, wavelength_min, wavelength_max, peaks, troughs,
+    )
+
     return (
-        f"Verify the redshift hypothesis z ≈ {redshift}.\n\n"
+        spectrum_summary
+        + f"\nVerify the redshift hypothesis z ≈ {redshift}.\n\n"
         f"Verification window: z ∈ [{_z_min}, {_z_max}]\n"
         f"A fitted line supports the hypothesis ONLY if its implied redshift falls within this window. "
         f"Use `compute_redshift` with the fitted center and rest wavelength to check.\n"
@@ -156,7 +280,14 @@ def _build_user_message(
         f"Cleaned spectrum: {npz_path}\n"
         + (f"Output Report file: {report_path}\n" if report_path else "")
         + (f"Output CSV file: {csv_path}\n" if csv_path else "")
-        + "\nFollow the skill prompt phases: load → predict → browse + fit each line → deep investigation if needed → write CSV → write report → JSON block."
+        + predictions_section
+        + "\nThe table above shows predicted lines at this redshift and any features "
+        "already detected by the peak/trough finder whose observed wavelength falls "
+        "within the z-verification window for that line (sorted by |λ − λ_obs|, closest first). "
+        "Adopt CWT pre-detected features when they meet the criteria in Phase 2 Step 4. "
+        "For remaining lines, call `fit_peak` once each — no retries. "
+        "Batch ALL adoptions and fit_peak calls in a single parallel turn.\n"
+        + "\nFollow the skill prompt phases: adopt/batch-fit all lines → write CSV → write report → JSON block."
     )
 
 
@@ -169,6 +300,12 @@ def run(
     redshift: float,
     npz_path: str,
     *,
+    hypothesis_idx: int = 0,
+    wavelength_min: float = None,
+    wavelength_max: float = None,
+    snr_median: float = None,
+    peaks: list = None,
+    troughs: list = None,
     z_min: float = None,
     z_max: float = None,
     masked_regions: list = None,
@@ -178,7 +315,7 @@ def run(
     api_key: str = None,
     base_url: str = None,
     temperature: float = 0.1,
-    max_turns: int = 30,
+    max_turns: int = 500,
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """Run the LLM harness for a single redshift hypothesis.
@@ -248,6 +385,9 @@ def run(
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
+        snr_median=snr_median,
+        peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
     )
@@ -292,6 +432,8 @@ def run(
     structured_output = _extract_json_block(report)
 
     return {
+        "hypothesis_idx": hypothesis_idx,
+        "redshift": redshift,
         "report": report,
         "structured_output": structured_output,
         "feature_catalog": feature_catalog,
@@ -322,6 +464,12 @@ async def arun(
     redshift: float,
     npz_path: str,
     *,
+    hypothesis_idx: int = 0,
+    wavelength_min: float = None,
+    wavelength_max: float = None,
+    snr_median: float = None,
+    peaks: list = None,
+    troughs: list = None,
     z_min: float = None,
     z_max: float = None,
     masked_regions: list = None,
@@ -331,7 +479,7 @@ async def arun(
     api_key: str = None,
     base_url: str = None,
     temperature: float = 0.1,
-    max_turns: int = 30,
+    max_turns: int = 100,
     verbose: bool = False,
     stream_md_path: str = None,
 ) -> Dict[str, Any]:
@@ -367,6 +515,9 @@ async def arun(
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
+        snr_median=snr_median,
+        peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
     )
@@ -469,6 +620,8 @@ async def arun(
             feature_catalog = _collect_fit_results(accumulated_messages)
 
         return {
+            "hypothesis_idx": hypothesis_idx,
+            "redshift": redshift,
             "report": report,
             "structured_output": _extract_json_block(report),
             "feature_catalog": feature_catalog,
@@ -515,6 +668,8 @@ async def arun(
     report = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
     return {
+        "hypothesis_idx": hypothesis_idx,
+        "redshift": redshift,
         "report": report,
         "structured_output": _extract_json_block(report),
         "feature_catalog": feature_catalog,

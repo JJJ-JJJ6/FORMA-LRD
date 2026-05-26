@@ -359,57 +359,52 @@ def fit_peak(
 
 
 # ---------------------------------------------------------------------------
-# Tool 4: read_spectrum_region (DISABLED — reading raw spectrum data is
-# expensive in tokens and breaks KV cache. Harness uses default width_3sigma
-# values instead of browsing regions.)
+# Tool 4: read_spectrum_region
 # ---------------------------------------------------------------------------
 
-# @tool
-# def read_spectrum_region(
-#     npz_path: str,
-#     wl_min: float,
-#     wl_max: float,
-#     stride: int = 1,
-# ) -> dict:
-#     """Read a raw slice of the cleaned spectrum for manual inspection.
-#
-#     Use this to investigate anomalies: DLA damping wings, Lyα forest,
-#     associated absorption, or any region where fit_peak returns suspicious results.
-#
-#     Parameters
-#     ----------
-#     npz_path : str
-#         Path to the cleaned spectrum .npz file.
-#     wl_min, wl_max : float
-#         Wavelength range of interest (Å).
-#     stride : int
-#         Downsampling step. Default 1 (no downsampling). Use 2–5 for large regions.
-#
-#     Returns
-#     -------
-#     dict with keys:
-#         wavelength_range : [float, float]
-#         n_points : int
-#         data : list[{"wavelength": float, "flux": float}]
-#     """
-#     data = np.load(npz_path)
-#     wl_full = data["wavelength"]
-#     flux_full = data["flux"]
-#
-#     mask = (wl_full >= wl_min) & (wl_full <= wl_max)
-#     wl = wl_full[mask][::stride]
-#     fl = flux_full[mask][::stride]
-#
-#     points = [
-#         {"wavelength": round(float(w), 3), "flux": round(float(f), 6)}
-#         for w, f in zip(wl, fl)
-#     ]
-#
-#     return {
-#         "wavelength_range": [wl_min, wl_max],
-#         "n_points": len(points),
-#         "data": points,
-#     }
+@tool
+def read_spectrum_region(
+    npz_path: str,
+    wl_min: float,
+    wl_max: float,
+    stride: int = 1,
+) -> dict:
+    """Read a raw slice of the cleaned spectrum for manual inspection.
+
+    Use this to investigate anomalies: DLA damping wings, Lyα forest,
+    associated absorption, or any region where fit_peak returns suspicious results.
+
+    Parameters
+    ----------
+    npz_path : str
+        Path to the cleaned spectrum .npz file.
+    wl_min, wl_max : float
+        Wavelength range of interest (Å).
+    stride : int
+        Downsampling step. Default 1 (no downsampling). Use 2–5 for large regions.
+
+    Returns
+    -------
+    dict with keys:
+        wl_range : [float, float]  — wavelength bounds (Å)
+        n : int                    — number of points returned
+        wl : list[float]           — wavelength array (Å, 3 d.p.)
+        fl : list[float]           — flux array (4 d.p.)
+    """
+    data = np.load(npz_path)
+    wl_full = data["wavelength"]
+    flux_full = data["flux"]
+
+    mask = (wl_full >= wl_min) & (wl_full <= wl_max)
+    wl = wl_full[mask][::stride]
+    fl = flux_full[mask][::stride]
+
+    return {
+        "wl_range": [wl_min, wl_max],
+        "n": len(wl),
+        "wl": [round(float(w), 3) for w in wl],
+        "fl": [round(float(f), 4) for f in fl],
+    }
 
 
 # ---------------------------------------------------------------------------

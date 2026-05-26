@@ -497,6 +497,41 @@ class ResultWriter:
                 f.write(json.dumps(step_f_extract, indent=2, ensure_ascii=False))
                 f.write("\n\n")
 
+    def write_rule_analysis(self, state: SpectroState) -> None:
+        """Write harness-based rule analysis results."""
+        output_dir, file_name = self._resolve_output_dir(state), state.get("file_name", "unknown")
+        os.makedirs(output_dir, exist_ok=True)
+        path = os.path.join(output_dir, f"{file_name}_rule_analysis.txt")
+
+        synthesis = state.get('rule_analysis') or {}
+        ranked = state.get('harness_ranked') or []
+        results = state.get('harness_results') or []
+
+        with open(path, "w", encoding=self.encoding) as f:
+            f.write("=" * 60 + "\n")
+            f.write("  SYNTHESIS VERDICT\n")
+            f.write("=" * 60 + "\n")
+            f.write(json.dumps(synthesis, indent=2, ensure_ascii=False))
+            f.write("\n\n")
+
+            f.write("=" * 60 + "\n")
+            f.write("  Δχ² RANKING (top 5)\n")
+            f.write("=" * 60 + "\n")
+            for i, r in enumerate(ranked):
+                f.write(f"{i+1}. H{r.get('hypothesis_idx','?')}: "
+                        f"Δχ²={r.get('delta_chi2','?')}, "
+                        f"n_lines={r.get('n_lines_used','?')}\n")
+            f.write("\n")
+
+            f.write("=" * 60 + "\n")
+            f.write("  PER-HYPOTHESIS REPORTS\n")
+            f.write("=" * 60 + "\n")
+            for r in results:
+                f.write(f"\n--- Hypothesis {r.get('hypothesis_idx','?')} "
+                        f"(z={r.get('redshift','?')}) ---\n")
+                f.write(r.get('report', '(no report)'))
+                f.write("\n")
+
     # =========================
     # 📄 Artifact Writers
     # =========================

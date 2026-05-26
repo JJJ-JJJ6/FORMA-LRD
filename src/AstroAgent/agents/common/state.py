@@ -66,6 +66,7 @@ class SpectroState(MessagesState):
     absorption_records: Optional[List[Dict[str, Any]]] = None
     emission_records: Optional[List[Dict[str, Any]]] = None
     overlap_regions: Optional[Dict[str, List[float]]] = None
+    redshift_scoring: Optional[Dict[str, Any]] = None              # VI output: low_z/high_z hypothesis lists
     harness_results: Optional[List[Dict[str, Any]]] = None       # per-hypothesis harness output (report + feature_catalog)
     ranked_hypotheses: Optional[List[Dict[str, Any]]] = None     # top-5 hypotheses ranked by global Δχ²
     spectrum_npz_path: Optional[str] = None                      # path to saved spectrum .npz for harness use
