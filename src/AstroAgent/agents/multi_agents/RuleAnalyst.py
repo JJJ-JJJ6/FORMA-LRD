@@ -20,7 +20,11 @@ from AstroAgent.agents.multi_agents.harness import (
     arun as harness_arun,
     synthesize_arun,
 )
-from AstroAgent.agents.multi_agents.utils.RA import collect_hypotheses
+from AstroAgent.agents.multi_agents.utils.RA import (
+    collect_hypotheses,
+    build_dn4000_lookup,
+    a_extract_harness_summaries,
+)
 
 
 class RuleAnalyst(BaseAgent):
@@ -164,6 +168,16 @@ class RuleAnalyst(BaseAgent):
             state['output_dir'], f"{state['file_name']}_harness"
         )
 
+        # ── LLM-driven structured extraction (middleware) ──
+        dn4000_lookup = build_dn4000_lookup(wl, fl, harness_results)
+        summaries = await a_extract_harness_summaries(
+            harness_results,
+            dn4000_lookup,
+            model=model_cfg['model'],
+            api_key=model_cfg['api_key'],
+            base_url=model_cfg['base_url'],
+        )
+
         state['rule_analysis'] = await synthesize_arun(
             harness_results=harness_results,
             wl=wl,
@@ -174,5 +188,6 @@ class RuleAnalyst(BaseAgent):
             api_key=model_cfg['api_key'],
             base_url=model_cfg['base_url'],
             stream_md_path=os.path.join(harness_dir, 'synthesis_stream.md'),
+            summaries=summaries,
         )
 

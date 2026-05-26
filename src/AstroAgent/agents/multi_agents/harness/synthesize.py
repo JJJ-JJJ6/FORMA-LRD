@@ -24,7 +24,11 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
-from AstroAgent.agents.multi_agents.utils.RA import prepare_diagnostic_slices
+from AstroAgent.agents.multi_agents.utils.RA import (
+    prepare_diagnostic_slices,
+    build_dn4000_lookup,
+    extract_harness_summary,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -70,24 +74,47 @@ def _build_user_message(
     wl: np.ndarray,
     fl: np.ndarray,
     snr: np.ndarray | None = None,
+    summaries: list[str] | None = None,
 ) -> str:
     """Build the user prompt with spectrum metadata, harness reports, and
-    pre-computed Dn4000 diagnostics."""
+    pre-computed Dn4000 diagnostics.
 
-    # ── Collect full harness reports (memory first, disk fallback) ──
+    Parameters
+    ----------
+    summaries : list[str] or None
+        Pre-built markdown summaries (one per hypothesis). If None, they
+        are built on the fly via :func:`extract_harness_summary`.
+    """
+
+    # ── Build Dn4000 lookup ──
+    dn4000_lookup = build_dn4000_lookup(wl, fl, harness_results)
+
+    # ── Collect report sections ──
     report_sections = []
-    for r in harness_results:
+    for i, r in enumerate(harness_results):
         idx = r["hypothesis_idx"]
         report_text = r.get("report", "")
         if not report_text:
             report_path = os.path.join(harness_dir, f"{idx}_report.md")
             if os.path.exists(report_path):
                 report_text = Path(report_path).read_text(encoding="utf-8")
-        report_sections.append(
-            f"### Hypothesis {idx} (z = {r['redshift']:.4f})\n\n"
-            + (f"**Error**: {r['error']}\n\n" if r.get("error") else "")
-            + f"{report_text}\n"
-        )
+
+        # Use pre-built summary if available, otherwise fall back
+        if summaries and i < len(summaries):
+            report_sections.append(summaries[i])
+        else:
+            r_with_report = {**r, "report": report_text}
+            report_sections.append(
+                extract_harness_summary(r_with_report, dn4000_lookup)
+            )
+
+        # Full report in collapsible section for Phase 2 deep-dive
+        if report_text and not r.get("error"):
+            report_sections.append(
+                "<details>\n<summary>Full report</summary>\n\n"
+                + report_text
+                + "\n</details>\n\n"
+            )
 
     # ── Spectrum metadata ──
     spec_wl_range = f"{float(wl[0]):.0f} – {float(wl[-1]):.0f}"
@@ -103,7 +130,11 @@ def _build_user_message(
 - Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}
 - Number of hypotheses tested: {len(harness_results)}
 
-## Harness Reports
+## Harness Report Summaries
+
+Each summary distills the key structured information from the per-hypothesis
+harness run. Expand the <details> sections to read the full report when a
+deeper look at a specific hypothesis is needed.
 
 {''.join(report_sections)}
 
@@ -115,14 +146,18 @@ def _build_user_message(
 
 Follow the Phase 1 → Phase 2 → Phase 3 strategy from your system prompt.
 
-Phase 1: Blind review — analyse the harness reports WITHOUT calling
-read_spectrum_region. Build the contradiction matrix, check internal
-consistency per hypothesis. If one hypothesis has overwhelming unique
-advantage, skip Phase 2 and deliver your verdict.
+Phase 1: Blind review — analyse the harness summaries WITHOUT calling
+read_spectrum_region. Build the contradiction matrix from the CONFIRMED/LIKELY
+line lists, check internal consistency per hypothesis. The contradiction matrix
+IS your Phase 2 read list: each wavelength where two hypotheses claim different
+rest-frame lines identifies a discriminating window to read later.
 
-Phase 2 (only if needed): Use `read_spectrum_region` to examine the
-specific wavelength windows that discriminate between the remaining
-plausible hypotheses. Read as little data as possible — target each
+If one hypothesis has overwhelming unique advantage, skip Phase 2 and deliver
+your verdict.
+
+Phase 2 (only if needed): Use `read_spectrum_region` to examine the specific
+wavelength windows from the contradiction matrix that discriminate between
+remaining plausible hypotheses. Read as little data as possible — target each
 read at a specific question.
 
 Phase 3: Output the final verdict as a JSON block per the specification.
@@ -168,6 +203,7 @@ async def arun(
     temperature: float = 0.1,
     max_turns: int = 30,
     stream_md_path: str | None = None,
+    summaries: list[str] | None = None,
 ) -> dict:
     """Run the LLM synthesis agent over multiple harness reports.
 
@@ -206,7 +242,7 @@ async def arun(
     base_url = base_url or os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
 
     system_prompt = _load_skill()
-    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr)
+    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries)
 
     # ── Closure over arrays for zero-copy slicing ────────────────
     _wl = wl

@@ -22,13 +22,15 @@ Your role is to BREAK this circularity. Do not simply count CONFIRMED lines and 
 
 Start by analysing the harness reports WITHOUT reading the spectrum. Your goal is to determine whether the reports alone provide a decisive answer, or whether you need Phase 2.
 
-### 1a. Build the contradiction matrix
+### 1a. Build the contradiction matrix → Phase 2 read plan
 
 Identify spectral features that are claimed by MULTIPLE competing hypotheses as DIFFERENT rest-frame lines. For each observed wavelength with conflicting claims, list:
 
 - The observed wavelength and its properties (FWHM, amplitude)
 - Which hypothesis claims what line
 - The implied redshift from each claim
+
+**The contradiction matrix IS your Phase 2 read list.** Each row in the matrix identifies a spectral window you MUST read in Phase 2. If a feature at observed wavelength λ is claimed as line A by H1 and line B by H2, read λ ± 50 Å to determine which identification is correct. If the matrix is sparse, discrimination rests on continuum features (Dn4000) and global consistency, not line-by-line comparison.
 
 ### 1b. Check internal consistency per hypothesis
 
