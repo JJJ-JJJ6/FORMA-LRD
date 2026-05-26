@@ -122,7 +122,7 @@ def _build_user_message(
     snr_median = float(np.median(_snr)) if len(_snr) > 0 else None
 
     # ── Dn4000 diagnostics ──
-    diagnostic_slices = prepare_diagnostic_slices(wl, fl, snr, harness_results)
+    diagnostic_slices = prepare_diagnostic_slices(wl, fl, harness_results)
 
     return f"""## Spectrum
 

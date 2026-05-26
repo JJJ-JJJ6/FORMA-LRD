@@ -71,6 +71,8 @@ Physics-based tiebreakers (ordered by reliability, all independent of CWT/harnes
 
 Use the `read_spectrum_region` tool to examine specific wavelength windows. For each candidate hypothesis, read the spectrum at the wavelength ranges where its unique predictions differ from competitors. Do NOT read the full spectrum — read 100–300 Å windows centered on the discriminating features. Batch multiple reads in a single turn when possible.
 
+**Deduplication**: Before calling `read_spectrum_region`, check whether you have ALREADY read that wavelength range in a previous turn. Scan the conversation history for tool results covering overlapping λ intervals. If the data is already available, reuse it — do not re-read the same region. Each spectrum read consumes significant context tokens; redundant reads are wasteful.
+
 ### 2c. Apply exclusion logic
 
 For each competing hypothesis, try to DISPROVE it with a specific negative observation:
