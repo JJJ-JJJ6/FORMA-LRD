@@ -4,8 +4,10 @@ harness report middleware, and formatting helpers.
 """
 
 import asyncio
+import csv
 import json
 import logging
+import os
 import re
 import numpy as np
 
@@ -205,9 +207,6 @@ _LINE_ALIASES: dict[str, tuple[str, float]] = {
     "CaT3_abs":           ("CaT3 8662.0_abs",  8662.0),
 }
 
-# Rest wavelengths for quick lookup (canonical name → λ_rest)
-_LINE_REST: dict[str, float] = {v[0]: v[1] for v in _LINE_ALIASES.values()}
-
 
 def _normalise_line_name(raw: str) -> str:
     """Normalise a line name from a harness report to canonical form.
@@ -229,80 +228,154 @@ def _normalise_line_name(raw: str) -> str:
     return raw
 
 
-def _rest_wavelength(name: str) -> float | None:
-    """Return the rest wavelength for a canonical line name, or None."""
-    return _LINE_REST.get(name)
-
-
-def _compute_lambda_obs(name: str, implied_z: float | None) -> str:
-    """Compute observed wavelength from canonical name and implied_z.
-
-    Returns a formatted string like ``"8402.4"`` or ``"—"``.
-    """
-    if implied_z is None:
-        return "—"
-    wl_rest = _rest_wavelength(name)
-    if wl_rest is None:
-        return "—"
-    return f"{wl_rest * (1.0 + implied_z):.1f}"
-
-
-# ── Extraction prompt ──────────────────────────────────────────────
+# ── Extraction prompt (LLM only extracts natural-language fields) ──
 
 EXTRACTION_PROMPT = """\
-Extract structured information from this redshift hypothesis test report.
+Extract a few key fields from this redshift hypothesis test report.
 Return ONLY a valid JSON object (no markdown fences, no explanation).
 
 {
     "verdict": "CONFIRMED" or "NOT CONFIRMED",
     "classification": "e.g. Galaxy (LRG/BGS), QSO, Star, Unknown, Host Galaxy dominated AGN",
     "systemic_redshift": float or null,
-    "systemic_source": "the line name used as redshift anchor (short, e.g. '[O II] 3727', 'Ca K_abs')" or null,
-    "n_confirmed": int,
-    "n_likely": int,
-    "n_estimated": int,
-    "n_marginal": int,
-    "n_not_found": int,
-    "n_spurious": int,
-    "confirmed_lines": [{"name": "line_name", "implied_z": float, "sn": float or null}],
-    "likely_lines": [{"name": "line_name", "implied_z": float, "sn": float or null}],
-    "estimated_lines": [{"name": "line_name", "implied_z": float, "sn": float or null}],
-    "marginal_lines": [{"name": "line_name", "implied_z": float, "sn": float or null}],
-    "not_found_names": ["line names that were explicitly searched but NOT_FOUND — include lines mentioned as absent in the narrative text"],
-    "z_scatter": float or null,
-    "key_caveat": "1-sentence summary of the most important caveat/uncertainty (or null)"
+    "systemic_source": "short line name used as redshift anchor, or null",
+    "key_caveat": "1-sentence summary of the most important caveat/uncertainty, or null"
 }
 
 Rules:
-- Count ALL lines in each status category, including those mentioned only in narrative text (e.g. "C IV, C III], Mg II all NOT_FOUND" → count them in n_not_found and list in not_found_names).
-- If the report says lines are "absent", "not detected", "not found", or "outside the verification window and not supporting", count them as NOT_FOUND.
-- z_scatter is the std dev of implied_z for confirmed+likely lines (null if <2 lines).
-- If a field cannot be determined: null for scalars, [] for lists, 0 for counts.
 - systemic_redshift is null if the report explicitly says it cannot be determined.
-- systemic_source should be a short line name only (e.g. "Ca K_abs"), not a verbose sentence.
+- systemic_source should be a short line name (e.g. "Ca K_abs", "[O II] 3727"), not a verbose sentence.
+- key_caveat should be null if there are no significant caveats.
 - Use the exact numbers from the report — do not recompute or guess.
 """
+
+
+# ── CSV line reader ─────────────────────────────────────────────────
+
+def _read_csv_lines(csv_path: str) -> list[dict]:
+    """Read per-line results from a harness CSV file.
+
+    Returns a list of dicts with keys: name, rest_wavelength, fitted_center,
+    snr, status, fwhm_km_s, delta_chi2_per_n.
+    """
+    if not os.path.exists(csv_path):
+        return []
+    rows = []
+    with open(csv_path, newline='') as f:
+        for row in csv.DictReader(f):
+            # Skip empty rows
+            if not row.get('name', '').strip():
+                continue
+            rows.append(row)
+    return rows
+
+
+def _parse_csv_float(val: str) -> float | None:
+    """Parse a CSV string to float, returning None on empty/invalid."""
+    if val is None:
+        return None
+    val = val.strip()
+    if not val:
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        return None
+
+
+def _build_line_table(csv_rows: list[dict]) -> tuple[list[dict], list[str], list[str], float | None]:
+    """Build structured line data from CSV rows.
+
+    Returns
+    -------
+    table_rows : list[dict]
+        Detected lines (CONFIRMED → MARGINAL), each with name, lam_obs,
+        z_implied, status, sn.
+    not_found_names : list[str]
+        Canonical names of NOT_FOUND lines.
+    spurious_names : list[str]
+        Canonical names of SPURIOUS lines.
+    z_scatter : float or None
+        Std dev of z_implied for CONFIRMED + LIKELY lines (None if < 2).
+    """
+    status_order = {'CONFIRMED': 0, 'LIKELY': 1, 'ESTIMATED': 2, 'MARGINAL': 3,
+                    'NOT_FOUND': 4, 'SPURIOUS': 5}
+
+    all_rows = []
+    for row in csv_rows:
+        raw_name = row.get('name', '').strip()
+        status = row.get('status', '').strip()
+        if not raw_name or status not in status_order:
+            continue
+        norm_name = _normalise_line_name(raw_name)
+        rest_wl = _parse_csv_float(row.get('rest_wavelength'))
+        fitted_center = _parse_csv_float(row.get('fitted_center'))
+        sn = _parse_csv_float(row.get('snr'))
+
+        # Compute λ_obs and z_implied
+        lam_obs: str = "—"
+        z_imp_str: str = "—"
+        z_imp: float | None = None
+        if fitted_center is not None and rest_wl is not None and rest_wl > 0:
+            lam_obs = f"{fitted_center:.1f}"
+            z_imp = fitted_center / rest_wl - 1.0
+            z_imp_str = f"{z_imp:.4f}"
+        elif rest_wl is not None:
+            # CWT-adopted (ESTIMATED): no fitted center; use predicted
+            pred = _parse_csv_float(row.get('predicted_obs'))
+            if pred is not None:
+                lam_obs = f"{pred:.1f}"
+                z_imp = pred / rest_wl - 1.0
+                z_imp_str = f"{z_imp:.4f}"
+
+        sn_str = f"{sn:.1f}" if sn is not None else "—"
+
+        all_rows.append({
+            'name': norm_name, 'lam_obs': lam_obs, 'z_implied': z_imp_str,
+            'status': status, 'sn': sn_str, '_z_val': z_imp,
+            '_status_rank': status_order.get(status, 99),
+        })
+
+    # Sort by status rank, then by name
+    all_rows.sort(key=lambda r: (r['_status_rank'], r['name']))
+
+    # Split into detected (table) vs not-found/spurious
+    table_rows = [r for r in all_rows if r['_status_rank'] <= 3]
+    not_found = [r for r in all_rows if r['_status_rank'] == 4]
+    spurious = [r for r in all_rows if r['_status_rank'] == 5]
+
+    # z_scatter from CONFIRMED + LIKELY
+    z_vals = [r['_z_val'] for r in all_rows
+              if r['_status_rank'] <= 1 and r['_z_val'] is not None]
+    z_scatter = float(np.std(z_vals)) if len(z_vals) >= 2 else None
+
+    return table_rows, [r['name'] for r in not_found], [r['name'] for r in spurious], z_scatter
 
 
 # ── Formatting ─────────────────────────────────────────────────────
 
 def format_structured_summary(
-    data: dict,
+    *,
     hypothesis_idx: int,
     z_tested: float,
-    dn4000_lookup: dict = None,
+    text_fields: dict,
+    table_rows: list[dict],
+    not_found_names: list[str],
+    spurious_names: list[str],
+    z_scatter: float | None,
+    dn4000_lookup: dict | None = None,
 ) -> str:
-    """Format LLM-extracted structured data into a table-based markdown summary.
+    """Format CSV-derived line data and LLM-extracted text into markdown.
 
-    The standard structure has 3 sections:
+    Standard structure:
 
     1. **Header** — verdict, classification, Dn4000
-    2. **Line table** — all detected lines (CONFIRMED → MARGINAL) with
-       λ_obs, z_implied, status, S/N
-    3. **Footer** — NOT_FOUND/SPURIOUS summary and key caveat
+    2. **Systemic** — redshift anchor and z_scatter
+    3. **Line table** — CONFIRMED → MARGINAL with λ_obs, z_implied, S/N
+    4. **Footer** — NOT_FOUND/SPURIOUS counts + names, key caveat
     """
-    verdict = data.get('verdict', 'UNKNOWN')
-    classification = data.get('classification', 'Unknown')
+    verdict = text_fields.get('verdict', 'UNKNOWN')
+    classification = text_fields.get('classification', 'Unknown')
 
     # ── Dn4000 ──
     dn4000_str = ""
@@ -320,9 +393,8 @@ def format_structured_summary(
     )
 
     # ── Systemic redshift ──
-    sys_z = data.get('systemic_redshift')
-    sys_src = data.get('systemic_source')
-    z_scatter = data.get('z_scatter')
+    sys_z = text_fields.get('systemic_redshift')
+    sys_src = text_fields.get('systemic_source')
     parts = []
     if sys_z is not None:
         src = f"({_normalise_line_name(sys_src)})" if sys_src else ""
@@ -333,54 +405,38 @@ def format_structured_summary(
         out.append(f"**{' | '.join(parts)}**")
 
     # ── Line table ──
-    rows: list[tuple[str, str, str, str, str]] = []
-    for status_key, lines_key in [
-        ('CONFIRMED', 'confirmed_lines'),
-        ('LIKELY',   'likely_lines'),
-        ('ESTIMATED','estimated_lines'),
-        ('MARGINAL', 'marginal_lines'),
-    ]:
-        for line in data.get(lines_key, []):
-            name = _normalise_line_name(line.get('name', '?'))
-            z_imp = line.get('implied_z')
-            sn = line.get('sn')
-            z_str = f"{z_imp:.4f}" if z_imp is not None else "—"
-            sn_str = f"{sn:.1f}" if sn is not None else "—"
-            lam_obs = _compute_lambda_obs(name, z_imp)
-            rows.append((name, lam_obs, z_str, status_key, sn_str))
-
-    if rows:
+    if table_rows:
         out.append("")
         out.append("| Line | λ_obs (Å) | z_implied | Status | S/N |")
         out.append("|------|-----------|-----------|--------|-----|")
-        for name, lam_obs, z_str, status, sn_str in rows:
-            out.append(f"| {name} | {lam_obs} | {z_str} | {status} | {sn_str} |")
+        for r in table_rows:
+            out.append(
+                f"| {r['name']} | {r['lam_obs']} | {r['z_implied']} | {r['status']} | {r['sn']} |"
+            )
 
     # ── NOT_FOUND / SPURIOUS ──
-    n_nf = data.get('n_not_found', 0)
-    n_sp = data.get('n_spurious', 0)
-    nf_names = data.get('not_found_names', [])
-    footer_parts = [f"{n_nf} NOT_FOUND", f"{n_sp} SPURIOUS"]
-    if nf_names:
-        normalised_nf = [_normalise_line_name(n) for n in nf_names]
-        footer_parts.append(f"({', '.join(normalised_nf)})")
+    nf_parts = [f"{len(not_found_names)} NOT_FOUND", f"{len(spurious_names)} SPURIOUS"]
+    all_missing = not_found_names + spurious_names
+    if all_missing:
+        nf_parts.append(f"({', '.join(all_missing)})")
     out.append("")
-    out.append(" | ".join(footer_parts))
+    out.append(" | ".join(nf_parts))
 
     # ── Key caveat ──
-    caveat = data.get('key_caveat')
-    if caveat and caveat != 'null':
+    caveat = text_fields.get('key_caveat')
+    if caveat and str(caveat) != 'null' and str(caveat) != 'None':
         out.append(f"> {caveat}")
 
     out.append("")
     return '\n'.join(out)
 
 
-def extract_harness_summary(harness_result: dict, dn4000_lookup: dict = None) -> str:
-    """Fallback: format a harness result that already has structured data.
-
-    Prefer :func:`a_extract_harness_summaries` for the LLM-driven path.
-    """
+def extract_harness_summary(
+    harness_result: dict,
+    dn4000_lookup: dict = None,
+    harness_dir: str = None,
+) -> str:
+    """Format a single harness result.  CSV-driven when *harness_dir* is given."""
     hypothesis_idx = harness_result.get('hypothesis_idx', '?')
     z_tested = harness_result.get('redshift', 0)
 
@@ -391,10 +447,33 @@ def extract_harness_summary(harness_result: dict, dn4000_lookup: dict = None) ->
             f"Harness execution failed: {error}\n"
         )
 
+    if harness_dir:
+        csv_path = os.path.join(harness_dir, f"{hypothesis_idx}_lines.csv")
+        csv_rows = _read_csv_lines(csv_path)
+        table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
+        structured = harness_result.get('structured_output') or harness_result.get('_structured') or {}
+        return format_structured_summary(
+            hypothesis_idx=hypothesis_idx,
+            z_tested=z_tested,
+            text_fields=structured,
+            table_rows=table_rows,
+            not_found_names=nf_names,
+            spurious_names=sp_names,
+            z_scatter=z_scat,
+            dn4000_lookup=dn4000_lookup,
+        )
+
     structured = harness_result.get('_structured')
     if structured:
         return format_structured_summary(
-            structured, hypothesis_idx, z_tested, dn4000_lookup,
+            hypothesis_idx=hypothesis_idx,
+            z_tested=z_tested,
+            text_fields=structured,
+            table_rows=[],
+            not_found_names=[],
+            spurious_names=[],
+            z_scatter=None,
+            dn4000_lookup=dn4000_lookup,
         )
 
     return f"### H{hypothesis_idx} | z={z_tested:.4f} | (no structured data)\n"
@@ -404,18 +483,21 @@ async def a_extract_harness_summaries(
     harness_results: list,
     dn4000_lookup: dict,
     *,
+    harness_dir: str | None = None,
     model: str,
     api_key: str,
     base_url: str,
     temperature: float = 0.0,
     concurrency: int = 5,
 ) -> list:
-    """Extract structured summaries from harness reports via LLM.
+    """Build structured summaries from CSV + LLM extraction.
 
-    Each report is sent to the LLM for JSON extraction.  Requests run in
-    parallel with bounded concurrency.  Extracted line names are normalised
-    to a canonical form so the synthesis agent can cross-compare hypotheses
-    without name-variant confusion.
+    Line data comes from per-hypothesis ``{idx}_lines.csv`` files (deterministic,
+    100% accurate).  The LLM only extracts a few natural-language fields from
+    the report text (verdict, classification, systemic redshift, caveats).
+
+    When *harness_dir* is None (e.g. testing without CSV files), falls back to
+    LLM-only extraction.
     """
     from langchain_openai import ChatOpenAI
 
@@ -427,6 +509,20 @@ async def a_extract_harness_summaries(
     )
 
     sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _llm_extract_text(report: str) -> dict:
+        """Extract natural-language fields from the report via LLM."""
+        async with sem:
+            try:
+                resp = await llm.ainvoke([
+                    ("system", EXTRACTION_PROMPT),
+                    ("user", report),
+                ])
+                content = resp.content if hasattr(resp, 'content') else str(resp)
+                return _parse_extraction_json(content) or {}
+            except Exception as exc:
+                logging.warning(f"LLM text extraction failed: {exc}")
+                return {}
 
     async def _extract_one(idx: int, r: dict) -> str:
         hypothesis_idx = r.get('hypothesis_idx', idx + 1)
@@ -440,31 +536,31 @@ async def a_extract_harness_summaries(
                 f"Harness execution failed: {error}\n"
             )
 
-        # Use structured_output from harness if available (already JSON)
-        structured = r.get('structured_output')
-        if structured and isinstance(structured, dict):
-            return format_structured_summary(
-                structured, hypothesis_idx, z_tested, dn4000_lookup,
-            )
+        # ── CSV line data ──
+        csv_rows: list[dict] = []
+        if harness_dir:
+            csv_path = os.path.join(harness_dir, f"{hypothesis_idx}_lines.csv")
+            csv_rows = _read_csv_lines(csv_path)
+        table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
 
-        async with sem:
-            try:
-                resp = await llm.ainvoke([
-                    ("system", EXTRACTION_PROMPT),
-                    ("user", report),
-                ])
-                text = resp.content if hasattr(resp, 'content') else str(resp)
-                data = _parse_extraction_json(text)
-                if data:
-                    return format_structured_summary(
-                        data, hypothesis_idx, z_tested, dn4000_lookup,
-                    )
-            except Exception as exc:
-                logging.warning(
-                    f"LLM extraction failed for H{hypothesis_idx}: {exc}"
-                )
+        # ── Text fields: prefer harness structured_output, fall back to LLM ──
+        text_fields = r.get('structured_output')
+        if not isinstance(text_fields, dict):
+            text_fields = {}
+        # Only use structured_output if it has the expected fields
+        if not text_fields.get('verdict'):
+            text_fields = await _llm_extract_text(report)
 
-        return f"### H{hypothesis_idx} | z={z_tested:.4f} | (extraction failed)\n"
+        return format_structured_summary(
+            hypothesis_idx=hypothesis_idx,
+            z_tested=z_tested,
+            text_fields=text_fields,
+            table_rows=table_rows,
+            not_found_names=nf_names,
+            spurious_names=sp_names,
+            z_scatter=z_scat,
+            dn4000_lookup=dn4000_lookup,
+        )
 
     tasks = [_extract_one(i, r) for i, r in enumerate(harness_results)]
     return await asyncio.gather(*tasks)

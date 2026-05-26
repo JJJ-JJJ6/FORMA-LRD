@@ -173,6 +173,7 @@ class RuleAnalyst(BaseAgent):
         summaries = await a_extract_harness_summaries(
             harness_results,
             dn4000_lookup,
+            harness_dir=harness_dir,
             model=model_cfg['model'],
             api_key=model_cfg['api_key'],
             base_url=model_cfg['base_url'],
