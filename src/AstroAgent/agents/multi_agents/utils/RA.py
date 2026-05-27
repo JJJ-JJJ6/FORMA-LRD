@@ -75,8 +75,9 @@ def build_dn4000_lookup(wl, fl, harness_results: list) -> dict:
     -------
     dict[float, dict]
         {z: {'dn4000': float|None, 'interpretation': str}}.
-        Interpretation is one of: "old stellar population (LRG/BGS)",
-        "intermediate", "young / star-forming (ELG, QSO)", "out of range".
+        Interpretation is one of: "strong 4000 Å break",
+        "moderate 4000 Å break", "weak or absent 4000 Å break",
+        "insufficient coverage".
     """
     lookup = {}
     zs = set()
@@ -89,15 +90,15 @@ def build_dn4000_lookup(wl, fl, harness_results: list) -> dict:
     for z in sorted(zs):
         result = compute_dn4000(wl, fl, z)
         if result is None:
-            lookup[z] = {'dn4000': None, 'interpretation': 'out of range'}
+            lookup[z] = {'dn4000': None, 'interpretation': 'insufficient coverage'}
         else:
             dn4000 = result[0]
             if dn4000 > 1.6:
-                interp = "old stellar population (LRG/BGS)"
+                interp = "strong 4000 Å break"
             elif dn4000 > 1.3:
-                interp = "intermediate"
+                interp = "moderate 4000 Å break"
             else:
-                interp = "young / star-forming (ELG, QSO)"
+                interp = "weak or absent 4000 Å break"
             lookup[z] = {'dn4000': dn4000, 'interpretation': interp}
 
     return lookup
@@ -110,9 +111,9 @@ def prepare_diagnostic_slices(wl, fl, harness_results: list) -> str:
     tiebreaker — it is completely independent of the CWT→harness pipeline.
 
     Interpretation:
-      Dn4000 > 1.6  → old stellar population (LRG/BGS)
-      Dn4000 1.3–1.6 → intermediate
-      Dn4000 < 1.3  → young / star-forming (ELG, QSO)
+      Dn4000 > 1.6  → strong 4000 Å break
+      Dn4000 1.3–1.6 → moderate 4000 Å break
+      Dn4000 < 1.3  → weak or absent 4000 Å break
     """
     lookup = build_dn4000_lookup(wl, fl, harness_results)
 
@@ -129,7 +130,7 @@ def prepare_diagnostic_slices(wl, fl, harness_results: list) -> str:
         dn4000 = info['dn4000']
         interp = info['interpretation']
         if dn4000 is None:
-            sections.append(f"| z={z:.4f} | — (out of range) | — |")
+            sections.append(f"| z={z:.4f} | — (insufficient coverage) | — |")
         else:
             sections.append(
                 f"| z={z:.4f} | **{dn4000:.3f}** | {interp} |"
@@ -235,7 +236,7 @@ Extract a few key fields from this redshift hypothesis test report.
 Return ONLY a valid JSON object (no markdown fences, no explanation).
 
 {
-    "verdict": "CONFIRMED" or "NOT CONFIRMED",
+    "verdict": "SUPPORTED" or "NOT SUPPORTED",
     "classification": "e.g. Galaxy (LRG/BGS), QSO, Star, Unknown, Host Galaxy dominated AGN",
     "systemic_redshift": float or null,
     "systemic_source": "short line name used as redshift anchor, or null",
@@ -289,17 +290,17 @@ def _build_line_table(csv_rows: list[dict]) -> tuple[list[dict], list[str], list
     Returns
     -------
     table_rows : list[dict]
-        Detected lines (CONFIRMED → MARGINAL), each with name, lam_obs,
+        Detected lines (LIKELY → MARGINAL), each with name, lam_obs,
         z_implied, status, sn.
     not_found_names : list[str]
         Canonical names of NOT_FOUND lines.
     spurious_names : list[str]
         Canonical names of SPURIOUS lines.
     z_scatter : float or None
-        Std dev of z_implied for CONFIRMED + LIKELY lines (None if < 2).
+        Std dev of z_implied for LIKELY lines (None if < 2).
     """
-    status_order = {'CONFIRMED': 0, 'LIKELY': 1, 'ESTIMATED': 2, 'MARGINAL': 3,
-                    'NOT_FOUND': 4, 'SPURIOUS': 5}
+    status_order = {'LIKELY': 0, 'MARGINAL': 1, 'ESTIMATED': 2,
+                    'NOT_FOUND': 3, 'SPURIOUS': 4}
 
     all_rows = []
     for row in csv_rows:
@@ -340,13 +341,13 @@ def _build_line_table(csv_rows: list[dict]) -> tuple[list[dict], list[str], list
     all_rows.sort(key=lambda r: (r['_status_rank'], r['name']))
 
     # Split into detected (table) vs not-found/spurious
-    table_rows = [r for r in all_rows if r['_status_rank'] <= 3]
-    not_found = [r for r in all_rows if r['_status_rank'] == 4]
-    spurious = [r for r in all_rows if r['_status_rank'] == 5]
+    table_rows = [r for r in all_rows if r['_status_rank'] <= 2]
+    not_found = [r for r in all_rows if r['_status_rank'] == 3]
+    spurious = [r for r in all_rows if r['_status_rank'] == 4]
 
-    # z_scatter from CONFIRMED + LIKELY
+    # z_scatter from LIKELY lines only
     z_vals = [r['_z_val'] for r in all_rows
-              if r['_status_rank'] <= 1 and r['_z_val'] is not None]
+              if r['_status_rank'] == 0 and r['_z_val'] is not None]
     z_scatter = float(np.std(z_vals)) if len(z_vals) >= 2 else None
 
     return table_rows, [r['name'] for r in not_found], [r['name'] for r in spurious], z_scatter
@@ -371,7 +372,7 @@ def format_structured_summary(
 
     1. **Header** — verdict, classification, Dn4000
     2. **Systemic** — redshift anchor and z_scatter
-    3. **Line table** — CONFIRMED → MARGINAL with λ_obs, z_implied, S/N
+    3. **Line table** — LIKELY → MARGINAL with λ_obs, z_implied, S/N
     4. **Footer** — NOT_FOUND/SPURIOUS counts + names, key caveat
     """
     verdict = text_fields.get('verdict', 'UNKNOWN')

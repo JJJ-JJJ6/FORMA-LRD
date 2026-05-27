@@ -147,7 +147,7 @@ deeper look at a specific hypothesis is needed.
 Follow the Phase 1 → Phase 2 → Phase 3 strategy from your system prompt.
 
 Phase 1: Blind review — analyse the harness summaries WITHOUT calling
-read_spectrum_region. Build the contradiction matrix from the CONFIRMED/LIKELY
+read_spectrum_region. Build the contradiction matrix from the LIKELY/MARGINAL
 line lists, check internal consistency per hypothesis. The contradiction matrix
 IS your Phase 2 read list: each wavelength where two hypotheses claim different
 rest-frame lines identifies a discriminating window to read later.

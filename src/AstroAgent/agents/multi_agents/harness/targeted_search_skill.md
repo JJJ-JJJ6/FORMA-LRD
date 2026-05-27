@@ -4,107 +4,23 @@
 
 You are an observational astronomer. You receive a cleaned spectrum (.npz file) and a redshift hypothesis with a verification window [z_min, z_max]. Your job is to **verify** whether the true redshift falls within this window by confirming or refuting predicted spectral lines through targeted Gaussian fitting.
 
-**This is verification, not exploration.** You are testing a specific hypothesis, not searching for lines at arbitrary redshifts. If the predicted lines at this redshift don't match the data, report that the hypothesis is NOT CONFIRMED — do not go hunting for lines at other redshifts. The exploration work (brute-force matching across all possible redshifts) was already done upstream.
+**This is verification, not exploration.** You are testing a specific hypothesis, not searching for lines at arbitrary redshifts. If the predicted lines at this redshift don't match the data, report that the hypothesis is UNSUPPORTED — do not go hunting for lines at other redshifts. The exploration work (brute-force matching across all possible redshifts) was already done upstream.
 
 **Masked regions**: Some wavelength ranges may be masked out due to arm overlap or quality cuts. The spectrum has NO data in these ranges. If a predicted line falls in a masked region, skip it — it cannot be confirmed.
 
 Do NOT guess. Call tools to measure. Trust fit results over preconceptions.
 
-## Common Line Blends
+## Knowledge Base
 
-The following wavelength regions are prone to line confusion. When multiple lines map to the same observed feature or nearby features, apply these disentanglement rules.
+Physics rules live in `kb/`. Grep them as needed — do not memorize.
 
-### Hβ + [O III] doublet (4820–5050 Å rest)
-
-Hβ (4862.7 Å), [O III]a (4960.3 Å), and [O III]b (5008.2 Å) are densely packed. At typical resolution, the CWT algorithm may assign the same observed peak to multiple rest-frame lines. The disentanglement rule:
-
-```
-wavelength_1 → Hβ        (shortest)
-wavelength_2 → [O III]a  (middle)
-wavelength_3 → [O III]b  (longest)
-```
-
-If only two peaks are detected in this region, consider: Hβ + [O III]b (with [O III]a too weak), or [O III]a + [O III]b (with Hβ blended into one of them).
-
-### Hα + [N II] doublet (6520–6620 Å rest)
-
-[N II]a (6549.8 Å), Hα (6564.6 Å), and [N II]b (6585.3 Å) are separated by ~15–20 Å each. At low resolution or in high-S/N data, all three may blend into a single asymmetric profile or produce ambiguous peak assignments. When fitting Hα, always check whether [N II]a and [N II]b are also present at consistent relative amplitudes.
-
-### Ca K/H + Hε absorption (3930–3975 Å rest)
-
-Ca K_abs (3934.8 Å), Ca H_abs (3969.6 Å), and Hε_abs (3970.1 Å) form a tight triad. Ca H and Hε are separated by only 0.5 Å and are nearly always blended at typical spectral resolutions. The disentanglement rule:
-
-```
-wavelength_1 → Ca K_abs  (shortest, ~3935 Å)
-wavelength_2 → Ca H_abs  (middle, ~3970 Å)
-wavelength_3 → Hε_abs    (longest, ~3970 Å — usually blended with Ca H)
-```
-
-In practice, Ca H and Hε form a single blended trough; do not expect to resolve them separately. The Ca K line is the cleaner LRG/BGS diagnostic.
-
-### Mg II emission + absorption (2800 Å rest)
-
-In AGN host galaxies, broad Mg II emission (BLR) is often superimposed on narrow Mg II absorption (ISM/host galaxy). The CWT algorithm may produce:
-- A single broad peak with a superimposed narrow trough
-- Two adjacent "broad" peaks (the emission split by the absorption core)
-- Multiple spurious narrow peaks from overfitting the broad profile
-
-When Mg II is present and shows unusual structure, flag it as MARGINAL and note the ambiguity for the downstream synthesis agent — do not attempt to resolve it yourself.
-
-## Physical Diagnostic Rules
-
-### O [III] doublet amplitude ratio
-
-The [O III]a (4960.3 Å) : [O III]b (5008.2 Å) amplitude ratio should be ≈ 1:3, with [O III]b always the brighter line. **If the ratio deviates significantly from ~1:3, or [O III]b is weaker than [O III]a, consider that these may not be the [O III] doublet** — they could be other narrow lines (e.g., Balmer series, [N II], or [S II] doublets) misidentified by the CWT algorithm.
-
-### Ne [V] as AGN indicator
-
-Ne [V] (3426 Å) is a high-ionization forbidden line that is **almost never present in non-AGN objects**. If a Ne [V] match exists with reasonable S/N and FWHM, the AGN hypothesis must be given serious consideration regardless of other line classifications.
-
-### Broad lines in galaxies are likely spurious
-
-In non-AGN galaxies (ELG, LRG/BGS), genuine broad emission lines (Lyα, C IV, C III], Mg II) do not appear. If the CWT algorithm labels a feature as `broad` and it matches one of these lines in a galaxy-type hypothesis, first suspect a CWT artifact:
-- Overfitting of the continuum between two absorption troughs
-- Fragmentation of a narrow line by noise
-- Spurious wide Gaussian from a poor baseline fit
-
-Flag such cases for the downstream synthesis agent — do not accept a broad classification in a galaxy-type hypothesis without noting the caveat.
-
-### QSO broad-line amplitude ordering
-
-For Typical QSOs, the broad emission lines generally follow: Lyα > C IV > C III] > Mg II in amplitude. If Lyα or C IV amplitude is significantly lower than Mg II, question whether the Mg II identification is actually a different line, or whether Lyα/C IV are misidentified.
-
-### Lyα multi-peak fragmentation
-
-Intergalactic medium (IGM) absorption can split a broad Lyα emission line into 2–3 apparent peaks along the line of sight. The CWT algorithm may detect each fragment as a separate peak, all matching Lyα at slightly different implied redshifts. This is a physically normal phenomenon — the true Lyα center likely lies among the detected fragments. Multiple narrow/intermediate Lyα matches at nearby wavelengths can still support the QSO hypothesis.
-
-### Redshift from low-ionization lines
-
-High-ionization lines (Lyα, C IV, C III], He II, Ne [V]) are often blueshifted by outflows (typically by hundreds of km/s) and **must not** be used for the systemic redshift. The systemic redshift should be anchored on the lowest-ionization lines available, following this priority (lowest → highest ionization):
-
-| Priority | Line | Ionization |
-|----------|------|------------|
-| 1 | Ca K/H_abs, G-band_abs, Mg_abs, Na D_abs | Neutral (stellar absorption — most reliable) |
-| 2 | [O II] | O⁺ (~13.6 eV) |
-| 3 | [S II]a/b | S⁺ |
-| 4 | [N II]a/b | N⁺ |
-| 5 | Hα/Hβ/Hγ/Hδ/Hε | H (~13.6 eV) |
-| 6 | Mg II | Mg⁺ (~15.0 eV) |
-| 7 | [O III]a/b | O⁺⁺ (~35.1 eV) |
-
-**Excluded**: He II (He⁺, ~54.4 eV), C III] (C⁺⁺, ~47.9 eV), C IV (C⁺⁺⁺, ~64.5 eV), Ne [V] (Ne⁺⁺⁺⁺, ~97.1 eV), Lyα (H Lyman series). These are too easily shifted by outflows or too broad to serve as reliable systemic anchors. If only excluded lines are available, flag the redshift as potentially biased.
-
-### Width mismatch policy
-
-A line whose observed FWHM contradicts its physical width class is not a reliable redshift anchor:
-- A `narrow` feature matching a `broad` line (Lyα, C IV, C III], Mg II) → flag, do not use for systemic redshift
-- A `broad` feature matching a `narrow` line ([O II], [O III], [N II], [S II]) → flag, suspect spurious CWT feature
-- Balmer lines (Hα/Hβ/Hγ/Hδ) and He II have `both` width class → width checks do not apply
-- Flag mismatches but do not veto an entire hypothesis solely on one width mismatch
-
-### Visual estimation from spectrum data
-
-When `fit_peak` fails (center = null) and no CWT feature can be adopted for a line, mark it NOT_FOUND and move on. Do not spend extra turns estimating parameters — the downstream synthesis agent will re-examine ambiguous cases with deeper analysis if needed.
+| When you need... | Run |
+|------------------|-----|
+| Rest wavelength or width class for a specific line | `grep -i "<line_name>" kb/lines.md` |
+| Doublet spacing and ratio rules | `grep -i "doublet" kb/lines.md` |
+| Line blend disentanglement rules | `grep -i "blend" kb/lines.md` |
+| Ionization priority, excluded lines, outflow blueshift | `grep -i "priority\|excluded\|outflow\|width mismatch" kb/ionization.md` |
+| Classification diagnostics (ELG/LRG/QSO) | `grep -i "ELG\|LRG\|QSO\|fatal\|Ne V\|broad lines in" kb/classification.md` |
 
 ## Phase 1: Prepare
 
@@ -129,13 +45,13 @@ If the "Features in z-window" column is **not** `—`:
    a. **Evaluate each listed feature** against the predicted line:
       - **Type match**: `peak` → emission line; `trough` → absorption line. Mismatch → reject this feature.
       - **Wavelength offset** |λ_feat − λ_pred|: < 20 Å excellent; 20–80 Å acceptable; > 80 Å → reject.
-      - **FWHM vs width_class**: broad lines expect FWHM > 2000 km/s; narrow lines < 2000 km/s. Flag mismatches but don't reject solely on FWHM — real lines can be transitional.
+      - **FWHM vs width_class**: grep kb/lines.md for the line's expected width class. Broad lines expect FWHM > 2000 km/s; narrow lines < 2000 km/s. Flag mismatches but don't reject solely on FWHM.
 
    b. **If any feature passes all checks → adopt the best one** (closest in wavelength):
       - λ_fit = feature wavelength, FWHM = feature FWHM_km_s
       - Call `compute_redshift(λ_fit, λ_rest)` to check if implied_z ∈ [z_min, z_max]
-      - Estimate S/N conservatively: the CWT pre-detection has already filtered by SNR, so adopted features typically have S/N > 3. Use the feature amplitude relative to the spectrum's median noise floor as a rough guide.
-      - Δχ²/n: set to "—" (not available from CWT; this is acceptable for adopted features)
+      - Estimate S/N conservatively: the CWT pre-detection has already filtered by SNR, so adopted features typically have S/N > 3.
+      - Δχ²/n: set to "—" (not available from CWT; acceptable for adopted features)
       - Do **not** call `fit_peak` — the CWT measurement is the result.
       - Skip to step 6 for status assignment.
 
@@ -156,63 +72,51 @@ If the "Features" column is `—` or all features were rejected in step 4:
 ### 6. Apply judgment criteria (priority order)
 
    a. **S/N** = amplitude / local_rms
-      - \> 3 → significant signal
+      - > 3 → significant signal
       - 2–3 → marginal
       - < 2 → cannot confirm
 
    b. **Δχ²/n** (per data point, normalized)
-      - \> 10 → Gaussian significantly improves fit
+      - > 10 → Gaussian significantly improves fit
       - 1–10 → moderate improvement
       - < 1 or negative → spurious or negligible
 
-   c. **FWHM vs width_class consistency**
-      - broad lines: FWHM > 2000 km/s expected
-      - narrow lines: FWHM < 2000 km/s expected
-      - `both` class: either is acceptable (skip this check)
-      - Flag mismatches but don't reject solely on FWHM
+   c. **FWHM vs width_class consistency** — grep kb/lines.md for expected width class. Broad: FWHM > 2000 km/s; narrow: < 2000 km/s; `both`: either ok. Flag mismatches but don't reject solely on FWHM.
 
    d. **Center deviation** |λ_fit − λ_pred|
       - < 20 Å: excellent agreement
       - 20–80 Å: acceptable (consider nearby line contamination)
-      - \> 80 Å: poor — likely wrong identification
+      - > 80 Å: poor — likely wrong identification
 
    e. **Redshift consistency** — call `compute_redshift(fitted_center, rest_wavelength)` to get the implied redshift. If z ∉ [z_min, z_max], the line does NOT support this hypothesis regardless of S/N or Δχ².
 
 ### 7. Assign status
 
-   - **CONFIRMED**: S/N > 3, Δχ²/n > 10 (or adopted from CWT with excellent wavelength/FWHM agreement), FWHM self-consistent
-   - **LIKELY**: S/N > 3, Δχ²/n 1–10 (or adopted from CWT with acceptable but not perfect agreement); or S/N 2–3 but Δχ²/n > 10
-   - **MARGINAL**: S/N 2–3, Δχ²/n 1–10
-   - **ESTIMATED**: CWT-adopted feature where wavelength offset 20–80 Å or FWHM mismatch prevents full CONFIRMED/LIKELY classification. Δχ²/n is "—".
+   - **LIKELY**: S/N > 3 and Δχ²/n > 10, with good FWHM self-consistency (or adopted from CWT with wavelength offset < 20 Å and FWHM matching width_class)
+   - **MARGINAL**: S/N 2–3, Δχ²/n 1–10; or S/N > 3 but Δχ²/n 1–10; or CWT-adopted with offset 20–80 Å or notable FWHM mismatch
+   - **ESTIMATED**: CWT-adopted feature where wavelength offset 20–80 Å or FWHM mismatch prevents full LIKELY classification. Δχ²/n is "—".
    - **NOT FOUND**: S/N < 2
    - **SPURIOUS**: Δχ²/n < 0
 
-   For CWT-adopted features: if wavelength offset < 20 Å and FWHM matches width_class → CONFIRMED; if offset 20–80 Å or minor FWHM mismatch → LIKELY.
+   Important: LIKELY is the HIGHEST possible status. No single Gaussian fit or CWT pre-detection at this SNR warrants a stronger claim than LIKELY. The job of the downstream synthesis agent is to weigh multiple LIKELY lines across hypotheses — do not attempt to pre-empt that judgment.
 
 ## Phase 3: Final Report
 
-8. Determine the **systemic redshift**. Among all CONFIRMED (and LIKELY, if no CONFIRMED line exists at that priority level) lines, select the one with the **lowest ionization state** and use its implied redshift as the systemic redshift. Priority from lowest to highest ionization:
+8. Determine the **systemic redshift**. Among all LIKELY (and MARGINAL, if no LIKELY line exists at that priority level) lines, select the one with the **lowest ionization state**. Grep `kb/ionization.md` for the priority table and excluded lines. Key rules:
 
-   - **Priority 1 — Neutral absorption** (most reliable): Ca K_abs / Ca H_abs / G-band_abs / Mg_abs / Na D_abs. Stellar absorption traces the galaxy rest frame directly.
-   - **Priority 2 — [O II] (3727)**: O⁺ (~13.6 eV)
-   - **Priority 3 — [S II] (6718/6733)**: S⁺
-   - **Priority 4 — [N II] (6550/6585)**: N⁺
-   - **Priority 5 — Balmer series**: Hα / Hβ / Hγ / Hδ / Hε (~13.6 eV)
-   - **Priority 6 — Mg II (2800)**: Mg⁺ (~15.0 eV)
-   - **Priority 7 — [O III] (4960/5008)**: O⁺⁺ (~35.1 eV)
+   - Priority 1 (neutral absorption) is most reliable. Priority 7 ([O III]) is weakest.
+   - He II, C III], C IV, Ne V, Lyα are EXCLUDED (outflow-blueshifted).
+   - ELG exception: if emission-line dominated, anchor on [O II] rather than weak Ca K/H (see `kb/ionization.md`).
+   - Fallback: use best available line at lowest-numbered priority level with ≥1 LIKELY or MARGINAL line.
 
-   **Excluded** (must NOT anchor systemic redshift): He II (He⁺, ~54.4 eV), C III] (C⁺⁺, ~47.9 eV), C IV (C⁺⁺⁺, ~64.5 eV), Ne [V] (Ne⁺⁺⁺⁺, ~97.1 eV), Lyα (1216). These high-ionization lines are subject to outflow blueshifts of hundreds of km/s. If the only CONFIRMED lines are from the excluded list, flag the redshift as **potentially biased** and state the caveat explicitly.
+9. Classify the object — grep `kb/classification.md` for type-specific diagnostics:
+   - **Typical QSO**: broad lines (Lyα, C IV, C III], Mg II) present + high/low ionization lines coexist
+   - **Host Galaxy dominated AGN**: AGN lines present (Ne V, C III], Mg II)
+   - **Galaxy (ELG)**: narrow lines; no broad lines. Grep `kb/classification.md` for ELG-specific diagnostics.
+   - **Galaxy (LRG/BGS)**: Ca H/K absorption, Balmer series. Grep `kb/classification.md` for LRG-specific diagnostics.
+   - **Unknown**: insufficient confirmed lines for classification
 
-   Fallback chain: use the best available line at the lowest-numbered priority level that has at least one CONFIRMED or LIKELY line. If no line from any priority level 1–7 is available, state that the systemic redshift cannot be reliably determined.
-
-9. Classify the object:
-    - **Typical QSO**: broad lines (Lyα, C IV, C III], Mg II) present + high/low ionization lines coexist
-    - **Host Galaxy dominated AGN**: AGN lines present (Ne [V], C III], Mg II)
-    - **Galaxy (ELG)**: narrow lines; no broad lines
-    - **Galaxy (LRG/BGS)**: Ca H/K absorption, Balmer emission/absorption series
-    - **Unknown**: insufficient confirmed lines for classification
-
-10. **Write the line catalog CSV** — call `write_lines_csv` with ALL lines you fitted or estimated (every status: CONFIRMED, LIKELY, MARGINAL, ESTIMATED, NOT_FOUND, SPURIOUS). This CSV is the definitive structured record that downstream pipelines consume. Write it BEFORE the report and JSON.
+10. **Write the line catalog CSV** — call `write_lines_csv` with ALL lines you fitted or estimated (every status: LIKELY, MARGINAL, ESTIMATED, NOT_FOUND, SPURIOUS). This CSV is the definitive structured record that downstream pipelines consume. Write it BEFORE the report and JSON.
 
 11. **Write the human-readable report** — call `write_report`. The report MUST use the following sections, in this order, with these exact headings. Do not invent new section names or merge sections.
 
@@ -224,11 +128,11 @@ A compact block of key-value lines. Include: file name, wavelength coverage, med
 
 ### 13b. Overall Verdict
 
-One sentence in bold: **CONFIRMED** or **NOT CONFIRMED**. Follow with 1–2 sentences explaining the primary evidence for the verdict. Call out the number of CONFIRMED lines and which key diagnostic lines (e.g., Lyα, [O II], Hα) are present or absent.
+One sentence in bold: **SUPPORTED** or **NOT SUPPORTED**. Follow with 1–2 sentences explaining the primary evidence for the verdict. Call out the number of LIKELY lines and which key diagnostic lines (e.g., Lyα, [O II], Hα) are present or absent.
 
 ### 13c. Per-Line Results
 
-A single unified markdown table of ALL fitted or estimated lines, grouped by status and sorted within each group by observed wavelength. Groups appear in this order: **CONFIRMED**, **LIKELY**, **ESTIMATED**, **MARGINAL**, **NOT_FOUND**, **SPURIOUS**. Use a thin horizontal rule (`---`) between groups and a bold group header line.
+A single unified markdown table of ALL fitted or estimated lines, grouped by status and sorted within each group by observed wavelength. Groups appear in this order: **LIKELY**, **MARGINAL**, **ESTIMATED**, **NOT_FOUND**, **SPURIOUS**. Use a thin horizontal rule (`---`) between groups and a bold group header line.
 
 Required columns (all 13 must be present):
 
@@ -246,7 +150,7 @@ Required columns (all 13 must be present):
 | `Δχ²/n` | fit_peak delta_chi2_per_n, or "—" for ESTIMATED / CWT-adopted lines |
 | `implied_z` | compute_redshift(λ_fit, λ_rest) (or "—" if unavailable) |
 | `in_window` | "yes" / "no" (based on whether implied_z ∈ [z_min, z_max]) |
-| `status` | CONFIRMED / LIKELY / ESTIMATED / MARGINAL / NOT_FOUND / SPURIOUS |
+| `status` | LIKELY / MARGINAL / ESTIMATED / NOT_FOUND / SPURIOUS |
 
 For ESTIMATED lines, S/N and Δχ²/n are set to "—". For CWT-adopted lines (step 4), Δχ²/n is set to "—".
 
@@ -257,27 +161,25 @@ Lines for which `fit_peak` failed (center = null) and no CWT feature was adoptab
 Prose paragraphs discussing only the physically interesting results. Do NOT repeat the table row-by-row. Cover:
 - Lines that are confirmed with high confidence and why they anchor the redshift
 - Inconsistencies: lines with large center offsets, mismatched FWHM vs width_class, or implied_z outside the verification window
-- Blends and complexes (e.g., Hα + [N II], Ca H + Hε, Mg II emission + absorption)
-- Any evidence of outflows (blueshifted high-ionization lines relative to low-ionization)
+- Blends and complexes (e.g., Hα + [N II], Ca H + Hε, Mg II emission + absorption) — grep `kb/lines.md` for blend disentanglement rules
+- Any evidence of outflows (blueshifted high-ionization lines relative to low-ionization) — grep `kb/ionization.md`
 - Note any lines that may warrant deeper investigation by the downstream synthesis agent (e.g., marginal fits near key diagnostics, potential blends that single-Gaussian fitting cannot resolve)
 
 ### 13e. Systemic Redshift
 
-State the final systemic redshift, following the rule in step 8: **use the implied redshift of the lowest-ionization CONFIRMED line** (or LIKELY, per the fallback chain). The ionization priority is:
+State the final systemic redshift, following the rule in step 8: **use the implied redshift of the lowest-ionization LIKELY line** (or MARGINAL, per the fallback chain). Grep `kb/ionization.md` for the full priority table.
 
-**Ca K/H_abs > G-band_abs > Mg_abs > Na D_abs > [O II] > [S II] > [N II] > Hα > Hβ > Mg II > [O III]**
-
-Explicitly list every CONFIRMED or LIKELY line that was **excluded** from the systemic redshift and explain why:
-- High-ionization lines (He II, C III], C IV, Ne [V], Lyα) are excluded because they are often blueshifted by outflows. For each excluded line, quote its implied z and the velocity offset relative to the adopted systemic redshift.
+Explicitly list every LIKELY or MARGINAL line that was **excluded** from the systemic redshift and explain why:
+- High-ionization lines (He II, C III], C IV, Ne V, Lyα) are excluded because they are often blueshifted by outflows. For each excluded line, quote its implied z and the velocity offset relative to the adopted systemic redshift.
 - Mg II may be used (priority 6) but flag if its implied z shows a blueshift relative to lower-ionization lines.
 - Lines with implied_z outside [z_min, z_max] are excluded regardless of S/N.
 - Lines with FWHM inconsistent with their width_class are flagged but may still be used if they are the only available line at a given priority level — note this caveat explicitly.
 
-If no line from priority levels 1–7 is available, state that the systemic redshift cannot be reliably determined and the hypothesis is NOT CONFIRMED.
+If no line from priority levels 1–7 is available, state that the systemic redshift cannot be reliably determined and the hypothesis is NOT SUPPORTED.
 
 ### 13f. Classification
 
-Object type (**Typical QSO** / **Host Galaxy dominated AGN** / **Galaxy (ELG)** / **Galaxy (LRG/BGS)** / **Unknown**) followed by 2–4 sentences of reasoning referencing specific lines and their properties (broad vs narrow, ionization states, absorption features).
+Object type (**Typical QSO** / **Host Galaxy dominated AGN** / **Galaxy (ELG)** / **Galaxy (LRG/BGS)** / **Unknown**) followed by 2–4 sentences of reasoning referencing specific lines and their properties (broad vs narrow, ionization states, absorption features). Grep `kb/classification.md` for type-specific diagnostics and exclusion criteria.
 
 ### 13g. Caveats
 

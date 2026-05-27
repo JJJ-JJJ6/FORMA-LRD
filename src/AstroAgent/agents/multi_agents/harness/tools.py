@@ -450,8 +450,8 @@ def write_report(file_path: str, content: str) -> dict:
 def write_lines_csv(file_path: str, lines: list) -> dict:
     """Write fitted spectral line results to a CSV file.
 
-    Each row represents one line that was fitted (whether CONFIRMED, LIKELY,
-    MARGINAL, or NOT_FOUND). The CSV is the definitive structured record of the
+    Each row represents one line that was fitted (whether LIKELY, MARGINAL,
+    ESTIMATED, NOT_FOUND, or SPURIOUS). The CSV is the definitive structured record of the
     analysis — downstream pipelines read this, not the JSON in the chat response.
 
     Parameters
@@ -472,7 +472,7 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
             fwhm_km_s : float       — FWHM in km/s (or null)
             snr : float             — amplitude / local_rms (or null)
             delta_chi2_per_n : float — Δχ² per data point (or null)
-            status : str            — CONFIRMED, LIKELY, MARGINAL, NOT_FOUND, or SPURIOUS
+            status : str            — LIKELY, MARGINAL, ESTIMATED, NOT_FOUND, or SPURIOUS
 
     Returns
     -------
