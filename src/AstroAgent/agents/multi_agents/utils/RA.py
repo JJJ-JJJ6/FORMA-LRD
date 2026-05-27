@@ -634,20 +634,64 @@ def extract_verdict_summary(rule_analysis: dict) -> dict:
 # Failure analysis — root-cause identification via LLM
 # =========================================================================
 
-FAILURE_ANALYSIS_PROMPT = """\
-You are debugging a redshift synthesis pipeline that made an error. Your job is to
-identify WHY the error occurred and suggest a specific fix.
+# ── Round 1: blind review (no ground truth) ──────────────────────
+
+BLIND_REVIEW_PROMPT = """\
+You are reviewing a redshift synthesis pipeline's output. Critically examine the
+synthesis reasoning and identify any potential issues — you do NOT know the correct
+answer yet.
 
 ## Pipeline Architecture
 
-The pipeline has three stages:
-1. **Harness**: Per-hypothesis verification with Gaussian fitting → produces CSV line catalogs
-2. **Middleware**: Builds structured markdown summaries from CSV + LLM text extraction
+1. **Harness**: Per-hypothesis verification with Gaussian fitting → CSV line catalogs
+2. **Middleware**: Structured markdown summaries from CSV + LLM text extraction
 3. **Synthesis**: Cross-compares all hypotheses (Phase 1 blind review → Phase 2 targeted spectrum reads → Phase 3 JSON verdict)
 
-The synthesis agent has access to:
-- A skill prompt defining methodology (phases, contradiction matrix, exclusion logic)
-- A knowledge base (kb/*.md) with physics rules (line tables, doublet rules, ionization priorities, classification diagnostics)
+The synthesis agent uses a skill prompt (methodology) and a knowledge base (kb/*.md: line tables, doublet rules, ionization priorities, classification diagnostics).
+
+## Harness Summaries
+
+{harness_summaries}
+
+## Synthesis Reasoning
+
+{synthesis_reasoning}
+
+## Task
+
+Critically review the synthesis above. Focus on:
+
+1. **Contradictions**: Are there inconsistencies in the contradiction matrix or between hypotheses?
+2. **Evidence quality**: Does the conclusion follow from the line data, or are there weak / missing lines being glossed over?
+3. **Methodology gaps**: What should the synthesis have checked but didn't?
+4. **Alternative hypotheses**: Is there a stronger candidate being overlooked?
+
+Return ONLY a valid JSON object (no markdown fences):
+
+{{
+    "overall_assessment": "<1 paragraph: is the synthesis conclusion well-supported or questionable?>",
+    "issues": [
+        {{
+            "severity": "critical | major | minor",
+            "category": "contradiction | evidence_quality | methodology_gap | overlooked_hypothesis | classification_error | other",
+            "description": "<specific observation, cite wavelengths and line names>",
+            "affected_hypothesis": "<which hypothesis index, or 'overall'>"
+        }}
+    ],
+    "strongest_alternative": "<which hypothesis (if any) looks stronger than the chosen one, and why; or null>",
+    "should_have_abstained": true or false
+}}
+"""
+
+# ── Round 2: root-cause analysis (ground truth revealed) ─────────
+
+ROOT_CAUSE_PROMPT = """\
+You previously reviewed a redshift synthesis and identified potential issues
+(BLIND — without knowing the correct answer). Now the ground truth is revealed.
+
+## Blind Review Findings
+
+{blind_review}
 
 ## The Error
 
@@ -656,39 +700,36 @@ The synthesis agent has access to:
 **Synthesis result**: z={synthesis_z}, type={synthesis_type}, confidence={synthesis_confidence}
 **Mismatch**: {mismatch_desc}
 
-## Harness Summaries
-
-The synthesis agent saw these summaries for each hypothesis:
+## Harness Summaries (same as Round 1)
 
 {harness_summaries}
 
-## Synthesis Reasoning (key excerpts)
-
-{synthesis_reasoning}
-
 ## Task
 
-Identify the ROOT CAUSE of this error. Choose ONE of:
+Given the blind review observations AND the revealed error, identify the ROOT CAUSE.
+Choose ONE of:
 
-- **skill_gap**: The skill prompt is missing a necessary methodological instruction (e.g., no guidance on how to weight cross-type evidence, or when to reject all hypotheses).
+- **skill_gap**: The skill prompt is missing a necessary methodological instruction.
 - **kb_gap**: The knowledge base is missing physics knowledge needed for this case.
 - **kb_error**: The knowledge base contains incorrect or misleading physics rules.
-- **harness_error**: The harness produced misleading line data (wrong status, wrong S/N) that the synthesis agent reasonably trusted.
-- **llm_error**: The knowledge and methodology were sufficient, but the synthesis LLM made a reasoning mistake.
+- **harness_error**: The harness produced misleading line data that synthesis reasonably trusted.
+- **llm_error**: Knowledge and methodology were sufficient, but synthesis made a reasoning mistake.
 - **ambiguous**: Multiple factors contributed; cannot single out one root cause.
 
-**IMPORTANT — if in_scoring is False**: The true redshift was NOT among the scoring candidates.
-The upstream scoring pipeline failed to include the correct answer. The synthesis agent should have
-recognised that ALL hypotheses are fatally flawed and abstained (confidence=LOW, redshift=null).
-Instead, it picked a wrong candidate with MEDIUM/HIGH confidence. The learning focus should be on:
-- Why did the synthesis agent fail to recognise that no hypothesis was credible?
-- What signal (or lack thereof) could have triggered abstention?
-- Are the abstention criteria in the skill prompt and KB sufficient?
+**If the blind review already caught the error**: this suggests the synthesis LLM ignored or
+misweighted available signals → likely `llm_error` or `skill_gap` (insufficient weighting guidance).
 
-Return ONLY a valid JSON object (no markdown fences, no explanation):
+**If the blind review missed the error**: the issue is deeper — the skill prompt or KB may lack
+the diagnostic that would have surfaced it → likely `skill_gap` or `kb_gap`.
+
+**If in_scoring is False** (true z not in candidates): focus on why synthesis failed to reject
+all hypotheses. The blind review's `should_have_abstained` field is key here.
+
+Return ONLY a valid JSON object (no markdown fences):
 
 {{
     "root_cause": "skill_gap | kb_gap | kb_error | harness_error | llm_error | ambiguous",
+    "blind_review_alignment": "<did the blind review catch the error? 1-2 sentences>",
     "explanation": "<1-paragraph analysis of what went wrong and why>",
     "suggested_fix": {{
         "target_file": "kb/classification.md or targeted_search_skill.md or synthesize_skill.md or null",
@@ -795,16 +836,7 @@ async def analyze_failure(
         )
     mismatch_desc = "; ".join(desc_parts)
 
-    prompt = FAILURE_ANALYSIS_PROMPT.format(
-        ground_truth_z=ground_truth["z"],
-        ground_truth_type=ground_truth["type"],
-        synthesis_z=synthesis_result.get("redshift"),
-        synthesis_type=synthesis_result.get("classification"),
-        synthesis_confidence=synthesis_result.get("confidence"),
-        mismatch_desc=mismatch_desc,
-        harness_summaries="\n\n".join(summaries),
-        synthesis_reasoning=synthesis_reasoning[:6000],
-    )
+    harness_text = "\n\n".join(summaries)
 
     llm = ChatOpenAI(
         model=model,
@@ -813,48 +845,130 @@ async def analyze_failure(
         temperature=temperature,
     )
 
-    # ── Streaming path ────────────────────────────────────────────
+    async def _stream_one(md, label: str, prompt: str) -> str:
+        """Stream a single LLM call into *md*, return accumulated text."""
+        md.write(f"### {label}\n\n")
+        md.write("<details>\n<summary>Prompt</summary>\n\n")
+        md.write(prompt)
+        md.write("\n</details>\n\n---\n\n")
+        md.flush()
+
+        accumulated = ""
+        try:
+            async for chunk in llm.astream([("user", prompt)]):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    accumulated += token
+                    md.write(token)
+                    md.flush()
+        except Exception as exc:
+            md.write(f"\n\n> ❌ {label} streaming failed: {exc}\n\n")
+            md.flush()
+            raise
+        md.write("\n\n---\n\n")
+        md.flush()
+        return accumulated
+
+    async def _invoke_one(prompt: str) -> str:
+        resp = await llm.ainvoke([("user", prompt)])
+        return resp.content if hasattr(resp, "content") else str(resp)
+
+    # ── Round 1: blind review ────────────────────────────────────
+    blind_prompt = BLIND_REVIEW_PROMPT.format(
+        harness_summaries=harness_text,
+        synthesis_reasoning=synthesis_reasoning[:6000],
+    )
+
+    # ── Round 2: root cause with ground truth ────────────────────
+    root_cause_prompt_tpl = ROOT_CAUSE_PROMPT  # format after Round 1
+
     if stream_md_path:
         os.makedirs(os.path.dirname(stream_md_path) or ".", exist_ok=True)
 
         with open(stream_md_path, "w", encoding="utf-8") as md:
-            md.write("# Failure Analysis\n\n")
+            md.write("# Failure Analysis (two-round)\n\n")
+            md.write(f"**Ground truth**: z={ground_truth['z']}, type={ground_truth['type']}\n\n")
+            md.write(f"**Synthesis**: z={synthesis_result.get('redshift')}, "
+                     f"type={synthesis_result.get('classification')}, "
+                     f"confidence={synthesis_result.get('confidence')}\n\n")
             md.write("---\n\n")
-            md.write("<details>\n<summary>Prompt</summary>\n\n")
-            md.write(prompt)
-            md.write("\n</details>\n\n---\n\n")
-            md.write("## Response\n\n")
-            md.flush()
 
-            accumulated = ""
+            # Round 1
             try:
-                async for chunk in llm.astream([("user", prompt)]):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if token:
-                        accumulated += token
-                        md.write(token)
-                        md.flush()
+                blind_text = await _stream_one(md, "Round 1 — Blind Review", blind_prompt)
             except Exception as exc:
-                md.write(f"\n\n> ❌ Failure analysis streaming failed: {exc}\n\n")
-                md.flush()
-                logging.warning(f"Failure analysis LLM stream failed: {exc}")
+                logging.warning(f"Failure analysis Round 1 stream failed: {exc}")
                 return _fallback_analysis()
 
-        parsed = _parse_extraction_json(accumulated)
+            blind_parsed = _parse_extraction_json(blind_text)
+            blind_summary = (
+                json.dumps(blind_parsed, indent=2, ensure_ascii=False)
+                if blind_parsed
+                else blind_text[:2000]
+            )
+
+            # Round 2
+            root_prompt = root_cause_prompt_tpl.format(
+                blind_review=blind_summary,
+                ground_truth_z=ground_truth["z"],
+                ground_truth_type=ground_truth["type"],
+                in_scoring=mismatch_info.get("in_scoring", True),
+                synthesis_z=synthesis_result.get("redshift"),
+                synthesis_type=synthesis_result.get("classification"),
+                synthesis_confidence=synthesis_result.get("confidence"),
+                mismatch_desc=mismatch_desc,
+                harness_summaries=harness_text,
+            )
+
+            try:
+                root_text = await _stream_one(md, "Round 2 — Root Cause Analysis", root_prompt)
+            except Exception as exc:
+                logging.warning(f"Failure analysis Round 2 stream failed: {exc}")
+                return _fallback_analysis()
+
+        parsed = _parse_extraction_json(root_text)
         if parsed:
+            # Preserve blind review alongside root cause
+            parsed["_blind_review"] = blind_parsed
             return parsed
         return _fallback_analysis()
 
     # ── Non-streaming path ────────────────────────────────────────
     try:
-        resp = await llm.ainvoke([("user", prompt)])
-        content = resp.content if hasattr(resp, "content") else str(resp)
-        parsed = _parse_extraction_json(content)
-        if parsed:
-            return parsed
+        blind_text = await _invoke_one(blind_prompt)
     except Exception as exc:
-        logging.warning(f"Failure analysis LLM call failed: {exc}")
+        logging.warning(f"Failure analysis Round 1 failed: {exc}")
+        return _fallback_analysis()
 
+    blind_parsed = _parse_extraction_json(blind_text)
+    blind_summary = (
+        json.dumps(blind_parsed, indent=2)
+        if blind_parsed
+        else blind_text[:2000]
+    )
+
+    root_prompt = root_cause_prompt_tpl.format(
+        blind_review=blind_summary,
+        ground_truth_z=ground_truth["z"],
+        ground_truth_type=ground_truth["type"],
+        in_scoring=mismatch_info.get("in_scoring", True),
+        synthesis_z=synthesis_result.get("redshift"),
+        synthesis_type=synthesis_result.get("classification"),
+        synthesis_confidence=synthesis_result.get("confidence"),
+        mismatch_desc=mismatch_desc,
+        harness_summaries=harness_text,
+    )
+
+    try:
+        root_text = await _invoke_one(root_prompt)
+    except Exception as exc:
+        logging.warning(f"Failure analysis Round 2 failed: {exc}")
+        return _fallback_analysis()
+
+    parsed = _parse_extraction_json(root_text)
+    if parsed:
+        parsed["_blind_review"] = blind_parsed
+        return parsed
     return _fallback_analysis()
 
 
