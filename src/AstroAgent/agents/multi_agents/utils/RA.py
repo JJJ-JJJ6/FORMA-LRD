@@ -608,3 +608,582 @@ def format_ranked(ranked: list) -> str:
             f"n_lines={r['n_lines_used']}"
         )
     return "\n".join(lines)
+
+
+# =========================================================================
+# Synthesis verdict extraction (for ground-truth comparison)
+# =========================================================================
+
+def extract_verdict_summary(rule_analysis: dict) -> dict:
+    """Extract a normalised summary from synthesis output for comparison.
+
+    Returns a flat dict with redshift, classification, and confidence,
+    handling the various shapes rule_analysis can take (parsed JSON,
+    fallback dict, error dict).
+    """
+    return {
+        "redshift": rule_analysis.get("redshift"),
+        "redshift_err": rule_analysis.get("redshift_err"),
+        "classification": rule_analysis.get("classification", "Unknown"),
+        "confidence": rule_analysis.get("confidence", "LOW"),
+        "best_hypothesis_idx": rule_analysis.get("best_hypothesis_idx"),
+    }
+
+
+# =========================================================================
+# Failure analysis — root-cause identification via LLM
+# =========================================================================
+
+FAILURE_ANALYSIS_PROMPT = """\
+You are debugging a redshift synthesis pipeline that made an error. Your job is to
+identify WHY the error occurred and suggest a specific fix.
+
+## Pipeline Architecture
+
+The pipeline has three stages:
+1. **Harness**: Per-hypothesis verification with Gaussian fitting → produces CSV line catalogs
+2. **Middleware**: Builds structured markdown summaries from CSV + LLM text extraction
+3. **Synthesis**: Cross-compares all hypotheses (Phase 1 blind review → Phase 2 targeted spectrum reads → Phase 3 JSON verdict)
+
+The synthesis agent has access to:
+- A skill prompt defining methodology (phases, contradiction matrix, exclusion logic)
+- A knowledge base (kb/*.md) with physics rules (line tables, doublet rules, ionization priorities, classification diagnostics)
+
+## The Error
+
+**Ground truth**: z={ground_truth_z}, type={ground_truth_type}
+**True z in scoring candidates**: {in_scoring}
+**Synthesis result**: z={synthesis_z}, type={synthesis_type}, confidence={synthesis_confidence}
+**Mismatch**: {mismatch_desc}
+
+## Harness Summaries
+
+The synthesis agent saw these summaries for each hypothesis:
+
+{harness_summaries}
+
+## Synthesis Reasoning (key excerpts)
+
+{synthesis_reasoning}
+
+## Task
+
+Identify the ROOT CAUSE of this error. Choose ONE of:
+
+- **skill_gap**: The skill prompt is missing a necessary methodological instruction (e.g., no guidance on how to weight cross-type evidence, or when to reject all hypotheses).
+- **kb_gap**: The knowledge base is missing physics knowledge needed for this case.
+- **kb_error**: The knowledge base contains incorrect or misleading physics rules.
+- **harness_error**: The harness produced misleading line data (wrong status, wrong S/N) that the synthesis agent reasonably trusted.
+- **llm_error**: The knowledge and methodology were sufficient, but the synthesis LLM made a reasoning mistake.
+- **ambiguous**: Multiple factors contributed; cannot single out one root cause.
+
+**IMPORTANT — if in_scoring is False**: The true redshift was NOT among the scoring candidates.
+The upstream scoring pipeline failed to include the correct answer. The synthesis agent should have
+recognised that ALL hypotheses are fatally flawed and abstained (confidence=LOW, redshift=null).
+Instead, it picked a wrong candidate with MEDIUM/HIGH confidence. The learning focus should be on:
+- Why did the synthesis agent fail to recognise that no hypothesis was credible?
+- What signal (or lack thereof) could have triggered abstention?
+- Are the abstention criteria in the skill prompt and KB sufficient?
+
+Return ONLY a valid JSON object (no markdown fences, no explanation):
+
+{{
+    "root_cause": "skill_gap | kb_gap | kb_error | harness_error | llm_error | ambiguous",
+    "explanation": "<1-paragraph analysis of what went wrong and why>",
+    "suggested_fix": {{
+        "target_file": "kb/classification.md or targeted_search_skill.md or synthesize_skill.md or null",
+        "target_section": "<section heading in the target file, or null>",
+        "proposed_change": "<specific text to add or modify, or null if no clear fix>",
+        "rationale": "<why this change would prevent this class of error>"
+    }}
+}}
+"""
+
+
+async def analyze_failure(
+    synthesis_result: dict,
+    harness_results: list,
+    harness_dir: str,
+    ground_truth: dict,
+    mismatch_info: dict,
+    *,
+    model: str,
+    api_key: str,
+    base_url: str,
+    temperature: float = 0.0,
+    stream_md_path: str | None = None,
+) -> dict:
+    """Call an LLM to identify the root cause of a synthesis failure.
+
+    Parameters
+    ----------
+    synthesis_result : dict
+        The full rule_analysis dict from synthesis.
+    harness_results : list
+        Raw harness results (used to build summaries the synthesis saw).
+    harness_dir : str
+        Directory with harness reports and CSVs.
+    ground_truth : dict
+        ``{"z": float, "type": str}``.
+    mismatch_info : dict
+        ``{"z_mismatch": bool, "type_mismatch": bool}``.
+    model, api_key, base_url : str
+        LLM configuration.
+
+    Returns
+    -------
+    dict
+        Parsed failure analysis with keys: root_cause, explanation, suggested_fix.
+    """
+    from langchain_openai import ChatOpenAI
+    from pathlib import Path
+
+    # ── Build harness summaries (same as what synthesis saw) ──
+    wl = np.linspace(3600, 9824, 7000)  # placeholder — not needed for summaries
+    fl = np.ones(7000) * 5.0
+    dn4000_lookup = build_dn4000_lookup(wl, fl, harness_results)
+    summaries = []
+    for i, r in enumerate(harness_results):
+        idx = r.get("hypothesis_idx", i + 1)
+        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_rows = _read_csv_lines(csv_path) if os.path.exists(csv_path) else []
+        table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
+        structured = r.get("structured_output") or {}
+        summaries.append(format_structured_summary(
+            hypothesis_idx=idx,
+            z_tested=r.get("redshift", 0),
+            text_fields=structured,
+            table_rows=table_rows,
+            not_found_names=nf_names,
+            spurious_names=sp_names,
+            z_scatter=z_scat,
+            dn4000_lookup=dn4000_lookup,
+        ))
+
+    # ── Extract key synthesis reasoning ──
+    stream_path = os.path.join(harness_dir, "synthesis_stream.md")
+    synthesis_reasoning = ""
+    if os.path.exists(stream_path):
+        text = Path(stream_path).read_text(encoding="utf-8")
+        # Extract the assistant turns (skip raw data dumps)
+        parts = re.split(r"### Assistant \(turn \d+\)", text)
+        # Keep the Phase 1 analysis (turn 1) and the last turn (verdict)
+        if len(parts) >= 2:
+            # First assistant turn has Phase 1 analysis
+            synthesis_reasoning += "### Phase 1 Analysis\n\n"
+            turn1 = parts[1]
+            # Truncate before tool results
+            m = re.search(r"```json\s*\{.*?\}\s*```", turn1, re.DOTALL)
+            if m:
+                synthesis_reasoning += turn1[:m.start()].strip()[-3000:]
+            else:
+                synthesis_reasoning += turn1.strip()[-3000:]
+        if len(parts) >= 3:
+            synthesis_reasoning += "\n\n### Final Assessment\n\n"
+            last = parts[-1].strip()[-3000:]
+            synthesis_reasoning += last
+
+    # ── Build mismatch description ──
+    desc_parts = []
+    if mismatch_info.get("z_mismatch"):
+        desc_parts.append(
+            f"redshift: expected {ground_truth['z']}, got {synthesis_result.get('redshift')}"
+        )
+    if mismatch_info.get("type_mismatch"):
+        desc_parts.append(
+            f"type: expected {ground_truth['type']}, got {synthesis_result.get('classification')}"
+        )
+    mismatch_desc = "; ".join(desc_parts)
+
+    prompt = FAILURE_ANALYSIS_PROMPT.format(
+        ground_truth_z=ground_truth["z"],
+        ground_truth_type=ground_truth["type"],
+        synthesis_z=synthesis_result.get("redshift"),
+        synthesis_type=synthesis_result.get("classification"),
+        synthesis_confidence=synthesis_result.get("confidence"),
+        mismatch_desc=mismatch_desc,
+        harness_summaries="\n\n".join(summaries),
+        synthesis_reasoning=synthesis_reasoning[:6000],
+    )
+
+    llm = ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        temperature=temperature,
+    )
+
+    # ── Streaming path ────────────────────────────────────────────
+    if stream_md_path:
+        os.makedirs(os.path.dirname(stream_md_path) or ".", exist_ok=True)
+
+        with open(stream_md_path, "w", encoding="utf-8") as md:
+            md.write("# Failure Analysis\n\n")
+            md.write("---\n\n")
+            md.write("<details>\n<summary>Prompt</summary>\n\n")
+            md.write(prompt)
+            md.write("\n</details>\n\n---\n\n")
+            md.write("## Response\n\n")
+            md.flush()
+
+            accumulated = ""
+            try:
+                async for chunk in llm.astream([("user", prompt)]):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        accumulated += token
+                        md.write(token)
+                        md.flush()
+            except Exception as exc:
+                md.write(f"\n\n> ❌ Failure analysis streaming failed: {exc}\n\n")
+                md.flush()
+                logging.warning(f"Failure analysis LLM stream failed: {exc}")
+                return _fallback_analysis()
+
+        parsed = _parse_extraction_json(accumulated)
+        if parsed:
+            return parsed
+        return _fallback_analysis()
+
+    # ── Non-streaming path ────────────────────────────────────────
+    try:
+        resp = await llm.ainvoke([("user", prompt)])
+        content = resp.content if hasattr(resp, "content") else str(resp)
+        parsed = _parse_extraction_json(content)
+        if parsed:
+            return parsed
+    except Exception as exc:
+        logging.warning(f"Failure analysis LLM call failed: {exc}")
+
+    return _fallback_analysis()
+
+
+def _fallback_analysis() -> dict:
+    return {
+        "root_cause": "ambiguous",
+        "explanation": "LLM-based analysis failed to produce a parseable result.",
+        "suggested_fix": {
+            "target_file": None,
+            "target_section": None,
+            "proposed_change": None,
+            "rationale": "Automatic analysis failed — requires manual review.",
+        },
+    }
+
+
+# =========================================================================
+# Batch failure accumulation & analysis
+# =========================================================================
+
+def _append_pending_failure(output_dir: str, record: dict) -> str:
+    """Append a failure record to the pending batch queue.
+
+    Returns the path to pending.jsonl.
+    """
+    failure_dir = os.path.join(output_dir, "failure")
+    os.makedirs(failure_dir, exist_ok=True)
+    pending_path = os.path.join(failure_dir, "pending.jsonl")
+    with open(pending_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return pending_path
+
+
+def _read_pending_failures(output_dir: str) -> list[dict]:
+    """Read all pending failure records."""
+    pending_path = os.path.join(output_dir, "failure", "pending.jsonl")
+    if not os.path.exists(pending_path):
+        return []
+    records = []
+    with open(pending_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+    return records
+
+
+def _clear_pending_failures(output_dir: str) -> None:
+    """Remove the pending queue after batch analysis."""
+    pending_path = os.path.join(output_dir, "failure", "pending.jsonl")
+    if os.path.exists(pending_path):
+        os.remove(pending_path)
+
+
+BATCH_ANALYSIS_PROMPT = """\
+You are reviewing a batch of {n_failures} redshift pipeline failures to identify
+systematic patterns and suggest concrete improvements.
+
+## Failure Summaries
+
+{failure_summaries}
+
+## Task
+
+1. **Group** these failures by their likely root cause category:
+   - `skill_gap`: methodology / prompt instructions are missing
+   - `kb_gap`: knowledge base is missing physics knowledge
+   - `kb_error`: knowledge base has incorrect physics rules
+   - `harness_error`: per-hypothesis line fitting produced misleading data
+   - `llm_error`: the synthesis LLM made a reasoning mistake despite adequate knowledge
+   - `ambiguous`: multiple factors, or not enough information
+
+2. **For each group**, identify the common pattern and write a concise diagnosis.
+
+3. **For skill_gap / kb_gap / kb_error groups**, propose ONE concrete fix per group:
+   - `target_file`: which file to modify
+   - `target_section`: which section
+   - `proposed_change`: what text to add or change
+   - `rationale`: why this addresses the pattern
+
+4. **For harness_error / llm_error / ambiguous groups**, note that manual review is needed.
+
+5. **Prioritise**: which fix would prevent the most failures?
+
+Return ONLY a valid JSON object (no markdown fences):
+
+{{
+    "batch_diagnosis": "<2-3 sentence summary of the dominant failure mode across this batch>",
+    "groups": [
+        {{
+            "root_cause": "skill_gap|kb_gap|kb_error|harness_error|llm_error|ambiguous",
+            "count": <number of failures in this group>,
+            "spectrum_ids": ["id1", "id2", ...],
+            "pattern": "<1-sentence description of the common pattern>",
+            "diagnosis": "<1-paragraph analysis>",
+            "suggested_fix": {{
+                "target_file": "<path or null>",
+                "target_section": "<section or null>",
+                "proposed_change": "<specific text or null>",
+                "rationale": "<why this fix addresses the pattern or null>"
+            }}
+        }}
+    ],
+    "priority_fix": {{
+        "group_index": <index into groups array, 0-based>,
+        "reasoning": "<why this fix should be applied first>"
+    }}
+}}
+"""
+
+
+async def analyze_failure_batch(
+    output_dir: str,
+    batch_num: int,
+    *,
+    model: str,
+    api_key: str,
+    base_url: str,
+    temperature: float = 0.0,
+) -> dict | None:
+    """Run a collective LLM analysis on a batch of pending failures.
+
+    Reads failures from ``output_dir/failure/pending.jsonl``, streams the
+    LLM response to ``output_dir/failure/batch_{batch_num}_stream.md``,
+    and clears the pending queue on success.
+
+    Returns the parsed batch analysis dict, or None if no pending failures
+    or the LLM call fails.
+    """
+    from langchain_openai import ChatOpenAI
+
+    pending = _read_pending_failures(output_dir)
+    if not pending:
+        return None
+
+    # Build compact failure summaries
+    summary_lines = []
+    for i, rec in enumerate(pending):
+        gt = rec.get("ground_truth", {})
+        sr = rec.get("synthesis_result", {})
+        mm = rec.get("mismatch", {})
+        summary_lines.append(
+            f"**{i + 1}. {rec.get('spectrum_id', '?')}** — "
+            f"expected z={gt.get('z')} type={gt.get('type')}, "
+            f"got z={sr.get('redshift')} type={sr.get('classification')} "
+            f"(confidence={sr.get('confidence')}); "
+            f"in_scoring={mm.get('in_scoring')}, min_dz={mm.get('min_dz')}"
+        )
+
+    prompt = BATCH_ANALYSIS_PROMPT.format(
+        n_failures=len(pending),
+        failure_summaries="\n".join(summary_lines),
+    )
+
+    llm = ChatOpenAI(
+        model=model,
+        api_key=api_key,
+        base_url=base_url,
+        temperature=temperature,
+    )
+
+    failure_dir = os.path.join(output_dir, "failure")
+    os.makedirs(failure_dir, exist_ok=True)
+    stream_path = os.path.join(failure_dir, f"batch_{batch_num}_stream.md")
+
+    with open(stream_path, "w", encoding="utf-8") as md:
+        md.write(f"# Batch Failure Analysis #{batch_num}\n\n")
+        md.write(f"**Failures**: {len(pending)}\n\n")
+        md.write("---\n\n")
+        md.write("<details>\n<summary>Prompt</summary>\n\n")
+        md.write(prompt)
+        md.write("\n</details>\n\n---\n\n")
+        md.write("## Response\n\n")
+        md.flush()
+
+        accumulated = ""
+        try:
+            async for chunk in llm.astream([("user", prompt)]):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    accumulated += token
+                    md.write(token)
+                    md.flush()
+        except Exception as exc:
+            md.write(f"\n\n> ❌ Batch analysis streaming failed: {exc}\n\n")
+            md.flush()
+            logging.warning(f"Batch analysis LLM stream failed: {exc}")
+            return None
+
+    # Also write a clean markdown version (no prompt dump)
+    report_path = os.path.join(failure_dir, f"batch_{batch_num}.md")
+    parsed = _parse_extraction_json(accumulated)
+    if parsed:
+        _write_batch_report(report_path, batch_num, pending, parsed)
+        _clear_pending_failures(output_dir)
+        return parsed
+
+    # Parse failed — still write the raw response
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(f"# Batch Failure Analysis #{batch_num}\n\n")
+        f.write(f"**Failures**: {len(pending)}\n\n")
+        f.write("## Raw Response (parse failed)\n\n")
+        f.write(accumulated)
+    _clear_pending_failures(output_dir)
+    return None
+
+
+def _write_batch_report(
+    report_path: str,
+    batch_num: int,
+    pending: list[dict],
+    analysis: dict,
+) -> None:
+    """Write a formatted batch analysis report in markdown."""
+    lines = [
+        f"# Batch Failure Analysis #{batch_num}",
+        "",
+        f"**Failures reviewed**: {len(pending)}",
+        "",
+        f"## Diagnosis",
+        "",
+        analysis.get("batch_diagnosis", "(none)"),
+        "",
+        "---",
+        "",
+        "## Failure Groups",
+        "",
+    ]
+
+    for gi, group in enumerate(analysis.get("groups", [])):
+        rc = group.get("root_cause", "?")
+        count = group.get("count", 0)
+        ids = ", ".join(group.get("spectrum_ids", []))
+        pattern = group.get("pattern", "")
+        diagnosis = group.get("diagnosis", "")
+        fix = group.get("suggested_fix") or {}
+
+        lines.append(f"### {gi + 1}. {rc} ({count} failures)")
+        lines.append(f"**Spectra**: {ids}")
+        lines.append(f"**Pattern**: {pattern}")
+        lines.append("")
+        lines.append(diagnosis)
+        lines.append("")
+
+        target = fix.get("target_file") or "—"
+        section = fix.get("target_section") or "—"
+        change = fix.get("proposed_change") or "—"
+        rationale = fix.get("rationale") or "—"
+        lines.append(f"| Field | Value |")
+        lines.append(f"|-------|-------|")
+        lines.append(f"| Target file | {target} |")
+        lines.append(f"| Target section | {section} |")
+        lines.append(f"| Proposed change | {change} |")
+        lines.append(f"| Rationale | {rationale} |")
+        lines.append("")
+
+    # Priority fix
+    pf = analysis.get("priority_fix") or {}
+    if pf:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Priority Fix")
+        lines.append("")
+        lines.append(f"**Group {pf.get('group_index', -1) + 1}** — {pf.get('reasoning', '')}")
+        lines.append("")
+
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def _record_failure(
+    synthesis_result: dict,
+    harness_dir: str,
+    ground_truth: dict,
+    mismatch_info: dict,
+    analysis: dict,
+    output_dir: str = "",
+) -> str:
+    """Write a structured failure record.
+
+    Two outputs:
+    1. Per-sample JSONL appended to ``output_dir/failure/pending.jsonl``
+       (for batch accumulation).
+    2. Per-sample JSONL appended to ``data/failures/failure_log.jsonl``
+       (global archive, relative to project root).
+
+    Returns the pending path written to.
+    """
+    import datetime
+
+    if not output_dir:
+        output_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(harness_dir))),
+        )
+
+    record = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "spectrum_id": os.path.basename(os.path.dirname(harness_dir)),
+        "ground_truth": ground_truth,
+        "synthesis_result": extract_verdict_summary(synthesis_result),
+        "mismatch": mismatch_info,
+        "root_cause": analysis.get("root_cause"),
+        "explanation": analysis.get("explanation"),
+        "suggested_fix": analysis.get("suggested_fix"),
+        "harness_dir": harness_dir,
+        "synthesis_stream": os.path.join(harness_dir, "synthesis_stream.md"),
+        "failure_analysis_stream": os.path.join(harness_dir, "failure_analysis_stream.md"),
+    }
+
+    # Per-sample stream to harness dir (individual review)
+    harness_failure_path = os.path.join(harness_dir, "failure_analysis.json")
+    with open(harness_failure_path, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
+
+    # Append to batch pending queue in output_dir/failure/
+    pending_path = _append_pending_failure(output_dir, record)
+
+    # Also write to global archive
+    global_failure_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(harness_dir))),
+        "failures",
+    )
+    os.makedirs(global_failure_dir, exist_ok=True)
+    global_log_path = os.path.join(global_failure_dir, "failure_log.jsonl")
+    with open(global_log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    logging.info(f"Failure record written: harness={harness_failure_path}, pending={pending_path}")
+    return pending_path

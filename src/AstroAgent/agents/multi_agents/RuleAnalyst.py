@@ -24,7 +24,26 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     collect_hypotheses,
     build_dn4000_lookup,
     a_extract_harness_summaries,
+    extract_verdict_summary,
+    analyze_failure,
+    _record_failure,
+    _read_pending_failures,
+    analyze_failure_batch,
 )
+
+
+def _normalise_spectype(raw: str) -> str:
+    """Map short FITS-metadata spectral types to the long forms used
+    in synthesis classification."""
+    mapping = {
+        "QSO": "QSO",
+        "ELG": "Galaxy (ELG)",
+        "LRG": "Galaxy (LRG/BGS)",
+        "BGS": "Galaxy (LRG/BGS)",
+        "STAR": "Star",
+        "GALAXY": "Galaxy",
+    }
+    return mapping.get(raw.upper().strip(), raw)
 
 
 class RuleAnalyst(BaseAgent):
@@ -60,6 +79,10 @@ class RuleAnalyst(BaseAgent):
 
         # ── Phase 2: LLM synthesis ───────────────────────────────
         await self._synthesize(state, harness_results)
+
+        # ── Phase 3: ground-truth check (only in self-evolve mode) ──
+        if self.runtime.configs.params.self_evolve:
+            await self._check_against_ground_truth(state, harness_results)
 
         # ── Write outputs ────────────────────────────────────────
         self._writer.write_rule_analysis(state)
@@ -191,4 +214,139 @@ class RuleAnalyst(BaseAgent):
             stream_md_path=os.path.join(harness_dir, 'synthesis_stream.md'),
             summaries=summaries,
         )
+
+    # =====================================================================
+    # Ground-truth comparison & failure recording
+    # =====================================================================
+
+    async def _check_against_ground_truth(
+        self, state: SpectroState,
+        harness_results: list,
+    ) -> None:
+        """Compare synthesis result against ground truth.
+
+        Ground truth is read from, in priority order:
+        1. FITS METADATA (VI_Z / VI_SPECTYPE) — per-file, no .env needed
+        2. Environment variables (EXPECTED_Z / EXPECTED_TYPE)
+
+        Z_TOLERANCE is always read from env (default 0.005).
+        """
+        spec = state.get('spectrum', {})
+
+        # Priority 1: FITS METADATA
+        vi_z = spec.get('VI_Z')
+        vi_type = spec.get('VI_SPECTYPE')
+
+        # Priority 2: env vars (fallback)
+        expected_z_str = os.environ.get("EXPECTED_Z")
+        expected_type = os.environ.get("EXPECTED_TYPE")
+
+        # Merge: FITS metadata wins over env
+        if vi_z is not None:
+            expected_z_str = str(vi_z)
+        if vi_type is not None:
+            expected_type = _normalise_spectype(vi_type)
+
+        tolerance = self.runtime.configs.params.z_tolerance
+
+        # Both must be available
+        if expected_z_str is None or expected_type is None:
+            if expected_z_str is None and expected_type is None:
+                return
+            logging.warning(
+                "Both z and type must be available for ground-truth check. "
+                "Got: z=%s, type=%s",
+                expected_z_str, expected_type,
+            )
+            return
+
+        try:
+            expected_z = float(expected_z_str)
+        except ValueError:
+            logging.warning("Invalid EXPECTED_Z value: %s", expected_z_str)
+            return
+
+        verdict = state.get("rule_analysis", {})
+        summary = extract_verdict_summary(verdict)
+
+        # ── Pre-check: is the true redshift in the scoring candidates? ──
+        scoring_zs = [r.get("redshift", 0) for r in harness_results
+                      if not r.get("error")]
+        min_dz = min((abs(z - expected_z) for z in scoring_zs), default=999)
+        in_scoring = min_dz <= tolerance
+
+        # ── Compare ──
+        result_z = summary["redshift"]
+        z_mismatch = (
+            True if result_z is None
+            else abs(result_z - expected_z) > tolerance
+        )
+        type_mismatch = summary["classification"] != expected_type
+
+        if not z_mismatch and not type_mismatch:
+            logging.info(
+                "Ground-truth check PASSED: z=%.4f (expected %.4f, in_scoring=%s), type=%s",
+                result_z if result_z else -1, expected_z, in_scoring,
+                summary["classification"],
+            )
+            return  # Correct — nothing to record
+
+        # LOW confidence + error → honest "don't know", skip
+        if summary["confidence"] == "LOW":
+            logging.info(
+                "Ground-truth check: mismatch but confidence=LOW — skipping "
+                "(honest abstention).  Result: z=%s type=%s; Expected: z=%.4f type=%s, in_scoring=%s",
+                result_z, summary["classification"], expected_z, expected_type, in_scoring,
+            )
+            return
+
+        # ── Not in scoring + confidence MEDIUM/HIGH → synthesis picked a wrong
+        #     candidate instead of rejecting all.  Record for abstention learning.
+        if not in_scoring:
+            logging.warning(
+                "Ground-truth MISMATCH (true z=%.4f NOT in scoring, min_dz=%.4f > tolerance=%.4f): "
+                "synthesis picked z=%s type=%s (confidence=%s) instead of rejecting all.",
+                expected_z, min_dz, tolerance,
+                result_z, summary["classification"], summary["confidence"],
+            )
+
+        # ── Meaningful failure — analyze ──
+        logging.warning(
+            "Ground-truth MISMATCH (confidence=%s, in_scoring=%s): z=%s type=%s vs expected z=%.4f type=%s",
+            summary["confidence"], in_scoring, result_z, summary["classification"],
+            expected_z, expected_type,
+        )
+
+        model_cfg = self.runtime.configs.model.llm
+        harness_dir = os.path.join(
+            state["output_dir"], f"{state['file_name']}_harness"
+        )
+
+        ground_truth = {"z": expected_z, "type": expected_type}
+        mismatch_info = {
+            "z_mismatch": z_mismatch, "type_mismatch": type_mismatch,
+            "in_scoring": in_scoring, "min_dz": min_dz,
+        }
+
+        analysis = await analyze_failure(
+            synthesis_result=verdict,
+            harness_results=harness_results,
+            harness_dir=harness_dir,
+            ground_truth=ground_truth,
+            mismatch_info=mismatch_info,
+            model=model_cfg["model"],
+            api_key=model_cfg["api_key"],
+            base_url=model_cfg["base_url"],
+            stream_md_path=os.path.join(harness_dir, "failure_analysis_stream.md"),
+        )
+
+        _record_failure(
+            synthesis_result=verdict,
+            harness_dir=harness_dir,
+            ground_truth=ground_truth,
+            mismatch_info=mismatch_info,
+            analysis=analysis,
+            output_dir=state["output_dir"],
+        )
+        state["_failure_recorded"] = True
 

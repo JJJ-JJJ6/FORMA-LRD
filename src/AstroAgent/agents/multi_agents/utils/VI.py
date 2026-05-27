@@ -451,6 +451,22 @@ def _load_spectrum_from_fits(fits_path: str,
         hdu_names = [hdu.name.upper() for hdu in hdul]
         logging.info(f"FITS HDU names: {hdu_names}")
 
+        # ── 从 METADATA HDU 读取 VI_Z / VI_SPECTYPE ──────────────
+        vi_z = None
+        vi_spectype = None
+        if 'METADATA' in hdu_names:
+            try:
+                meta = hdul['METADATA'].data
+                if 'VI_Z' in meta.dtype.names:
+                    vi_z = float(meta['VI_Z'][0])
+                if 'VI_SPECTYPE' in meta.dtype.names:
+                    vi_spectype = str(meta['VI_SPECTYPE'][0]).strip()
+                logging.info(
+                    f"FITS METADATA: VI_Z={vi_z}, VI_SPECTYPE={vi_spectype}"
+                )
+            except Exception as exc:
+                logging.warning(f"Failed to read FITS METADATA: {exc}")
+
         # 检测是否为多波段分波段格式
         # 若 arm_names 由外部配置提供，直接使用；否则自动从 HDU 名推断波段
         if arm_names is not None:
@@ -735,6 +751,8 @@ def _load_spectrum_from_fits(fits_path: str,
             'flux': weighted_flux.tolist(),
             'snr': effective_snr.tolist(),
             'ivar': ivar_final.tolist() if ivar_final is not None else None,
+            'VI_Z': vi_z,
+            'VI_SPECTYPE': vi_spectype,
         }
 
         return spectrum_dict

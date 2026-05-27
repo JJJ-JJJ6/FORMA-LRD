@@ -180,6 +180,7 @@ async def main():
         # Main processing loop
         # ------------------------
         success_count = 0
+        batch_num = 0  # batch failure analysis counter
         total = len(file_ids)
 
         for idx, file_name in enumerate(file_ids, start=1):
@@ -222,6 +223,38 @@ async def main():
                     csv.writer(f).writerow(row)
                 success_count += 1
 
+                # ── Batch failure analysis trigger ──────────────────
+                if configs.params.self_evolve and result.get("_failure_recorded"):
+                    from AstroAgent.agents.multi_agents.utils.RA import (
+                        _read_pending_failures,
+                        analyze_failure_batch,
+                    )
+                    pending = _read_pending_failures(output_dir)
+                    pending_count = len(pending)
+                    batch_size = configs.params.failure_batch_size
+                    logging.info(
+                        f"Self-evolve: failure recorded, pending batch: "
+                        f"{pending_count}/{batch_size}"
+                    )
+                    if pending_count >= batch_size:
+                        batch_num += 1
+                        logging.info(
+                            f"Triggering batch failure analysis #{batch_num} "
+                            f"({pending_count} failures)"
+                        )
+                        try:
+                            await analyze_failure_batch(
+                                output_dir=output_dir,
+                                batch_num=batch_num,
+                                model=configs.model.llm["model"],
+                                api_key=configs.model.llm["api_key"],
+                                base_url=configs.model.llm["base_url"],
+                            )
+                        except Exception as exc:
+                            logging.exception(
+                                f"Batch failure analysis #{batch_num} failed: {exc}"
+                            )
+
             except Exception as e:
                 logging.exception(f"Failed to process image {file_name}.{format}: {e}")
 
@@ -229,6 +262,32 @@ async def main():
             logging.info(f"{success_count} results saved to {csv_path}")
         else:
             logging.warning("No valid results to save")
+
+        # ── Final batch flush: process any remaining pending failures ──
+        if configs.params.self_evolve:
+            from AstroAgent.agents.multi_agents.utils.RA import (
+                _read_pending_failures,
+                analyze_failure_batch,
+            )
+            pending = _read_pending_failures(output_dir)
+            if pending:
+                batch_num += 1
+                logging.info(
+                    f"Final flush: triggering batch failure analysis #{batch_num} "
+                    f"({len(pending)} remaining failures)"
+                )
+                try:
+                    await analyze_failure_batch(
+                        output_dir=output_dir,
+                        batch_num=batch_num,
+                        model=configs.model.llm["model"],
+                        api_key=configs.model.llm["api_key"],
+                        base_url=configs.model.llm["base_url"],
+                    )
+                except Exception as exc:
+                    logging.exception(
+                        f"Final batch failure analysis #{batch_num} failed: {exc}"
+                    )
 
         logging.info("All tasks completed")
 

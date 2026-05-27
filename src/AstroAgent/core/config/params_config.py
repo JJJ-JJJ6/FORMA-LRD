@@ -27,6 +27,9 @@ class ParamsConfig(BaseModel):
     discussion_rounds: int
     scoring_workers: int  # redshift scoring 并行数，0=自动
     feature_finder: str  # "simple" (multi-scale consensus) or "cwt" (wavelet ridge detection)
+    self_evolve: bool  # 自进化/反思模式：开启 ground-truth 对比与失败分析
+    failure_batch_size: int  # 每 N 个失败 sample 触发一次批量根因分析
+    z_tolerance: float  # ground-truth 红移对比容差
 
     # ── CWT 特征检测参数 ──
     cwt_snr_thresh: float
@@ -93,6 +96,9 @@ class ParamsConfig(BaseModel):
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
             scoring_workers=getenv_int("SCORING_WORKERS", 1),
             feature_finder=os.getenv("FEATURE_FINDER", "simple"),
+            self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
+            failure_batch_size=getenv_int("FAILURE_BATCH_SIZE", 5),
+            z_tolerance=getenv_float("Z_TOLERANCE", 0.005),
 
             # ── CWT 特征检测参数 ──
             cwt_snr_thresh=getenv_float("CWT_SNR_THRESH", 5.0),
