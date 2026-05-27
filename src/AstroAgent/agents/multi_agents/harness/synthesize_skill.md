@@ -20,15 +20,15 @@ Your role is to BREAK this circularity. Do not simply count LIKELY lines and pic
 
 ## Knowledge Base
 
-Physics rules live in `kb/`. Grep them as needed — do not memorize.
+Physics rules live in `kb/`. Use the `grep_kb` tool to search them — do not memorize. The tool accepts a regex `pattern` and optional `A`/`B`/`C` context-line flags (like grep -A/-B/-C).
 
-| When you need... | Run |
-|------------------|-----|
-| Rest wavelength or width class for a specific line | `grep -i "<line_name>" kb/lines.md` |
-| Doublet spacing, ratio rules, blend disentanglement | `grep -i "doublet\|blend" kb/lines.md` |
-| Ionization priority, excluded lines, outflow, width mismatch | `grep -i "priority\|excluded\|outflow\|width mismatch" kb/ionization.md` |
-| Classification-specific diagnostics and fatal problems | `grep -i "ELG\|LRG\|QSO\|fatal" kb/classification.md` |
-| Cross-type evidence weighting | `grep -i "cross-type" kb/classification.md` |
+| When you need... | Call |
+|------------------|------|
+| Rest wavelength or width class for a specific line | `grep_kb(pattern="<line_name>", C=2)` |
+| Doublet spacing, ratio rules, blend disentanglement | `grep_kb(pattern="doublet\|blend", C=2)` |
+| Ionization priority, excluded lines, outflow, width mismatch | `grep_kb(pattern="priority\|excluded\|outflow\|width mismatch", C=2)` |
+| Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG\|LRG\|QSO\|fatal", C=3)` |
+| Cross-type evidence weighting | `grep_kb(pattern="cross-type", C=2)` |
 
 ## Trust Hierarchy
 
@@ -66,9 +66,9 @@ Identify spectral features that are claimed by MULTIPLE competing hypotheses as 
 For each SUPPORTED hypothesis (any hypothesis with at least one LIKELY line), verify:
 
 - **Redshift scatter**: Are all LIKELY lines' implied_z values consistent within the verification window? A tight cluster (σ < 0.001) is good; a wide scatter suggests misidentification.
-- **Ionization consistency**: Do the confirmed lines paint a physically coherent picture? Grep `kb/classification.md` for type-specific expectations (e.g., an LRG should NOT have strong broad emission lines; an ELG should NOT have Ca H/K absorption dominating).
-- **Line ratio consistency**: For doublets, do the amplitude ratios match physical expectations? Grep `kb/lines.md` for doublet-specific rules.
-- **Velocity consistency**: Are high-ionization lines blueshifted relative to low-ionization lines by amounts consistent with outflow physics? Grep `kb/ionization.md` for the velocity offset formula and expected blueshift ranges.
+- **Ionization consistency**: Do the confirmed lines paint a physically coherent picture? Use `grep_kb` to search `kb/classification.md` for type-specific expectations (e.g., an LRG should NOT have strong broad emission lines; an ELG should NOT have Ca H/K absorption dominating).
+- **Line ratio consistency**: For doublets, do the amplitude ratios match physical expectations? Use `grep_kb` to search `kb/lines.md` for doublet-specific rules.
+- **Velocity consistency**: Are high-ionization lines blueshifted relative to low-ionization lines by amounts consistent with outflow physics? Use `grep_kb` to search `kb/ionization.md` for the velocity offset formula and expected blueshift ranges.
 
 ### 1c. Decision after Phase 1
 
@@ -86,17 +86,17 @@ Only enter this phase when the blind review identifies a specific degeneracy tha
 
 ### 2a. Identify the discriminating features
 
-Physics-based tiebreakers (ordered by reliability, all independent of CWT/harness fitting). Grep `kb/lines.md` for detailed spacing numbers and ratio rules.
+Physics-based tiebreakers (ordered by reliability, all independent of CWT/harness fitting). Use `grep_kb` to search `kb/lines.md` for detailed spacing numbers and ratio rules.
 
 1. **Dn4000 pre-computed index** — the Dn4000 value computed by RA.py middleware is the single most important continuum-based tiebreaker, completely independent of the CWT→harness pipeline. Check the "Dn4000 Comparison" table in your user message: Dn4000 > 1.6 at a given z strongly supports LRG; Dn4000 < 1.3 at a claimed LRG redshift is disqualifying. **Use the pre-computed Dn4000 — do not attempt to measure it yourself from read_spectrum_region data.**
 
 2. **4000 Å break visual confirmation** — for hypotheses where Dn4000 is pre-computed, you may use `read_spectrum_region` to visually confirm the break at 4000×(1+z) Å. Binary check: sharp flux increase (>50% over <100 Å)?
 
-3. **Ca K/H doublet** — grep `kb/lines.md` for spacing and ratio rules. Both lines must appear together with Ca K deeper than Ca H.
+3. **Ca K/H doublet** — Use `grep_kb` to search `kb/lines.md` for spacing and ratio rules. Both lines must appear together with Ca K deeper than Ca H.
 
 4. **Balmer decrement** — Hα/Hβ flux ratio ≈ 2.86 (Case B recombination).
 
-5. **[O III] doublet** — grep `kb/lines.md` for spacing and ratio rules. Spacing is the stronger test (direct z measurement independent of CWT). Ratio is weaker but a reversed ratio disqualifies.
+5. **[O III] doublet** — Use `grep_kb` to search `kb/lines.md` for spacing and ratio rules. Spacing is the stronger test (direct z measurement independent of CWT). Ratio is weaker but a reversed ratio disqualifies.
 
 ### 2b. Read ONLY the discriminating windows
 
@@ -113,7 +113,7 @@ For each competing hypothesis, try to DISPROVE it with a specific negative obser
 
 A hypothesis is only accepted when ALL viable competitors have been excluded by specific observations.
 
-**Classification-aware exclusion**: Not all physical diagnostics apply uniformly to all object types. Grep `kb/classification.md` for the specific fatal problems and expected features for each type. Key principles:
+**Classification-aware exclusion**: Not all physical diagnostics apply uniformly to all object types. Use `grep_kb` to search `kb/classification.md` for the specific fatal problems and expected features for each type. Key principles:
 - **ELG**: Weak Ca K/H is EXPECTED — do NOT exclude an ELG hypothesis for missing Ca K/H. Missing [O II] or weak Hβ IS serious.
 - **LRG/BGS**: Ca K/H doublet and 4000 Å break are primary diagnostics.
 
@@ -150,4 +150,4 @@ Output a JSON block with the following structure:
 
 ### Systemic redshift rule
 
-Use the lowest-ionization LIKELY line. Grep `kb/ionization.md` for the complete priority table (Priority 1: Ca K/H_abs → Priority 7: [O III]) and the list of excluded lines (He II, C III], C IV, Ne V, Lyα). If no LIKELY line exists at any priority level 1–7, the best available MARGINAL line may be used — note this downgrade explicitly.
+Use the lowest-ionization LIKELY line. Use `grep_kb` to search `kb/ionization.md` for the complete priority table (Priority 1: Ca K/H_abs → Priority 7: [O III]) and the list of excluded lines (He II, C III], C IV, Ne V, Lyα). If no LIKELY line exists at any priority level 1–7, the best available MARGINAL line may be used — note this downgrade explicitly.

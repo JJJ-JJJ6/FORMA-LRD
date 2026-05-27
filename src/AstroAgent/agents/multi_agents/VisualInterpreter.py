@@ -381,6 +381,25 @@ class VisualInterpreter(BaseAgent):
                 state['redshift_scoring'] = scoring
                 ResultWriter().write_redshift_scoring(state)
 
+                # ── Check if true redshift is within scoring candidates ──
+                vi_z = spec.get('VI_Z')
+                if vi_z is not None:
+                    tolerance = self.runtime.configs.params.z_tolerance
+                    expected_z = float(vi_z)
+                    all_zs = [h['z'] for h in scoring.get('low_z', []) + scoring.get('high_z', [])]
+                    min_dz = min((abs(z - expected_z) for z in all_zs), default=999)
+                    in_scoring = min_dz <= tolerance
+
+                    if not in_scoring:
+                        logging.info(
+                            f"[VisualInterpreter] True z={expected_z:.4f} NOT in scoring "
+                            f"(min_dz={min_dz:.4f} > tol={tolerance:.4f}, "
+                            f"n_candidates={len(all_zs)}) — skipping harness + synthesis."
+                        )
+                        state['skip_synthesis'] = True
+                    else:
+                        state['skip_synthesis'] = False
+
             # Phase F: Local line fitting → new peaks/troughs + plot
             # if state['brute_force_matching']:
             #     result = run_local_fitting(

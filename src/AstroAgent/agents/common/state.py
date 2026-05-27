@@ -119,6 +119,7 @@ class SpectroState(MessagesState):
     auditing_history_galaxy: Optional[List] = field(default_factory=list)
     refining_history_galaxy: Optional[List] = field(default_factory=list)
     rule_analysis: Optional[Dict[str, Any]] = None
+    skip_synthesis: Optional[bool] = None
     debate_rounds: Optional[int] = None
     count: Optional[int] = None
     # auditing_history: Optional[List] = field(default_factory=list)

@@ -41,6 +41,22 @@ class RuleAnalyst(BaseAgent):
     # =====================================================================
 
     async def run(self, state: SpectroState) -> SpectroState:
+        if state.get('skip_synthesis'):
+            logging.info(
+                "[RuleAnalyst] skip_synthesis set — true z not in scoring "
+                "candidates, skipping harness + synthesis."
+            )
+            state['rule_analysis'] = {
+                'redshift': None,
+                'redshift_err': None,
+                'classification': 'Unknown',
+                'confidence': 'LOW',
+                'best_hypothesis_idx': None,
+                'primary_evidence': 'True redshift not in scoring candidates.',
+                'caveats': 'Upstream CWT/scoring issue — no synthesis performed.',
+            }
+            return state
+
         scoring = state.get('redshift_scoring', {})
         hypotheses = collect_hypotheses(scoring)
 

@@ -634,111 +634,13 @@ def extract_verdict_summary(rule_analysis: dict) -> dict:
 # Failure analysis — root-cause identification via LLM
 # =========================================================================
 
-# ── Round 1: blind review (no ground truth) ──────────────────────
+from pathlib import Path as _Path
 
-BLIND_REVIEW_PROMPT = """\
-You are reviewing a redshift synthesis pipeline's output. Critically examine the
-synthesis reasoning and identify any potential issues — you do NOT know the correct
-answer yet.
+_HARNESS_DIR = _Path(__file__).resolve().parent.parent / "harness"
 
-## Pipeline Architecture
-
-1. **Harness**: Per-hypothesis verification with Gaussian fitting → CSV line catalogs
-2. **Middleware**: Structured markdown summaries from CSV + LLM text extraction
-3. **Synthesis**: Cross-compares all hypotheses (Phase 1 blind review → Phase 2 targeted spectrum reads → Phase 3 JSON verdict)
-
-The synthesis agent uses a skill prompt (methodology) and a knowledge base (kb/*.md: line tables, doublet rules, ionization priorities, classification diagnostics).
-
-## Harness Summaries
-
-{harness_summaries}
-
-## Synthesis Reasoning
-
-{synthesis_reasoning}
-
-## Task
-
-Critically review the synthesis above. Focus on:
-
-1. **Contradictions**: Are there inconsistencies in the contradiction matrix or between hypotheses?
-2. **Evidence quality**: Does the conclusion follow from the line data, or are there weak / missing lines being glossed over?
-3. **Methodology gaps**: What should the synthesis have checked but didn't?
-4. **Alternative hypotheses**: Is there a stronger candidate being overlooked?
-
-Return ONLY a valid JSON object (no markdown fences):
-
-{{
-    "overall_assessment": "<1 paragraph: is the synthesis conclusion well-supported or questionable?>",
-    "issues": [
-        {{
-            "severity": "critical | major | minor",
-            "category": "contradiction | evidence_quality | methodology_gap | overlooked_hypothesis | classification_error | other",
-            "description": "<specific observation, cite wavelengths and line names>",
-            "affected_hypothesis": "<which hypothesis index, or 'overall'>"
-        }}
-    ],
-    "strongest_alternative": "<which hypothesis (if any) looks stronger than the chosen one, and why; or null>",
-    "should_have_abstained": true or false
-}}
-"""
-
-# ── Round 2: root-cause analysis (ground truth revealed) ─────────
-
-ROOT_CAUSE_PROMPT = """\
-You previously reviewed a redshift synthesis and identified potential issues
-(BLIND — without knowing the correct answer). Now the ground truth is revealed.
-
-## Blind Review Findings
-
-{blind_review}
-
-## The Error
-
-**Ground truth**: z={ground_truth_z}, type={ground_truth_type}
-**True z in scoring candidates**: {in_scoring}
-**Synthesis result**: z={synthesis_z}, type={synthesis_type}, confidence={synthesis_confidence}
-**Mismatch**: {mismatch_desc}
-
-## Harness Summaries (same as Round 1)
-
-{harness_summaries}
-
-## Task
-
-Given the blind review observations AND the revealed error, identify the ROOT CAUSE.
-Choose ONE of:
-
-- **skill_gap**: The skill prompt is missing a necessary methodological instruction.
-- **kb_gap**: The knowledge base is missing physics knowledge needed for this case.
-- **kb_error**: The knowledge base contains incorrect or misleading physics rules.
-- **harness_error**: The harness produced misleading line data that synthesis reasonably trusted.
-- **llm_error**: Knowledge and methodology were sufficient, but synthesis made a reasoning mistake.
-- **ambiguous**: Multiple factors contributed; cannot single out one root cause.
-
-**If the blind review already caught the error**: this suggests the synthesis LLM ignored or
-misweighted available signals → likely `llm_error` or `skill_gap` (insufficient weighting guidance).
-
-**If the blind review missed the error**: the issue is deeper — the skill prompt or KB may lack
-the diagnostic that would have surfaced it → likely `skill_gap` or `kb_gap`.
-
-**If in_scoring is False** (true z not in candidates): focus on why synthesis failed to reject
-all hypotheses. The blind review's `should_have_abstained` field is key here.
-
-Return ONLY a valid JSON object (no markdown fences):
-
-{{
-    "root_cause": "skill_gap | kb_gap | kb_error | harness_error | llm_error | ambiguous",
-    "blind_review_alignment": "<did the blind review catch the error? 1-2 sentences>",
-    "explanation": "<1-paragraph analysis of what went wrong and why>",
-    "suggested_fix": {{
-        "target_file": "kb/classification.md or targeted_search_skill.md or synthesize_skill.md or null",
-        "target_section": "<section heading in the target file, or null>",
-        "proposed_change": "<specific text to add or modify, or null if no clear fix>",
-        "rationale": "<why this change would prevent this class of error>"
-    }}
-}}
-"""
+def _load_skill(filename: str) -> str:
+    """Load a skill prompt from the harness directory."""
+    return (_HARNESS_DIR / filename).read_text(encoding="utf-8")
 
 
 async def analyze_failure(
@@ -751,6 +653,8 @@ async def analyze_failure(
     model: str,
     api_key: str,
     base_url: str,
+    wl: np.ndarray | None = None,
+    fl: np.ndarray | None = None,
     temperature: float = 0.0,
     stream_md_path: str | None = None,
 ) -> dict:
@@ -770,6 +674,9 @@ async def analyze_failure(
         ``{"z_mismatch": bool, "type_mismatch": bool}``.
     model, api_key, base_url : str
         LLM configuration.
+    wl, fl : np.ndarray, optional
+        Wavelength and flux arrays for Dn4000 computation. If None,
+        a flat placeholder spectrum is used (Dn4000 will all be ~1.0).
 
     Returns
     -------
@@ -777,11 +684,15 @@ async def analyze_failure(
         Parsed failure analysis with keys: root_cause, explanation, suggested_fix.
     """
     from langchain_openai import ChatOpenAI
+    from langchain.agents import create_agent
+    from langchain_core.tools import tool
     from pathlib import Path
+    from AstroAgent.agents.multi_agents.harness.tools import grep_kb
 
     # ── Build harness summaries (same as what synthesis saw) ──
-    wl = np.linspace(3600, 9824, 7000)  # placeholder — not needed for summaries
-    fl = np.ones(7000) * 5.0
+    if wl is None or fl is None:
+        wl = np.linspace(3600, 9824, 7000)
+        fl = np.ones(7000) * 5.0
     dn4000_lookup = build_dn4000_lookup(wl, fl, harness_results)
     summaries = []
     for i, r in enumerate(harness_results):
@@ -873,14 +784,109 @@ async def analyze_failure(
         resp = await llm.ainvoke([("user", prompt)])
         return resp.content if hasattr(resp, "content") else str(resp)
 
+    def _fmt_tool_call(tc) -> str:
+        name = tc.get("name", "unknown")
+        args = tc.get("args", {})
+        return f"**`{name}`**\n```json\n{json.dumps(args, indent=2, ensure_ascii=False)}\n```"
+
+    def _fmt_tool_result(msg) -> str:
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        try:
+            parsed = json.loads(content) if isinstance(content, str) else content
+            return f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
+        except (json.JSONDecodeError, TypeError):
+            return str(content)
+
+    async def _agent_stream(md, label: str, agent, prompt: str, config: dict) -> str:
+        """Stream an agent call (with tool use) into *md*, return final text."""
+        md.write(f"### {label}\n\n")
+        md.write("<details>\n<summary>Prompt</summary>\n\n")
+        md.write(prompt)
+        md.write("\n</details>\n\n---\n\n")
+        md.flush()
+
+        accumulated = []
+        turn = 0
+        try:
+            async for event in agent.astream(
+                {"messages": [("user", prompt)]},
+                config=config,
+                stream_mode="updates",
+            ):
+                for _node_name, update in event.items():
+                    msgs = update.get("messages", [])
+                    for msg in msgs:
+                        accumulated.append(msg)
+                        msg_type = getattr(msg, "type", None)
+
+                        if msg_type == "ai":
+                            turn += 1
+                            content = msg.content if hasattr(msg, "content") else ""
+                            tool_calls = getattr(msg, "tool_calls", None)
+                            if content:
+                                md.write(f"### Assistant (turn {turn})\n\n{content.strip()}\n\n")
+                            if tool_calls:
+                                for tc in tool_calls:
+                                    md.write(_fmt_tool_call(tc) + "\n\n")
+                            md.flush()
+                        elif msg_type == "tool":
+                            md.write("### Tool Result\n\n")
+                            md.write(_fmt_tool_result(msg) + "\n\n")
+                            md.flush()
+        except Exception as exc:
+            md.write(f"\n\n> ❌ {label} streaming failed: {exc}\n\n")
+            md.flush()
+            raise
+        md.write("\n\n---\n\n")
+        md.flush()
+
+        last_msg = accumulated[-1] if accumulated else None
+        return last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+
     # ── Round 1: blind review ────────────────────────────────────
-    blind_prompt = BLIND_REVIEW_PROMPT.format(
+    blind_prompt = _load_skill("blind_review_skill.md").format(
         harness_summaries=harness_text,
         synthesis_reasoning=synthesis_reasoning[:6000],
     )
 
     # ── Round 2: root cause with ground truth ────────────────────
-    root_cause_prompt_tpl = ROOT_CAUSE_PROMPT  # format after Round 1
+    root_cause_prompt_tpl = _load_skill("root_cause_skill.md")
+
+    # ── Round 2 agent tools ─────────────────────────────────────
+    _wl = wl
+    _fl = fl
+
+    @tool
+    def read_spectrum_region(wl_min: float, wl_max: float, stride: int = 1) -> dict:
+        """Read a raw slice of the spectrum for manual inspection.
+
+        Use this to verify whether harness-reported features are real at the
+        claimed wavelengths, check noise levels, or examine discriminating
+        regions that were overlooked by synthesis. Keep windows 50–200 Å.
+
+        Parameters
+        ----------
+        wl_min, wl_max : float
+            Wavelength range of interest (Å).
+        stride : int
+            Downsampling step. Default 1 (no downsampling).
+        """
+        mask = (_wl >= wl_min) & (_wl <= wl_max)
+        wl_slice = _wl[mask][::stride]
+        fl_slice = _fl[mask][::stride]
+        return {
+            "wl_range": [wl_min, wl_max],
+            "n": len(wl_slice),
+            "wl": [round(float(w), 3) for w in wl_slice],
+            "fl": [round(float(f), 4) for f in fl_slice],
+        }
+
+    root_cause_agent = create_agent(
+        model=llm,
+        tools=[read_spectrum_region, grep_kb],
+        system_prompt=root_cause_prompt_tpl,
+    )
+    agent_config = {"recursion_limit": 15}
 
     if stream_md_path:
         os.makedirs(os.path.dirname(stream_md_path) or ".", exist_ok=True)
@@ -907,7 +913,7 @@ async def analyze_failure(
                 else blind_text[:2000]
             )
 
-            # Round 2
+            # Round 2 (agent with read_spectrum_region)
             root_prompt = root_cause_prompt_tpl.format(
                 blind_review=blind_summary,
                 ground_truth_z=ground_truth["z"],
@@ -921,7 +927,10 @@ async def analyze_failure(
             )
 
             try:
-                root_text = await _stream_one(md, "Round 2 — Root Cause Analysis", root_prompt)
+                root_text = await _agent_stream(
+                    md, "Round 2 — Root Cause Analysis",
+                    root_cause_agent, root_prompt, agent_config,
+                )
             except Exception as exc:
                 logging.warning(f"Failure analysis Round 2 stream failed: {exc}")
                 return _fallback_analysis()
@@ -960,7 +969,13 @@ async def analyze_failure(
     )
 
     try:
-        root_text = await _invoke_one(root_prompt)
+        result = await root_cause_agent.ainvoke(
+            {"messages": [("user", root_prompt)]},
+            config=agent_config,
+        )
+        messages = result.get("messages", [])
+        last_msg = messages[-1]
+        root_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
     except Exception as exc:
         logging.warning(f"Failure analysis Round 2 failed: {exc}")
         return _fallback_analysis()
@@ -1026,61 +1041,8 @@ def _clear_pending_failures(output_dir: str) -> None:
         os.remove(pending_path)
 
 
-BATCH_ANALYSIS_PROMPT = """\
-You are reviewing a batch of {n_failures} redshift pipeline failures to identify
-systematic patterns and suggest concrete improvements.
-
-## Failure Summaries
-
-{failure_summaries}
-
-## Task
-
-1. **Group** these failures by their likely root cause category:
-   - `skill_gap`: methodology / prompt instructions are missing
-   - `kb_gap`: knowledge base is missing physics knowledge
-   - `kb_error`: knowledge base has incorrect physics rules
-   - `harness_error`: per-hypothesis line fitting produced misleading data
-   - `llm_error`: the synthesis LLM made a reasoning mistake despite adequate knowledge
-   - `ambiguous`: multiple factors, or not enough information
-
-2. **For each group**, identify the common pattern and write a concise diagnosis.
-
-3. **For skill_gap / kb_gap / kb_error groups**, propose ONE concrete fix per group:
-   - `target_file`: which file to modify
-   - `target_section`: which section
-   - `proposed_change`: what text to add or change
-   - `rationale`: why this addresses the pattern
-
-4. **For harness_error / llm_error / ambiguous groups**, note that manual review is needed.
-
-5. **Prioritise**: which fix would prevent the most failures?
-
-Return ONLY a valid JSON object (no markdown fences):
-
-{{
-    "batch_diagnosis": "<2-3 sentence summary of the dominant failure mode across this batch>",
-    "groups": [
-        {{
-            "root_cause": "skill_gap|kb_gap|kb_error|harness_error|llm_error|ambiguous",
-            "count": <number of failures in this group>,
-            "spectrum_ids": ["id1", "id2", ...],
-            "pattern": "<1-sentence description of the common pattern>",
-            "diagnosis": "<1-paragraph analysis>",
-            "suggested_fix": {{
-                "target_file": "<path or null>",
-                "target_section": "<section or null>",
-                "proposed_change": "<specific text or null>",
-                "rationale": "<why this fix addresses the pattern or null>"
-            }}
-        }}
-    ],
-    "priority_fix": {{
-        "group_index": <index into groups array, 0-based>,
-        "reasoning": "<why this fix should be applied first>"
-    }}
-}}
-"""
+def _load_batch_skill() -> str:
+    return _load_skill("batch_analysis_skill.md")
 
 
 async def analyze_failure_batch(
@@ -1121,7 +1083,7 @@ async def analyze_failure_batch(
             f"in_scoring={mm.get('in_scoring')}, min_dz={mm.get('min_dz')}"
         )
 
-    prompt = BATCH_ANALYSIS_PROMPT.format(
+    prompt = _load_batch_skill().format(
         n_failures=len(pending),
         failure_summaries="\n".join(summary_lines),
     )

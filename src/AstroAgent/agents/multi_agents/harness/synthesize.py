@@ -29,6 +29,7 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     extract_harness_summary,
 )
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +307,7 @@ async def arun(
 
     agent = create_agent(
         model=llm,
-        tools=[read_spectrum_region],
+        tools=[read_spectrum_region, grep_kb],
         system_prompt=system_prompt,
     )
 

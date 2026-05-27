@@ -1,3 +1,4 @@
+import re
 import numpy as np
 from scipy.optimize import curve_fit
 from langchain_core.tools import tool
@@ -502,7 +503,124 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 7: compute_redshift
+# Tool 7: grep_kb — search knowledge base and skill files
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+_KB_DIR = _Path(__file__).resolve().parent / "kb"
+_HARNESS_SKILL_DIR = _Path(__file__).resolve().parent
+
+_GREP_FILES: dict[str, _Path] = {
+    "kb/classification.md": _KB_DIR / "classification.md",
+    "kb/ionization.md": _KB_DIR / "ionization.md",
+    "kb/lines.md": _KB_DIR / "lines.md",
+    "synthesize_skill.md": _HARNESS_SKILL_DIR / "synthesize_skill.md",
+    "targeted_search_skill.md": _HARNESS_SKILL_DIR / "targeted_search_skill.md",
+}
+
+_grep_cache: dict[str, str] | None = None
+
+
+def _load_grep_files() -> dict[str, str]:
+    """Lazy-load and cache the searchable files."""
+    global _grep_cache
+    if _grep_cache is None:
+        _grep_cache = {}
+        for name, path in _GREP_FILES.items():
+            if path.exists():
+                _grep_cache[name] = path.read_text(encoding="utf-8")
+    return _grep_cache
+
+
+@tool
+def grep_kb(pattern: str, A: int = 0, B: int = 0, C: int = 0) -> dict:
+    """Search the knowledge base and skill files with optional context lines.
+
+    Use this to check what the pipeline methodology, physics rules, and
+    classification criteria actually say. Essential for distinguishing
+    ``skill_gap`` (rule missing from doc) from ``llm_error`` (LLM ignored
+    a documented rule).
+
+    Parameters
+    ----------
+    pattern : str
+        grep-compatible regex pattern (case-insensitive). Examples:
+        "abstain", "doublet", "Ca K", "Dn4000", "ELG|LRG|QSO", "fatal"
+    A : int (default 0)
+        Lines to show AFTER each match (like grep -A).
+    B : int (default 0)
+        Lines to show BEFORE each match (like grep -B).
+    C : int (default 0)
+        Lines to show before AND after each match (like grep -C).
+        If both C and A/B are given, A and B take precedence.
+
+    Returns
+    -------
+    dict mapping filename to a list of match blocks, where each block is
+    a list of "L<num>: <text>" strings. Returns {"(no matches)": []} if
+    nothing matched.
+    """
+    files = _load_grep_files()
+    context_before = max(B, C)
+    context_after = max(A, C)
+
+    results: dict[str, list] = {}
+
+    for fname, content in files.items():
+        lines = content.split("\n")
+        n_lines = len(lines)
+
+        # Find match line numbers (1-indexed)
+        match_line_nums: set[int] = set()
+        for i, line in enumerate(lines, start=1):
+            if re.search(pattern, line, re.IGNORECASE):
+                match_line_nums.add(i)
+
+        if not match_line_nums:
+            continue
+
+        # Expand to context windows, merge overlapping
+        windows: list[tuple[int, int]] = []
+        for ln in sorted(match_line_nums):
+            start = max(1, ln - context_before)
+            end = min(n_lines, ln + context_after)
+            windows.append((start, end))
+
+        # Merge overlapping windows
+        merged: list[tuple[int, int]] = []
+        for start, end in windows:
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        # Format each block
+        blocks: list[list[str]] = []
+        for start, end in merged:
+            block: list[str] = []
+            for ln in range(start, end + 1):
+                marker = ">" if ln in match_line_nums else " "
+                block.append(f"L{ln}{marker}: {lines[ln - 1].strip()[:200]}")
+            blocks.append(block)
+
+        # Cap total output per file (30 match lines max, then 20 blocks max)
+        total_matches = sum(
+            sum(1 for line in block if line[4] == ">") for block in blocks
+        )
+        if total_matches > 30 or len(blocks) > 20:
+            blocks = blocks[:20]
+
+        results[fname] = blocks
+
+    if not results:
+        return {"(no matches)": []}
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Tool 8: compute_redshift
 # ---------------------------------------------------------------------------
 
 @tool

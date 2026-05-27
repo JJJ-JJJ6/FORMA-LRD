@@ -9,6 +9,8 @@ on mismatches, and writes structured failure records.
 import os
 import logging
 
+import numpy as np
+
 from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
@@ -124,12 +126,12 @@ class SelfEvolve(BaseAgent):
             return state
 
         if not in_scoring:
-            logging.warning(
-                "[SelfEvolve] True z=%.4f NOT in scoring (min_dz=%.4f > tol=%.4f): "
-                "synthesis picked z=%s type=%s (confidence=%s) instead of rejecting all.",
+            logging.info(
+                "[SelfEvolve] True z=%.4f NOT in scoring (min_dz=%.4f > tol=%.4f) — "
+                "skipping (upstream CWT/scoring issue, not synthesis).",
                 expected_z, min_dz, tolerance,
-                result_z, summary["classification"], summary["confidence"],
             )
+            return state
 
         logging.warning(
             "[SelfEvolve] MISMATCH (confidence=%s, in_scoring=%s): "
@@ -150,12 +152,18 @@ class SelfEvolve(BaseAgent):
             "in_scoring": in_scoring, "min_dz": min_dz,
         }
 
+        spec = state.get("spectrum", {})
+        spec_wl = np.asarray(spec["wavelength"])
+        spec_fl = np.asarray(spec["flux"])
+
         analysis = await analyze_failure(
             synthesis_result=verdict,
             harness_results=harness_results,
             harness_dir=harness_dir,
             ground_truth=ground_truth,
             mismatch_info=mismatch_info,
+            wl=spec_wl,
+            fl=spec_fl,
             model=model_cfg["model"],
             api_key=model_cfg["api_key"],
             base_url=model_cfg["base_url"],
