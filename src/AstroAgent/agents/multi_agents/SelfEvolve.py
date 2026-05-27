@@ -70,6 +70,10 @@ class SelfEvolve(BaseAgent):
 
         if expected_z_str is None or expected_type is None:
             if expected_z_str is None and expected_type is None:
+                logging.info(
+                    "[SelfEvolve] No ground truth available (VI_Z/VI_SPECTYPE "
+                    "not in FITS METADATA and EXPECTED_Z/EXPECTED_TYPE not set) — skipping."
+                )
                 return state
             logging.warning(
                 "[SelfEvolve] Both z and type needed for ground-truth check. "
