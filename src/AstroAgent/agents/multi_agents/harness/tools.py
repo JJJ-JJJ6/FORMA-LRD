@@ -449,10 +449,10 @@ def write_report(file_path: str, content: str) -> dict:
 
 @tool
 def write_lines_csv(file_path: str, lines: list) -> dict:
-    """Write fitted spectral line results to a CSV file.
+    """Write CWT feature evaluation results to a CSV file.
 
-    Each row represents one line that was fitted (whether LIKELY, MARGINAL,
-    ESTIMATED, NOT_FOUND, or SPURIOUS). The CSV is the definitive structured record of the
+    Each row represents one line that was evaluated (status: LIKELY, MARGINAL,
+    NOT_FOUND, or MASKED). The CSV is the definitive structured record of the
     analysis — downstream pipelines read this, not the JSON in the chat response.
 
     Parameters
@@ -464,16 +464,16 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
             name : str              — line name (e.g. "Lyα", "C IV")
             rest_wavelength : float — rest-frame wavelength in Å
             predicted_obs : float   — predicted observed wavelength at this z
-            fitted_center : float   — fitted Gaussian center in Å (or null)
-            fitted_center_err : float — 1σ uncertainty (or null)
-            amplitude : float       — fitted amplitude (or null)
-            amplitude_err : float   — 1σ uncertainty (or null)
+            fitted_center : float   — CWT feature wavelength in Å (or null)
+            fitted_center_err : float — wavelength uncertainty (or null)
+            amplitude : float       — CWT amplitude (or null)
+            amplitude_err : float   — amplitude uncertainty (or null)
             fitted_sigma : float    — Gaussian σ in Å (or null). Used by downstream
                                       global fit to model the line profile
             fwhm_km_s : float       — FWHM in km/s (or null)
-            snr : float             — amplitude / local_rms (or null)
-            delta_chi2_per_n : float — Δχ² per data point (or null)
-            status : str            — LIKELY, MARGINAL, ESTIMATED, NOT_FOUND, or SPURIOUS
+            ridge_length : int      — CWT ridge persistence (scales spanned, or null)
+            cwt_snr : float         — max SNR along the CWT ridge (or null)
+            status : str            — LIKELY, MARGINAL, NOT_FOUND, or MASKED
 
     Returns
     -------
@@ -487,7 +487,7 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
     columns = [
         "name", "rest_wavelength", "predicted_obs", "fitted_center",
         "fitted_center_err", "amplitude", "amplitude_err", "fitted_sigma",
-        "fwhm_km_s", "snr", "delta_chi2_per_n", "status",
+        "fwhm_km_s", "ridge_length", "cwt_snr", "status",
     ]
 
     os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)

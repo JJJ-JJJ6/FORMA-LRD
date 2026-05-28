@@ -37,6 +37,11 @@ class SpectroStateFactory:
         # 构造路径
         input_format = self.io_config.input_format
         file_path = os.path.join(input_dir, f"{file_name}.{input_format}")
+
+        # 将每个任务的所有输出文件放到 output_dir/{file_name}/ 下
+        output_dir = os.path.join(output_dir, file_name)
+        os.makedirs(output_dir, exist_ok=True)
+
         crop_path = os.path.join(output_dir, f"{file_name}_cropped.png")
         spec_extract_path = os.path.join(output_dir, f"{file_name}_spec_extract.png")
         continuum_path = os.path.join(output_dir, f"{file_name}_continuum.png")

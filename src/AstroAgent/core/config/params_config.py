@@ -26,6 +26,10 @@ class ParamsConfig(BaseModel):
     harness_concurrency: int
     discussion_rounds: int
     scoring_workers: int  # redshift scoring 并行数，0=自动
+    redshift_scoring_enabled: bool  # redshift scoring 开关
+    redshift_scoring_top_k: int  # 开启时每组 low_z/high_z 各取前 top-K
+    redshift_scoring_v3: bool  # True=v3 (CWT feature based), False=v2 (raw flux argmin/argmax)
+    stop_after_vi: bool  # 在 VisualInterpreter 后停止（批量测试 scoring 用）
     feature_finder: str  # "simple" (multi-scale consensus) or "cwt" (wavelet ridge detection)
     self_evolve: bool  # 自进化/反思模式：开启 ground-truth 对比与失败分析
     failure_batch_size: int  # 每 N 个失败 sample 触发一次批量根因分析
@@ -95,6 +99,10 @@ class ParamsConfig(BaseModel):
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
             scoring_workers=getenv_int("SCORING_WORKERS", 1),
+            redshift_scoring_enabled=os.getenv("REDSHIFT_SCORING_ENABLED", "true").lower() in ("true", "1", "yes"),
+            redshift_scoring_top_k=getenv_int("REDSHIFT_SCORING_TOP_K", 5),
+            redshift_scoring_v3=os.getenv("REDSHIFT_SCORING_V3", "true").lower() in ("true", "1", "yes"),
+            stop_after_vi=os.getenv("STOP_AFTER_VI", "false").lower() in ("true", "1", "yes"),
             feature_finder=os.getenv("FEATURE_FINDER", "simple"),
             self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
             failure_batch_size=getenv_int("FAILURE_BATCH_SIZE", 5),

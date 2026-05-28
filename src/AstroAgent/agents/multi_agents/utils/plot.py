@@ -337,7 +337,174 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
     n_troughs_valid = len([t for t in troughs if t.get('wavelength') is not None and t.get('wavelength') > 0])
     print(f"Plot {n_peaks_valid} peaks, {n_troughs_valid} troughs.")
 
-    fig.savefig(os.path.join(state['output_dir'], f"{state['file_name']}_features.png"), 
+    fig.savefig(os.path.join(state['output_dir'], f"{state['file_name']}_features.png"),
                 dpi=150, bbox_inches='tight')
     plt.close(fig)
+    return fig
+
+
+def plot_harness_candidate(
+    wavelength,
+    flux,
+    continuum_flux,
+    lines_csv_path: str,
+    output_path: str,
+    redshift: float = None,
+    title: str = None,
+):
+    """
+    为单个 harness candidate 绘制采纳的特征线（三行子图）。
+    与 plot_features 画法一致。
+
+    Parameters
+    ----------
+    wavelength, flux, continuum_flux : array-like
+    lines_csv_path : str
+         harness 输出的 _lines.csv 路径
+    output_path : str
+         输出 PNG 路径
+    redshift : float, optional
+    title : str, optional
+    """
+    import csv
+    import os as _os
+    from AstroAgent.agents.multi_agents.utils.feature_finder_precise import SIGMA_TO_FWHM
+
+    wavelength = np.asarray(wavelength, dtype=np.float64)
+    flux = np.asarray(flux, dtype=np.float64)
+    continuum_flux = np.asarray(continuum_flux, dtype=np.float64)
+    residual = flux - continuum_flux
+
+    # 读取 lines CSV，筛选被采纳的行
+    adopted_lines = []
+    if _os.path.exists(lines_csv_path):
+        with open(lines_csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                status = (row.get("status") or "").strip().upper()
+                if status in ("LIKELY", "MARGINAL", "ESTIMATED"):
+                    adopted_lines.append(row)
+
+    fig, axes = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
+
+    # ── 子图1：光谱 + 连续谱 ──
+    ax1 = axes[0]
+    ax1.plot(wavelength, flux, 'k-', lw=0.8, alpha=0.75, label='Spectrum')
+    ax1.plot(wavelength, continuum_flux, 'r--', lw=1.5, alpha=0.9, label='Continuum')
+    ax1.set_ylabel('flux')
+    ax1.legend(fontsize=9, loc='upper right')
+    ax1.grid(True, alpha=0.25)
+
+    # ── 子图2：残差 + 吸收线 ──
+    ax2 = axes[1]
+    ax2.plot(wavelength, residual, color='steelblue', lw=0.7, alpha=0.75, label='Residual')
+    ax2.axhline(0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+    residual_y_min, residual_y_max = np.min(residual), np.max(residual)
+    text_y_position = residual_y_max * 0.92
+
+    # ── 子图3：残差 + 发射线 ──
+    ax3 = axes[2]
+    ax3.plot(wavelength, residual, color='steelblue', lw=0.7, alpha=0.75, label='Residual')
+    ax3.axhline(0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+
+    n_abs = 0
+    n_em = 0
+
+    for row in adopted_lines:
+        name = row.get("name", "")
+        # 从 EMISSION_LINES 或 ABSORPTION_LINES 判断类型
+        from AstroAgent.agents.multi_agents.harness.tools import EMISSION_LINES, ABSORPTION_LINES
+        is_emission = name in EMISSION_LINES
+        is_absorption = name in ABSORPTION_LINES
+
+        center = None
+        for key in ("fitted_center", "predicted_obs"):
+            val = row.get(key)
+            if val and val.strip():
+                try:
+                    center = float(val)
+                    if center > 0:
+                        break
+                except (ValueError, TypeError):
+                    continue
+
+        if center is None:
+            continue
+
+        # 尝试获取振幅和宽度
+        amp = None
+        for key in ("amplitude",):
+            val = row.get(key)
+            if val and val.strip():
+                try:
+                    amp = float(val)
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+        fwhm = None
+        for key in ("fitted_sigma",):
+            val = row.get(key)
+            if val and val.strip():
+                try:
+                    sigma_val = float(val)
+                    fwhm = sigma_val * SIGMA_TO_FWHM
+                    break
+                except (ValueError, TypeError):
+                    continue
+
+        if fwhm is None:
+            fwhm = 10.0
+
+        if is_emission:
+            n_em += 1
+            color = 'darkorange'
+            ax = ax3
+            # 发射线振幅应为正
+            if amp is not None and amp > 0 and fwhm > 0:
+                sigma = fwhm / SIGMA_TO_FWHM
+                wave_local = np.linspace(center - 3.5 * sigma, center + 3.5 * sigma, 200)
+                gaussian_profile = amp * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
+                ax.plot(wave_local, gaussian_profile, color=color, linewidth=1.8, alpha=0.85)
+        elif is_absorption:
+            n_abs += 1
+            color = 'tomato'
+            ax = ax2
+            # 吸收线振幅应为负
+            if fwhm > 0:
+                sigma = fwhm / SIGMA_TO_FWHM
+                wave_local = np.linspace(center - 3.5 * sigma, center + 3.5 * sigma, 200)
+                amp_val = abs(amp) if amp and amp < 0 else (abs(amp) if amp else 0.0)
+                gaussian_profile = -abs(amp_val) * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
+                ax.plot(wave_local, gaussian_profile, color='tomato', linewidth=1.8, alpha=0.85)
+        else:
+            # 无法判断类型，跳过
+            continue
+
+        ax.axvline(center, color=color, linestyle='--', linewidth=0.8, alpha=0.4)
+        ax.text(center, text_y_position, f'{name}\n{center:.1f}',
+                rotation=90, verticalalignment='top', horizontalalignment='center',
+                fontsize=6, color=color, alpha=0.8)
+
+    ax2.set_ylabel('flux')
+    ax2.legend(fontsize=9, loc='upper right')
+    ax2.grid(True, alpha=0.25)
+
+    ax3.set_xlabel('wavelength')
+    ax3.set_ylabel('flux')
+    ax3.legend(fontsize=9, loc='upper right')
+    ax3.grid(True, alpha=0.25)
+
+    # 标题
+    title_str = title or ""
+    if redshift is not None:
+        title_str = f"z = {redshift:.4f}  {title_str}"
+    if title_str:
+        fig.suptitle(title_str.strip(), fontsize=13, y=0.98)
+
+    plt.tight_layout()
+    _os.makedirs(_os.path.dirname(output_path) or ".", exist_ok=True)
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Plot harness candidate: {n_em} emission, {n_abs} absorption → {output_path}")
     return fig

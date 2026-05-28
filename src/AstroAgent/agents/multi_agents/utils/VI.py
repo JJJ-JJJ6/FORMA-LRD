@@ -8,13 +8,11 @@ import numpy as np
 from astropy.io import fits
 from scipy.ndimage import gaussian_filter1d
 import pandas as pd
-# import matplotlib.pyplot as plt
 import pytesseract
 from collections import defaultdict
 from paddleocr import PaddleOCR
 from typing import Any, Dict, List, Tuple
 from scipy.optimize import curve_fit
-# from scipy.stats import mode
 
 from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.multi_agents.utils.usage import find_overlap_regions
@@ -757,91 +755,6 @@ def _load_spectrum_from_fits(fits_path: str,
 
         return spectrum_dict
 
-# ===========================================================
-# Step 1.10b: Continuum Fitting (Chebyshev)
-# ===========================================================
-
-def run_continuum_fitting(wavelengths, flux, chebyshev_degree=None, chebyshev_min_degree=1, chebyshev_max_degree=10, verbose=False):
-    """
-    使用切比雪夫多项式拟合 continuum，并计算残差光谱。
-
-    Parameters
-    ----------
-    wavelengths : array-like
-        波长数组（Å）
-    flux : array-like
-        流量数组
-    chebyshev_degree : int or None
-        指定切比雪夫多项式阶数；若为 None 则自动选择
-    chebyshev_min_degree : int
-        自动选择时的最小阶数
-    chebyshev_max_degree : int
-        自动选择时的最大阶数
-    verbose : bool
-        是否输出详细信息
-
-    Returns
-    -------
-    (continuum_dict, residual_spectrum_dict) : tuple[dict, dict]
-    """
-    from specutils.fitting import fit_generic_continuum
-    from specutils import Spectrum
-    from astropy.modeling import models
-    import astropy.units as u
-    import warnings
-
-    from AstroAgent.agents.multi_agents.utils.feature_finder_precise import select_chebyshev_degree
-
-    wavelengths = np.asarray(wavelengths, dtype=np.float64)
-    flux = np.asarray(flux, dtype=np.float64)
-
-    # 构建 specutils Spectrum 对象
-    sp = Spectrum(flux=flux * u.Jy, spectral_axis=wavelengths * u.AA)
-
-    # 自动选择或使用指定阶数
-    if chebyshev_degree is None:
-        chebyshev_degree = select_chebyshev_degree(
-            sp, min_degree=chebyshev_min_degree, max_degree=chebyshev_max_degree,
-            verbose=verbose
-        )
-
-    print(f'Continuum: Chebyshev degree={chebyshev_degree}')
-
-    # 拟合 continuum
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        cf = fit_generic_continuum(sp, model=models.Chebyshev1D(degree=chebyshev_degree))
-    continuum_flux = cf(sp.spectral_axis).value
-
-    # 计算对数导数 dlnF/dλ = (dF/dλ) / |F|
-    # 除以 |F| 可放大低信噪比 continuum 的增减性；用 abs 保护避免除零且不引入 sign(F)
-    # （若用带符号的 F 作除数，负值区域增减性会被翻转）
-    continuum_flux_safe = np.maximum(np.abs(continuum_flux), 1e-10)
-    continuum_log_derivative = np.gradient(continuum_flux, wavelengths) / continuum_flux_safe
-    # 根据对数导数的符号划分单调区间
-    monotonic_regions = np.where(np.diff(np.sign(continuum_log_derivative)))[0]
-    # 生成连续谱的自然语言描述
-    continuum_description = generate_continuum_description(wavelengths, continuum_flux, monotonic_regions)
-
-    print(continuum_description)
-
-    continuum_dict = {
-        'wavelength': wavelengths.tolist(),
-        'flux': continuum_flux.tolist(),
-        'chebyshev_degree': chebyshev_degree,
-        'description': continuum_description
-    }
-
-    # 计算残差光谱
-    residual_flux = flux - continuum_flux
-    residual_spectrum_dict = {
-        'wavelength': wavelengths.tolist(),
-        'flux': residual_flux.tolist()
-    }
-
-    return continuum_dict, residual_spectrum_dict
-
-
 def generate_continuum_description(
     wavelengths: np.ndarray,
     continuum_flux: np.ndarray,
@@ -1045,373 +958,6 @@ def run_continuum_fitting_masked(
     return continuum_dict, residual_spectrum_dict
 
 
-def save_features_catalog(
-    output_dir: str,
-    file_name: str,
-    df_features,
-    feature_type: str = 'emission'
-) -> str:
-    """
-    将特征目录保存为 CSV 文件。
-    
-    Parameters
-    ----------
-    output_dir : str
-        输出目录路径
-    file_name : str
-        文件名前缀
-    df_features : DataFrame
-        新格式特征 DataFrame
-    feature_type : str
-        'emission' 或 'absorption'
-    
-    Returns
-    -------
-    filepath : str
-        保存的文件路径
-    """
-    if len(df_features) == 0:
-        return None
-    
-    from AstroAgent.agents.multi_agents.utils.feature_finder_precise import save_catalog_csv
-    
-    suffix = 'emission' if feature_type == 'emission' else 'absorption'
-    filepath = os.path.join(output_dir, f"{file_name}_{suffix}.csv")
-    return save_catalog_csv(df_features, filepath, feature_type)
-
-
-# ===========================================================
-# Iterative Feature Detection
-# ===========================================================
-
-def run_iterative_feature_detection(
-    output_dir: str,
-    file_name: str,
-    wavelength,
-    flux,
-    ivar=None,
-    effective_snr=None,
-    n_iterations: int = 3,
-    absorption_detection_params: dict = None,
-    emission_detection_params: dict = None,
-    verbose: bool = True
-) -> dict:
-    """
-    执行迭代特征检测：先检测吸收线，再在吸收线 mask 后的光谱上检测发射线。
-    
-    Parameters
-    ----------
-    output_dir : str
-        输出目录路径
-    file_name : str
-        文件名前缀
-    wavelength : array-like
-        波长数组
-    flux : array-like
-        流量数组
-    ivar : array-like, optional
-        逆方差数组（优先于 effective_snr 使用）；由函数内部统一分发，无需在
-        absorption_detection_params / emission_detection_params 中重复传入
-    effective_snr : float or array-like, optional
-        有效信噪比（仅当 ivar 为 None 时使用）；同上，由函数内部统一分发
-    n_iterations : int
-        迭代次数（默认 3）
-    absorption_detection_params : dict, optional
-        吸收线检测参数，覆盖 find_absorption_lines 内部默认值。
-        可用键（见 iterative_absorption_detection 默认值）：
-          chebyshev_degree, chebyshev_min_degree, chebyshev_max_degree,
-          window_width, window_overlap,
-          delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold,
-          fwhm_min, fwhm_max,
-          enable_density_presift, density_presift_threshold, density_presift_topk,
-          blend_k, snr_depth_threshold,
-          local_continuum_degree, local_continuum_n_iter, local_continuum_sigma_clip,
-          narrow_sigma_shrink, narrow_sigma_expand,
-          broad_sigma_shrink, broad_sigma_expand,
-          amp_floor_frac, center_max_shift,
-          smooth_sigma_trough, smooth_prominence_frac_trough
-    emission_detection_params : dict, optional
-        发射线检测参数，覆盖 find_emission_lines 内部默认值。
-        可用键（见 iterative_emission_detection 默认值）：
-          chebyshev_degree, chebyshev_min_degree, chebyshev_max_degree,
-          window_width, window_overlap,
-          delta_chi2_base, dynamic_threshold_factor, global_delta_chi2_threshold,
-          fwhm_min, fwhm_max,
-          enable_density_presift, density_presift_threshold, density_presift_topk,
-          blend_k,
-          narrow_sigma_shrink, narrow_sigma_expand,
-          broad_sigma_shrink, broad_sigma_expand,
-          amp_floor_frac, center_max_shift
-    verbose : bool
-        是否输出详细信息
-    
-    Returns
-    -------
-    result : dict
-        包含以下键：
-        - df_absorption : DataFrame, 吸收线结果（按波长升序排列，含 amplitude_rank）
-        - df_emission : DataFrame, 发射线结果（按波长升序排列，含 amplitude_rank）
-        - records_absorption : list, 吸收线记录列表
-        - records_emission : list, 发射线记录列表
-        - wave_remaining : array, mask 后剩余波长
-        - flux_remaining : array, mask 后剩余流量
-    """
-    from AstroAgent.agents.multi_agents.utils.feature_finder_precise import (
-        iterative_absorption_detection,
-        iterative_emission_detection,
-        save_catalog_csv,
-    )
-    
-    wavelength = np.asarray(wavelength, dtype=np.float64)
-    flux = np.asarray(flux, dtype=np.float64)
-    
-    # ── ivar / effective_snr 统一预处理 ──────────────────────────
-    # ivar 和 effective_snr 由顶层统一传入，函数内部负责分发，
-    # absorption_detection_params / emission_detection_params 中不应包含这两个键
-    if ivar is not None:
-        ivar = np.asarray(ivar, dtype=np.float64)
-        effective_snr = None
-    elif effective_snr is None:
-        effective_snr = 7.0
-    
-    if effective_snr is not None:
-        if np.isscalar(effective_snr):
-            effective_snr = np.full_like(flux, effective_snr, dtype=np.float64)
-        else:
-            effective_snr = np.asarray(effective_snr, dtype=np.float64)
-    
-    # ── 构建吸收线检测参数：将 ivar/snr 注入，再合并用户自定义参数 ──
-    abs_params = {}
-    if ivar is not None:
-        abs_params['ivar'] = ivar
-    elif effective_snr is not None:
-        abs_params['effective_snr'] = effective_snr
-    if absorption_detection_params:
-        abs_params.update(absorption_detection_params)
-
-    # ── Step 1: 迭代吸收线检测 ───────────────────────────────────
-    if verbose:
-        print("\n" + "="*70)
-        print("开始迭代吸收线检测")
-        print("="*70)
-    
-    df_abs, records_abs, wave_after_abs, flux_after_abs = iterative_absorption_detection(
-        wavelength=wavelength,
-        flux=flux,
-        n_iterations=n_iterations,
-        detection_params=abs_params,
-        verbose=verbose,
-        output_format='new',
-    )
-    
-    if verbose:
-        print(f"\n检测到 {len(df_abs)} 条吸收线")
-    
-    # ── Step 1.5: 将 ivar/snr 同步到吸收线 mask 后的波长网格 ──────
-    # iterative_absorption_detection 内部会逐迭代 mask 波长数组，
-    # 发射线检测需要与 wave_after_abs 长度一致的 ivar/snr
-    if ivar is not None:
-        if len(ivar) != len(wave_after_abs):
-            keep_mask = np.isin(wavelength, wave_after_abs)
-            if keep_mask.sum() == len(wave_after_abs):
-                ivar_for_em = ivar[keep_mask]
-            else:
-                ivar_for_em = np.interp(wave_after_abs, wavelength, ivar)
-        else:
-            ivar_for_em = ivar
-        em_ivar_snr = {'ivar': ivar_for_em}
-    else:
-        snr = effective_snr
-        if snr is not None and not np.isscalar(snr) and len(snr) != len(wave_after_abs):
-            keep_mask = np.isin(wavelength, wave_after_abs)
-            if keep_mask.sum() == len(wave_after_abs):
-                snr_for_em = snr[keep_mask]
-            else:
-                snr_for_em = np.interp(wave_after_abs, wavelength, snr)
-        else:
-            snr_for_em = snr
-        em_ivar_snr = {'effective_snr': snr_for_em} if snr_for_em is not None else {}
-    
-    # ── 构建发射线检测参数：注入同步后的 ivar/snr，再合并用户自定义参数 ──
-    em_params = {}
-    em_params.update(em_ivar_snr)
-    if emission_detection_params:
-        em_params.update(emission_detection_params)
-    
-    # ── Step 2: 迭代发射线检测（在吸收线已 mask 的光谱上）──────
-    if verbose:
-        print("\n" + "="*70)
-        print("在吸收线已 mask 的光谱上执行发射线检测")
-        print("="*70)
-    
-    df_em, records_em, wave_remaining, flux_remaining = iterative_emission_detection(
-        wavelength=wave_after_abs,
-        flux=flux_after_abs,
-        n_iterations=n_iterations,
-        detection_params=em_params,
-        verbose=verbose,
-        output_format='new',
-        df_troughs=df_abs,  # 用于伪峰标注
-    )
-    
-    if verbose:
-        print(f"\n检测到 {len(df_em)} 条发射线")
-    
-    # ── Step 2.5: 添加近邻信息 ────────────────────────────────────
-    records_abs = _add_neighbor_info(records_abs)
-    records_em = _add_neighbor_info(records_em)
-        
-    # 更新 DataFrame 中的邻居信息
-    if len(df_abs) > 0:
-        df_abs['left_neighbor'] = [r.get('left_neighbor', 'None') for r in records_abs]
-        df_abs['right_neighbor'] = [r.get('right_neighbor', 'None') for r in records_abs]
-    if len(df_em) > 0:
-        df_em['left_neighbor'] = [r.get('left_neighbor', 'None') for r in records_em]
-        df_em['right_neighbor'] = [r.get('right_neighbor', 'None') for r in records_em]
-    
-    # ── Step 2.6: 按波长排序并添加 amplitude_rank ───────────────────────────────
-    # amplitude_rank: 发射线按幅度（峰高）从高到低排名；吸收线按深度（幅度绝对值）从深到浅排名
-        
-    # 吸收线：按波长排序，添加 amplitude_rank
-    if len(df_abs) > 0:
-        # 先按 amplitude 计算排名（幅度越大，排名越靠前）
-        df_abs['amplitude_rank'] = df_abs['amplitude'].abs().rank(ascending=False, method='min').astype(int)
-        # 按波长排序
-        df_abs = df_abs.sort_values('wavelength', ascending=True).reset_index(drop=True)
-        # 同步更新 records_abs
-        records_abs = _update_records_with_rank_and_sort(df_abs, records_abs, 'absorption')
-        
-    # 发射线：按波长排序，添加 amplitude_rank
-    if len(df_em) > 0:
-        # 按 amplitude 计算排名（幅度越大，排名越靠前）
-        df_em['amplitude_rank'] = df_em['amplitude'].rank(ascending=False, method='min').astype(int)
-        # 按波长排序
-        df_em = df_em.sort_values('wavelength', ascending=True).reset_index(drop=True)
-        # 同步更新 records_em
-        records_em = _update_records_with_rank_and_sort(df_em, records_em, 'emission')
-    
-    # ── Step 3: 保存结果 ──────────────────────────────────────────
-    if len(df_abs) > 0:
-        abs_path = os.path.join(output_dir, f"{file_name}_absorption.csv")
-        save_catalog_csv(df_abs, abs_path, 'absorption')
-    
-    if len(df_em) > 0:
-        em_path = os.path.join(output_dir, f"{file_name}_emission.csv")
-        save_catalog_csv(df_em, em_path, 'emission')
-    
-    return {
-        'df_absorption': df_abs,
-        'df_emission': df_em,
-        'records_absorption': records_abs,
-        'records_emission': records_em,
-        'wave_remaining': wave_remaining,
-        'flux_remaining': flux_remaining,
-    }
-
-
-def _add_neighbor_info(records: list) -> list:
-    """
-    为谱线记录添加近邻信息（同类型谱线内查找）。
-    
-    Parameters
-    ----------
-    records : list of dict
-        谱线记录列表，每条记录需包含 'wavelength' 字段
-    
-    Returns
-    -------
-    records : list of dict
-        添加了 'left_neighbor' 和 'right_neighbor' 字段的记录
-        格式："Left neighbor: {wavelength:.1f} Å, distance: {distance:.1f} Å"
-              "Left neighbor: None, distance: None"
-    """
-    if not records:
-        return records
-    
-    # 按波长排序
-    sorted_records = sorted(records, key=lambda x: x.get('wavelength', 0))
-    
-    for i, rec in enumerate(sorted_records):
-        current_wl = rec.get('wavelength', 0)
-        
-        # 左邻居（波长更小的最近邻）
-        if i > 0:
-            left_wl = sorted_records[i - 1].get('wavelength', 0)
-            left_dist = current_wl - left_wl
-            rec['left_neighbor'] = f"Left neighbor: {left_wl:.1f} Å, distance: {left_dist:.1f} Å"
-        else:
-            rec['left_neighbor'] = "Left neighbor: None, distance: None"
-        
-        # 右邻居（波长更大的最近邻）
-        if i < len(sorted_records) - 1:
-            right_wl = sorted_records[i + 1].get('wavelength', 0)
-            right_dist = right_wl - current_wl
-            rec['right_neighbor'] = f"Right neighbor: {right_wl:.1f} Å, distance: {right_dist:.1f} Å"
-        else:
-            rec['right_neighbor'] = "Right neighbor: None, distance: None"
-    
-    return sorted_records
-
-
-def _update_records_with_rank_and_sort(df, records, feature_type):
-    """
-    根据 DataFrame 的排序和排名更新 records 列表。
-    
-    Parameters
-    ----------
-    df : DataFrame
-        已排序且包含 amplitude_rank 列的 DataFrame
-    records : list of dict
-        原始记录列表
-    feature_type : str
-        'emission' 或 'absorption'
-    
-    Returns
-    -------
-    updated_records : list of dict
-        按波长排序并添加了 amplitude_rank 的记录列表
-    """
-    if len(df) == 0 or not records:
-        return records
-    
-    # 创建波长到记录的映射
-    wavelength_to_record = {rec['wavelength']: rec.copy() for rec in records}
-    
-    updated_records = []
-    for _, row in df.iterrows():
-        wl = row['wavelength']
-        if wl in wavelength_to_record:
-            rec = wavelength_to_record[wl]
-            rec['amplitude_rank'] = int(row['amplitude_rank'])
-            updated_records.append(rec)
-    
-    return updated_records
-
-
-def save_resolved_features(
-    output_dir: str,
-    file_name: str,
-    resolved_peaks,
-    resolved_troughs
-) -> None:
-    """
-    将 resolved peaks/troughs 保存到 JSON 文件。
-    
-    Parameters
-    ----------
-    output_dir : str
-        输出目录路径
-    file_name : str
-        文件名前缀
-    resolved_peaks : list
-        已解析的峰列表
-    resolved_troughs : list
-        已解析的谷列表
-    """
-    with open(os.path.join(output_dir, f"{file_name}_resolved_peaks.txt"), "w") as f:
-        json.dump(resolved_peaks, f, ensure_ascii=False, indent=4)
-    with open(os.path.join(output_dir, f"{file_name}_resolved_troughs.txt"), "w") as f:
-        json.dump(resolved_troughs, f, ensure_ascii=False, indent=4)
 
 
 # ===========================================================
@@ -1506,84 +1052,6 @@ LRG_ANCHOR_EMISSION_LINES = {
     if EMISSION_LINE_WIDTHS.get(k) != 'broad'
 }
 
-
-def _compute_dn4000(obs_wavelength, obs_flux, z):
-    """
-    将观测系光谱转换到静止系，计算 D_n(4000) 指标及三段线性斜率。
-
-    Parameters
-    ----------
-    obs_wavelength : array-like
-        观测系波长数组（Å），对应 state['spectrum']['wavelength']
-    obs_flux : array-like
-        对应流量数组，对应 state['spectrum']['flux']
-    z : float
-        红移值，用于将观测系转换为静止系
-
-    Returns
-    -------
-    dict with keys:
-        Dn4000           : float | None  — D_n(4000) 值
-        strength         : str           — "weak" / "moderate" / "strong" / "insufficient data"
-        mean_flux_3850_3950 : float | None
-        mean_flux_4000_4100 : float | None
-        slope_3850_3950  : float | None  — 线性斜率（flux/Å，静止系）
-        slope_3950_4000  : float | None
-        slope_4000_4100  : float | None
-        n_points_3850_3950 : int
-        n_points_4000_4100 : int
-    """
-    obs_wavelength = np.asarray(obs_wavelength, dtype=np.float64)
-    obs_flux = np.asarray(obs_flux, dtype=np.float64)
-
-    # 转换到静止系
-    rest_wavelength = obs_wavelength / (1.0 + z)
-
-    def _window_stats(wl_lo, wl_hi):
-        """返回窗口内的 (wavelength, flux) 子集"""
-        mask = (rest_wavelength >= wl_lo) & (rest_wavelength <= wl_hi)
-        return rest_wavelength[mask], obs_flux[mask]
-
-    def _linear_slope(wl_arr, flux_arr):
-        """用 numpy.polyfit 拟合一阶多项式，返回斜率；点数 < 2 时返回 None"""
-        if len(wl_arr) < 2:
-            return None
-        coeffs = np.polyfit(wl_arr, flux_arr, 1)
-        return float(coeffs[0])  # 斜率，单位 flux/Å
-
-    wl_a, fl_a = _window_stats(3850.0, 3950.0)  # 蓝侧参考窗口
-    wl_b, fl_b = _window_stats(3950.0, 4000.0)  # break 过渡段
-    wl_c, fl_c = _window_stats(4000.0, 4100.0)  # 红侧 break 窗口
-
-    mean_a = float(np.mean(fl_a)) if len(fl_a) > 0 else None
-    mean_c = float(np.mean(fl_c)) if len(fl_c) > 0 else None
-
-    # D_n(4000) = mean_flux(4000-4100) / mean_flux(3850-3950)
-    if mean_a is not None and mean_c is not None and mean_a != 0:
-        dn4000 = mean_c / mean_a
-        if dn4000 < 1.0:
-            strength = "unphysical (Dn4000 < 1.0)"
-        elif dn4000 < 1.3:
-            strength = "weak"
-        elif dn4000 > 1.5:
-            strength = "strong"
-        else:
-            strength = "moderate"
-    else:
-        dn4000 = None
-        strength = "insufficient data"
-
-    return {
-        "Dn4000":              round(dn4000, 4) if dn4000 is not None else None,
-        "strength":            strength,
-        "mean_flux_3850_3950": round(mean_a, 6) if mean_a is not None else None,
-        "mean_flux_4000_4100": round(mean_c, 6) if mean_c is not None else None,
-        "slope_3850_3950":     (lambda s: round(s, 6) if s is not None else None)(_linear_slope(wl_a, fl_a)),
-        "slope_3950_4000":     (lambda s: round(s, 6) if s is not None else None)(_linear_slope(wl_b, fl_b)),
-        "slope_4000_4100":     (lambda s: round(s, 6) if s is not None else None)(_linear_slope(wl_c, fl_c)),
-        "n_points_3850_3950":  int(len(fl_a)),
-        "n_points_4000_4100":  int(len(fl_c)),
-    }
 
 
 def brute_force_line_matching(state, tol_wavelength=None):
@@ -1949,7 +1417,7 @@ def brute_force_line_matching(state, tol_wavelength=None):
     # 过滤掉有效独立约束数 < 2 的候选
     # N_emission / N_absorption 已经是 min(独立波长数, 独立线名数)，
     # 因此此处过滤同时排除「单峰多线冲突」和「单线多峰」两种无效情况。
-    results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 2]
+    results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 1]
 
     return results
 
@@ -2036,72 +1504,109 @@ def _score_one_redshift(z, wave, flux_norm, snr, half=20.0, min_wavelength=0.0):
     return total, n_in_band, details
 
 
-def run_redshift_scoring(wavelength, flux, continuum_flux, snr,
-                         brute_force_matches, split_z=1.0, top=5,
-                         min_lines=3, half=20.0, blue_cut=4000.0):
-    """对暴力匹配的红移假设打分，按 z 阈值分组返回 top N。
+def _score_one_redshift_cwt(z, wave, peaks, troughs, half=20.0, min_wavelength=0.0):
+    """Score a single z using CWT-detected features instead of raw flux.
+
+    For each rest-frame line, finds the nearest CWT feature of the correct type
+    (peak for emission, trough for absorption) within a ±half Å window around
+    the predicted observed wavelength.  A line with no nearby CWT feature gets
+    zero contribution — raw flux noise cannot score.
+
+    Score components per matched line:
+      - *position_penalty*: Gaussian fall-off with sigma=5 Å
+      - *quality*: min(ridge_length/5, 1) × min(snr/10, 1), each capped at 1
+      - *weight*: line-specific u × ew (or u × aw) from ``_SCORER_LINES``
+      - *amplitude*: |CWT amplitude| of the matched feature
 
     Parameters
     ----------
-    wavelength, flux, continuum_flux, snr : ndarray
-        光谱数据（flux 和 continuum_flux 应为原始流量，非 residual）。
-    brute_force_matches : list[dict]
-        brute_force_line_matching 的输出，每项须含 'z_center'。
-    split_z : float
-        红移分组阈值。
-    top : int
-        每组返回前 N 名。
-    min_lines : int
-        最少在波段内的谱线数，过滤单线/双线匹配。
+    z : float
+        Candidate redshift.
+    wave : ndarray
+        Full wavelength array (used only for range checks).
+    peaks : list[dict]
+        CWT emission features. Each dict must have keys: wavelength, amplitude,
+        ridge_length, snr.
+    troughs : list[dict]
+        CWT absorption features.  Same key requirements as *peaks*.
     half : float
-        搜索半窗 (Å)。
-    blue_cut : float
-        z < split_z 的假设砍掉预测波长低于此值的谱线 (Å)，默认 4000。
+        Half-width of the search window around predicted wavelength (Å).
+    min_wavelength : float
+        Skip lines whose predicted wavelength is below this value.
 
     Returns
     -------
-    dict with keys:
-        low_z, high_z: list of dicts (rank, z, score, n_lines, details)
+    (score, n_in_band, details)
     """
-    wavelength = np.asarray(wavelength, dtype=np.float64)
-    flux = np.asarray(flux, dtype=np.float64)
-    continuum_flux = np.asarray(continuum_flux, dtype=np.float64)
-    snr = np.asarray(snr, dtype=np.float64)
+    total = 0.0
+    n_in_band = 0
+    details = []
 
-    # 连续谱归一化
-    flux_norm = flux / np.maximum(continuum_flux, 1e-6)
-
-    # 逐 z 打分
-    scored = []
-    for m in brute_force_matches:
-        z = m.get('z_center', m.get('z_max', 0))
-        if z <= 0:
+    for rest, name, aw, ew, u in _SCORER_LINES:
+        pred = float(rest) * (1.0 + float(z))
+        if pred < float(wave[0]) + half or pred > float(wave[-1]) - half:
             continue
-        # 低红移砍蓝端：z < split_z 时跳过 < blue_cut 的线
-        min_wl = blue_cut if z < split_z else 0.0
-        s, n_ib, det = _score_one_redshift(z, wavelength, flux_norm, snr, half=half,
-                                            min_wavelength=min_wl)
-        if n_ib < min_lines:
+        if pred < min_wavelength:
             continue
-        scored.append({'z': z, 'score': s, 'n_lines': n_ib, 'details': det,
-                       'hypothesis': m.get('Hypothesis', ''),
-                       'n_em': m.get('N_emission', 0),
-                       'n_ab': m.get('N_absorption', 0)})
 
-    # 分组
-    low = [r for r in scored if r['z'] < split_z]
-    high = [r for r in scored if r['z'] >= split_z]
-    low.sort(key=lambda x: -x['score'])
-    high.sort(key=lambda x: -x['score'])
+        n_in_band += 1
 
-    return {
-        'split_z': split_z,
-        'top': top,
-        'low_z': low[:top],
-        'high_z': high[:top],
-        'all_low_z': low,
-        'all_high_z': high,
-    }
+        # ── Emission: find nearest peak ──
+        best_em = None
+        if ew > 0 and peaks:
+            best_dist = half + 1.0
+            for p in peaks:
+                pw = float(p.get('wavelength', 0))
+                dist = abs(pw - pred)
+                if dist < best_dist and dist <= half:
+                    best_dist = dist
+                    best_em = p
+
+        # ── Absorption: find nearest trough ──
+        best_ab = None
+        if aw > 0 and troughs:
+            best_dist = half + 1.0
+            for t in troughs:
+                tw = float(t.get('wavelength', 0))
+                dist = abs(tw - pred)
+                if dist < best_dist and dist <= half:
+                    best_dist = dist
+                    best_ab = t
+
+        def _feature_score(feat, weight):
+            amp = abs(float(feat.get('amplitude', 0)))
+            delta = abs(float(feat.get('wavelength', 0)) - pred)
+            pos_p = float(np.exp(-0.5 * (delta / 5.0) ** 2))
+            ridge = float(feat.get('ridge_length', 1))
+            feat_snr = float(feat.get('snr', 0))
+            quality = min(ridge / 5.0, 1.0) * min(feat_snr / 10.0, 1.0)
+            return weight * amp * pos_p * quality, delta, amp, ridge, feat_snr
+
+        em_s = 0.0
+        ab_s = 0.0
+        if best_em is not None:
+            em_s, _, _, _, _ = _feature_score(best_em, u * ew)
+        if best_ab is not None:
+            ab_s, _, _, _, _ = _feature_score(best_ab, u * aw)
+
+        best = max(em_s, ab_s)
+        total += best
+
+        if best > 0.01:
+            if em_s >= ab_s and best_em is not None:
+                _, delta, amp, ridge, feat_snr = _feature_score(best_em, u * ew)
+                details.append((name, 'EM', best, pred,
+                                float(best_em.get('wavelength', 0)),
+                                delta, amp, ridge, feat_snr))
+            elif best_ab is not None:
+                _, delta, amp, ridge, feat_snr = _feature_score(best_ab, u * aw)
+                details.append((name, 'ABS', best, pred,
+                                float(best_ab.get('wavelength', 0)),
+                                delta, amp, ridge, feat_snr))
+
+    if n_in_band > 0:
+        total = total / np.sqrt(n_in_band)
+    return total, n_in_band, details
 
 
 def run_redshift_scoring_v2(wavelength, flux, continuum_flux, snr,
@@ -2194,6 +1699,82 @@ def run_redshift_scoring_v2(wavelength, flux, continuum_flux, snr,
     }
 
 
+def run_redshift_scoring_v3(wavelength, flux, continuum_flux, snr,
+                             brute_force_matches, peaks, troughs,
+                             split_z=1.0, top=5, min_lines=3, half=20.0,
+                             blue_cut=4000.0, peak_tol=30.0, scoring_workers=1):
+    """v3: 同 v2 的架构，但使用 ``_score_one_redshift_cwt`` 基于 CWT 特征打分。
+
+    与 v2 的区别：
+    - 从 CWT peaks/troughs 表里显式匹配每条线，而非在 raw flux 窗口里取 argmin/argmax。
+    - 未被 CWT 检测到的位置不计分（噪声无法得分）。
+    - 分数综合了 CWT amplitude、位置匹配、ridge_length 和 snr。
+
+    .. note::
+        v3 不再需要 *flux* 和 *continuum_flux* —— 打分完全基于 CWT 特征表。
+       保留这两个参数仅为保持调用签名兼容。
+    """
+    wavelength = np.asarray(wavelength, dtype=np.float64)
+
+    tasks = []
+    for i, m in enumerate(brute_force_matches):
+        z_list = m.get('z_list', [m.get('z_center', 0)])
+        for z in z_list:
+            if z > 0:
+                tasks.append((i, z))
+
+    if not tasks:
+        return {'split_z': split_z, 'top': top, 'low_z': [], 'high_z': [],
+                'all_low_z': [], 'all_high_z': []}
+
+    workers = scoring_workers if scoring_workers > 0 else os.cpu_count() or 4
+
+    def _score_one_task(args):
+        i, z = args
+        m = brute_force_matches[i]
+        min_wl = blue_cut if z < split_z else 0.0
+        s, n_ib, det = _score_one_redshift_cwt(
+            z, wavelength, peaks, troughs, half=half, min_wavelength=min_wl,
+        )
+        return (i, z, s, n_ib, det)
+
+    hyp_best = {}
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for i, z, s, n_ib, det in ex.map(_score_one_task, tasks):
+            if s <= 0:
+                continue
+            if i not in hyp_best or s > hyp_best[i]['score']:
+                hyp_best[i] = {'z': z, 'score': s, 'n_lines': n_ib, 'details': det}
+
+    scored = []
+    for i, best in hyp_best.items():
+        if best['n_lines'] < min_lines:
+            continue
+        m = brute_force_matches[i]
+        scored.append({'z': best['z'], 'score': best['score'],
+                       'n_lines': best['n_lines'], 'details': best['details'],
+                       'hypothesis': m.get('Hypothesis', ''),
+                       'n_em': m.get('N_emission', 0),
+                       'n_ab': m.get('N_absorption', 0)})
+
+    low = [r for r in scored if r['z'] < split_z]
+    high = [r for r in scored if r['z'] >= split_z]
+    low.sort(key=lambda x: -x['score'])
+    high.sort(key=lambda x: -x['score'])
+
+    low = _dedup_by_primary_peak(low, peak_tol=peak_tol)
+    high = _dedup_by_primary_peak(high, peak_tol=peak_tol)
+
+    return {
+        'split_z': split_z,
+        'top': top,
+        'low_z': low[:top],
+        'high_z': high[:top],
+        'all_low_z': low,
+        'all_high_z': high,
+    }
+
+
 def _extract_primary_wavelength(hypothesis):
     """从 hypothesis 字符串中提取第一个观测波长 (Å)。"""
     try:
@@ -2215,218 +1796,3 @@ def _dedup_by_primary_peak(candidates, peak_tol=30.0):
             continue
         kept.append(c)
     return kept
-
-
-# =============================================================================
-# Local line fitting — replaces LLM harness for per-hypothesis verification
-# =============================================================================
-
-# Rest-frame line tables (keep in sync with harness/tools.py)
-_LOCAL_WIDTH_3SIGMA = {"broad": 90, "both": 50, "narrow": 25, "absorption": 20}
-_LOCAL_WINDOW_HALF = {"broad": 300, "both": 200, "narrow": 150, "absorption": 150}
-
-
-def _gaussian_plus_linear(x, amp, center, sigma, slope, intercept):
-    return amp * np.exp(-(x - center) ** 2 / (2 * sigma ** 2)) + slope * x + intercept
-
-
-def _gaussian_plus_cheb2(x, amp, center, sigma, c0, c1, c2):
-    """Gaussian + degree-2 Chebyshev continuum (simultaneous fit)."""
-    x_norm = 2.0 * (x - x.min()) / (x.max() - x.min()) - 1.0
-    T2 = 2.0 * x_norm**2 - 1.0
-    return amp * np.exp(-(x - center) ** 2 / (2 * sigma ** 2)) + c0 + c1 * x_norm + c2 * T2
-
-
-def _cheb2_continuum(x, c0, c1, c2):
-    """Degree-2 Chebyshev continuum only."""
-    x_norm = 2.0 * (x - x.min()) / (x.max() - x.min()) - 1.0
-    T2 = 2.0 * x_norm**2 - 1.0
-    return c0 + c1 * x_norm + c2 * T2
-
-
-def _classify_line_status(snr: float, dchi2: float) -> str:
-    if dchi2 < 0:
-        return "SPURIOUS"
-    if snr < 2:
-        return "NOT_FOUND"
-    if snr > 3 and dchi2 > 10:
-        return "CONFIRMED"
-    if (snr > 3 and dchi2 > 1) or (snr > 2 and dchi2 > 10):
-        return "LIKELY"
-    if snr > 2 and dchi2 > 1:
-        return "MARGINAL"
-    return "NOT_FOUND"
-
-
-def _fit_one_line_local(
-    wavelength: np.ndarray,
-    flux: np.ndarray,
-    center_guess: float,
-    width_class: str,
-    line_type: str = "emission",
-) -> Dict[str, Any]:
-    # Treat "both" and "absorption" as narrow for fitting purposes
-    fit_class = "narrow" if width_class in ("both", "absorption") else width_class
-    window_half = _LOCAL_WINDOW_HALF.get(fit_class, 150)
-    width_3sigma = _LOCAL_WIDTH_3SIGMA.get(fit_class, 25)
-
-    mask = (wavelength >= center_guess - window_half) & (wavelength <= center_guess + window_half)
-    wl = wavelength[mask]
-    fl = flux[mask]
-
-    if len(wl) < 10:
-        return {"center": None, "center_err": None, "amplitude": None, "amplitude_err": None,
-                "sigma": None, "fwhm": None, "fwhm_km_s": None, "delta_chi2_per_n": None,
-                "local_rms": None, "local_snr": None, "n_points": len(wl),
-                "flags": ["too_few_points"]}
-
-    lin_coeffs = np.polyfit(wl, fl, 1)
-    slope0, intercept0 = lin_coeffs[0], lin_coeffs[1]
-    amp0 = np.interp(center_guess, wl, fl) - (slope0 * center_guess + intercept0)
-    amp0 = min(amp0, -1e-6) if line_type == "absorption" else max(amp0, 1e-6)
-    sigma0 = np.clip(width_3sigma / 3.0, 2.0, window_half / 2)
-
-    amp_bounds = (-np.inf, 0.0) if line_type == "absorption" else (0.0, np.inf)
-    center_half = width_3sigma / 2.0
-
-    use_cheb = fit_class != "broad"
-
-    if use_cheb:
-        # Simultaneous Gaussian + degree-2 Chebyshev continuum fit
-        x_mid = (wl[0] + wl[-1]) / 2.0
-        c0_init = slope0 * x_mid + intercept0
-        c1_init = slope0 * (wl[-1] - wl[0]) / 2.0
-        c2_init = 0.0
-        bounds = ([amp_bounds[0], center_guess - center_half, 1.0, -np.inf, -np.inf, -np.inf],
-                  [amp_bounds[1], center_guess + center_half, width_3sigma, np.inf, np.inf, np.inf])
-        p0 = [amp0, center_guess, sigma0, c0_init, c1_init, c2_init]
-        model = _gaussian_plus_cheb2
-    else:
-        bounds = ([amp_bounds[0], center_guess - center_half, 1.0, -np.inf, -np.inf],
-                  [amp_bounds[1], center_guess + center_half, width_3sigma, np.inf, np.inf])
-        p0 = [amp0, center_guess, sigma0, slope0, intercept0]
-        model = _gaussian_plus_linear
-
-    try:
-        popt, pcov = curve_fit(model, wl, fl, p0=p0, bounds=bounds, maxfev=5000)
-    except Exception:
-        return {"center": None, "center_err": None, "amplitude": None, "amplitude_err": None,
-                "sigma": None, "fwhm": None, "fwhm_km_s": None, "delta_chi2_per_n": None,
-                "local_rms": None, "local_snr": None, "n_points": len(wl), "flags": ["fit_failed"]}
-
-    amp, center, sigma = popt[0], popt[1], popt[2]
-    perr = np.sqrt(np.diag(pcov)) if pcov is not None else [None] * len(popt)
-
-    if use_cheb:
-        fitted = _gaussian_plus_cheb2(wl, *popt)
-        continuum_only = _cheb2_continuum(wl, popt[3], popt[4], popt[5])
-    else:
-        fitted = _gaussian_plus_linear(wl, *popt)
-        slope, intercept = popt[3], popt[4]
-        continuum_only = slope * wl + intercept
-
-    residuals = fl - fitted
-    local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
-    if local_rms < 1e-10:
-        local_rms = np.std(residuals) or 1e-10
-
-    n = len(wl)
-    chi2_cont = np.sum(((fl - continuum_only) / local_rms) ** 2)
-    chi2_full = np.sum((residuals / local_rms) ** 2)
-    delta_chi2_per_n = round((chi2_cont - chi2_full) / n, 3)
-    local_snr = round(abs(amp) / local_rms, 2)
-    fwhm = sigma * 2.35482
-    fwhm_km_s = fwhm / center * 2.99792458e5 if center != 0 else None
-
-    flags = []
-    if abs(center - center_guess) > center_half * 0.95:
-        flags.append("center_deviation_large")
-    if delta_chi2_per_n < 0:
-        flags.append("negative_delta_chi2")
-
-    return {
-        "center": round(center, 3), "center_err": round(perr[1], 4) if perr[1] is not None else None,
-        "amplitude": round(amp, 6), "amplitude_err": round(perr[0], 6) if perr[0] is not None else None,
-        "sigma": round(sigma, 3), "fwhm": round(fwhm, 3),
-        "fwhm_km_s": round(fwhm_km_s, 1) if fwhm_km_s is not None else None,
-        "delta_chi2_per_n": delta_chi2_per_n, "local_rms": round(local_rms, 6),
-        "local_snr": local_snr, "n_points": n, "flags": flags,
-    }
-
-
-def _predict_lines_at_z(redshift: float, wl_min: float, wl_max: float) -> List[Dict[str, Any]]:
-    lines = []
-    for name, rest_wl in EMISSION_LINES.items():
-        obs_wl = rest_wl * (1.0 + redshift)
-        if wl_min <= obs_wl <= wl_max:
-            lines.append({"name": name, "rest_wl": round(rest_wl, 1), "obs_wl": round(obs_wl, 1),
-                          "width_class": EMISSION_LINE_WIDTHS.get(name, "narrow"), "type": "emission"})
-    for name, rest_wl in ABSORPTION_LINES.items():
-        obs_wl = rest_wl * (1.0 + redshift)
-        if wl_min <= obs_wl <= wl_max:
-            lines.append({"name": name, "rest_wl": round(rest_wl, 1), "obs_wl": round(obs_wl, 1),
-                          "width_class": ABSORPTION_LINE_WIDTHS.get(name, "absorption"), "type": "absorption"})
-    lines.sort(key=lambda x: x["obs_wl"])
-    return lines
-
-
-def run_local_fitting(
-    wavelength: np.ndarray,
-    flux: np.ndarray,
-    hypotheses: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    """Fit all predicted lines for each hypothesis, return per-hypothesis rows
-    and merged peak/trough catalogs. Pure function — no state mutation, no I/O.
-
-    Returns
-    -------
-    dict with keys:
-        all_rows : list[list[dict]] — per-hypothesis fitted line rows
-        peaks : list[dict]           — merged emission peaks
-        troughs : list[dict]         — merged absorption troughs
-    """
-    if not hypotheses:
-        return {"all_rows": [], "peaks": [], "troughs": []}
-
-    wavelength = np.asarray(wavelength, dtype=np.float64)
-    flux = np.asarray(flux, dtype=np.float64)
-    wl_min, wl_max = float(wavelength[0]), float(wavelength[-1])
-
-    all_rows = []
-    em_candidates, ab_candidates = [], []
-
-    for idx, hyp in enumerate(hypotheses):
-        z_c = (hyp.get('z_max', 0) + hyp.get('z_min', 0)) / 2 or hyp.get('z_max', 0) or hyp.get('z_min', 0)
-        predicted = _predict_lines_at_z(round(z_c, 4), wl_min, wl_max)
-        rows = []
-
-        for line in predicted:
-            fr = _fit_one_line_local(wavelength, flux, line["obs_wl"], line["width_class"], line["type"])
-            status = _classify_line_status(fr.get("local_snr") or 0, fr.get("delta_chi2_per_n") or 0)
-
-            row = {"name": line["name"], "rest_wavelength": line["rest_wl"],
-                   "predicted_obs": line["obs_wl"], "fitted_center": fr["center"],
-                   "fitted_center_err": fr["center_err"], "amplitude": fr["amplitude"],
-                   "amplitude_err": fr["amplitude_err"], "fitted_sigma": fr["sigma"],
-                   "fwhm_km_s": fr["fwhm_km_s"], "snr": fr["local_snr"],
-                   "delta_chi2_per_n": fr["delta_chi2_per_n"], "status": status}
-            rows.append(row)
-
-            if status not in ("NOT_FOUND", "SPURIOUS") and fr["center"] is not None:
-                entry = {"wavelength": fr["center"], "amplitude": fr["amplitude"],
-                         "sigma": fr["sigma"], "snr": fr["local_snr"],
-                         "name": line["name"], "status": status, "type": line["type"]}
-                (em_candidates if line["type"] == "emission" else ab_candidates).append(entry)
-
-        all_rows.append(rows)
-
-    def _dedup(candidates):
-        candidates.sort(key=lambda x: x["snr"], reverse=True)
-        merged = []
-        for c in candidates:
-            if not any(abs(c["wavelength"] - m["wavelength"]) < 20 for m in merged):
-                merged.append(c)
-        merged.sort(key=lambda x: x["wavelength"])
-        return merged
-
-    return {"all_rows": all_rows, "peaks": _dedup(em_candidates), "troughs": _dedup(ab_candidates)}

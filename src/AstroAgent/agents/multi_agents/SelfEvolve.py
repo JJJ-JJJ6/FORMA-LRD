@@ -178,7 +178,8 @@ class SelfEvolve(BaseAgent):
             ground_truth=ground_truth,
             mismatch_info=mismatch_info,
             analysis=analysis,
-            output_dir=state["output_dir"],
+            # 根级 output_dir，用于共享的 batch failure 队列
+            output_dir=os.path.dirname(state["output_dir"]),
         )
         state["_failure_recorded"] = True
 

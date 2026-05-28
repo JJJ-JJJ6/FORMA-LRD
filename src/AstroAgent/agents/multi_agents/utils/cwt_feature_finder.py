@@ -314,10 +314,8 @@ def run_cwt_feature_detection(
         out_cols = ['index', 'amplitude_rank', 'wavelength', 'wavelength_err',
                     'FWHM_A', 'FWHM_km_s', 'amplitude', 'amplitude_err',
                     'integrated_flux', 'flux_at_center',
-                    'global_delta_chi2', 'local_delta_chi2',
-                    'quality_low_delta_chi2', 'quality_boundary_touch',
-                    'quality_large_error', 'quality_blended',
-                    'quality_low_snr_depth', 'width_class', 'feature_type',
+                    'ridge_length', 'snr',
+                    'width_class', 'feature_type',
                     'left_neighbor', 'right_neighbor',
                     'is_pseudo_peak', 'pseudo_reason',
                     'covered_troughs', 'trough_centers']
@@ -333,12 +331,6 @@ def run_cwt_feature_detection(
                 df_out[col] = df['amplitude'] * df['FWHM_A'] / SIGMA_TO_FWHM * np.sqrt(2 * np.pi)
             elif col == 'flux_at_center':
                 df_out[col] = df['amplitude']
-            elif col == 'global_delta_chi2':
-                df_out[col] = 0.0
-            elif col == 'local_delta_chi2':
-                df_out[col] = 0.0
-            elif col.startswith('quality_'):
-                df_out[col] = False
             else:
                 df_out[col] = df.get(col, '')
         path = os.path.join(output_dir, f"{file_name}_{suffix}.csv")

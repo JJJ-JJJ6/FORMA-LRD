@@ -30,8 +30,7 @@ from langchain.agents import create_agent
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 from .tools import (
-    fit_peak,
-    write_report, write_lines_csv, compute_redshift,
+    write_report, write_lines_csv,
     EMISSION_LINES, ABSORPTION_LINES, EMISSION_LINE_WIDTHS,
 )
 
@@ -40,8 +39,7 @@ from .tools import (
 # ---------------------------------------------------------------------------
 
 _HTTP_RETRIES = int(os.environ.get("MAX_TRIES", 3))
-_HTTP_DELAYS = [2, 5, 10, 15, 20][:_HTTP_RETRIES]  # truncate to match MAX_TRIES
-_EMPTY_RETRIES = 1
+_HTTP_DELAYS = [2, 5, 10, 15, 20][:_HTTP_RETRIES]
 
 _RETRYABLE_KW = (
     "429", "rate limit", "too many requests",
@@ -55,14 +53,6 @@ def _is_retryable(exc: Exception) -> bool:
     return any(kw in msg for kw in _RETRYABLE_KW)
 
 
-def _has_fit_calls(messages: List[Any]) -> bool:
-    for msg in messages:
-        if hasattr(msg, "name") and msg.name == "fit_peak":
-            return True
-        for tc in getattr(msg, "tool_calls", []) or []:
-            if tc.get("name") == "fit_peak":
-                return True
-    return False
 
 # ---------------------------------------------------------------------------
 # Skill prompt
@@ -80,7 +70,8 @@ def _load_skill() -> str:
 # Tool list
 # ---------------------------------------------------------------------------
 
-TOOLS = [fit_peak, compute_redshift, write_report, write_lines_csv]
+def _build_tools() -> list:
+    return [write_report, write_lines_csv]
 
 
 # ---------------------------------------------------------------------------
@@ -107,26 +98,40 @@ def _extract_json_block(text: str) -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Feature catalog: collect structured fit_peak results from tool calls
+# Feature catalog
 # ---------------------------------------------------------------------------
-
-def _collect_fit_results(messages: List[Any]) -> List[Dict[str, Any]]:
-    """Walk message history and collect all fit_peak tool results."""
-    results = []
-    for msg in messages:
-        # LangGraph messages: check for tool messages
-        if hasattr(msg, "name") and msg.name == "fit_peak":
-            try:
-                content = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
-                results.append(content)
-            except (json.JSONDecodeError, TypeError):
-                pass
-    return results
 
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+def _mask_overlap_label(
+    lo: float, hi: float, obs_wl: float, masked_regions: list | None,
+) -> str:
+    """Return a label describing how the z-window [lo, hi] overlaps with masked regions.
+
+    Returns empty string if no overlap. Otherwise a concise label:
+      - ``[fully masked]`` — entire z-window falls in masked region(s)
+      - ``[λ_pred masked]`` — nominal λ_pred is masked but part of window is clean
+      - ``[window partially masked]`` — part of window overlaps mask, λ_pred is clean
+    """
+    if not masked_regions:
+        return ""
+    lo_masked = any(m_lo <= lo <= m_hi for m_lo, m_hi in masked_regions)
+    hi_masked = any(m_lo <= hi <= m_hi for m_lo, m_hi in masked_regions)
+    obs_masked = any(m_lo <= obs_wl <= m_hi for m_lo, m_hi in masked_regions)
+    any_overlap = any(
+        lo <= m_hi and hi >= m_lo for m_lo, m_hi in masked_regions
+    )
+    if not any_overlap:
+        return ""
+    if lo_masked and hi_masked:
+        return " [fully masked]"
+    if obs_masked:
+        return " [λ_pred masked]"
+    return " [window partially masked]"
+
 
 def _find_nearby_features(
     rest_wl: float, obs_wl: float, z_min: float, z_max: float,
@@ -145,23 +150,39 @@ def _find_nearby_features(
     for p in (peaks or []):
         pw = p.get('wavelength', 0)
         if lo <= pw <= hi:
+            z_implied = pw / rest_wl - 1.0
             dist = abs(pw - obs_wl)
             fwhm_a = p.get('FWHM_A', None)
             fwhm_k = p.get('FWHM_km_s', None)
+            ridge = p.get('ridge_length', None)
+            cwt_snr = p.get('snr', None)
             width_str = ""
             if fwhm_a is not None and fwhm_k is not None:
                 width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
-            nearby.append((dist, f"peak@{pw:.1f}(amp={p.get('amplitude', 0):.1f}{width_str})"))
+            extra = ""
+            if ridge is not None:
+                extra += f", ridge={ridge}"
+            if cwt_snr is not None:
+                extra += f", snr={cwt_snr:.1f}"
+            nearby.append((dist, f"peak@{pw:.1f}(z={z_implied:.4f}, amp={p.get('amplitude', 0):.1f}{width_str}{extra})"))
     for t in (troughs or []):
         tw = t.get('wavelength', 0)
         if lo <= tw <= hi:
+            z_implied = tw / rest_wl - 1.0
             dist = abs(tw - obs_wl)
             fwhm_a = t.get('FWHM_A', None)
             fwhm_k = t.get('FWHM_km_s', None)
+            ridge = t.get('ridge_length', None)
+            cwt_snr = t.get('snr', None)
             width_str = ""
             if fwhm_a is not None and fwhm_k is not None:
                 width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
-            nearby.append((dist, f"trough@{tw:.1f}(amp={t.get('amplitude', 0):.1f}{width_str})"))
+            extra = ""
+            if ridge is not None:
+                extra += f", ridge={ridge}"
+            if cwt_snr is not None:
+                extra += f", snr={cwt_snr:.1f}"
+            nearby.append((dist, f"trough@{tw:.1f}(z={z_implied:.4f}, amp={t.get('amplitude', 0):.1f}{width_str}{extra})"))
     nearby.sort(key=lambda x: x[0])
     return ", ".join(n[1] for n in nearby) if nearby else "—"
 
@@ -174,9 +195,15 @@ def _build_predictions_section(
     wl_max: float,
     peaks: list,
     troughs: list,
+    masked_regions: list | None = None,
 ) -> str:
     """Pre-compute predicted lines and cross-reference with detected features
-    using the z-verification window for each line."""
+    using the z-verification window for each line.
+
+    Always shows nearby CWT features. Mask overlap annotations are appended to
+    the features column when the z-window wavelength range overlaps a masked
+    region: ``[fully masked]``, ``[λ_pred masked]``, or ``[window partially masked]``.
+    """
     rows = []
 
     for name, rest_wl in EMISSION_LINES.items():
@@ -185,11 +212,14 @@ def _build_predictions_section(
             continue
         if wl_max is not None and obs_wl > wl_max:
             continue
+        lo = rest_wl * (1.0 + z_min)
+        hi = rest_wl * (1.0 + z_max)
+        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)
+        mask_note = _mask_overlap_label(lo, hi, obs_wl, masked_regions)
         rows.append((
             obs_wl,
             f"| {name} | {rest_wl:.1f} | {obs_wl:.1f} | em | "
-            f"{EMISSION_LINE_WIDTHS.get(name, 'narrow')} | "
-            f"{_find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)} |",
+            f"{EMISSION_LINE_WIDTHS.get(name, 'narrow')} | {features}{mask_note} |",
         ))
 
     for name, rest_wl in ABSORPTION_LINES.items():
@@ -198,11 +228,14 @@ def _build_predictions_section(
             continue
         if wl_max is not None and obs_wl > wl_max:
             continue
+        lo = rest_wl * (1.0 + z_min)
+        hi = rest_wl * (1.0 + z_max)
+        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)
+        mask_note = _mask_overlap_label(lo, hi, obs_wl, masked_regions)
         rows.append((
             obs_wl,
             f"| {name} | {rest_wl:.1f} | {obs_wl:.1f} | abs | "
-            f"absorption | "
-            f"{_find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)} |",
+            f"absorption | {features}{mask_note} |",
         ))
 
     if not rows:
@@ -214,8 +247,8 @@ def _build_predictions_section(
     hi_ex = 1216.0 * (1.0 + z_max)
     header = (
         f"| Name | λ_rest (Å) | λ_obs (Å) | Type | Width | Features in z-window "
-        f"[{lo_ex:.1f}..{hi_ex:.1f} Å for Lyα] (amp, FWHM) |\n"
-        "|------|-----------|----------|------|-------|----------------------------------------------|"
+        f"(z, amp, FWHM, ridge, snr; mask notes in [brackets]) [{lo_ex:.1f}..{hi_ex:.1f} Å for Lyα] |\n"
+        "|------|-----------|----------|------|-------|------------------------------------------------------------|"
     )
     return "\n## Predicted Lines at z = {:.4f}\n\n{}\n{}\n".format(
         redshift, header, "\n".join(r[1] for r in rows)
@@ -237,9 +270,28 @@ def _build_user_message(
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
+    cwt_wide_peaks: list = None,
+    cwt_wide_troughs: list = None,
 ) -> str:
     _z_min = z_min if z_min is not None else round(redshift - 0.1, 4)
     _z_max = z_max if z_max is not None else round(redshift + 0.1, 4)
+
+    # Merge wide (relaxed CWT) features into peaks/troughs for richer nearby context
+    _peaks = list(peaks or [])
+    _troughs = list(troughs or [])
+    if cwt_wide_peaks:
+        existing_wl = {p['wavelength'] for p in _peaks if 'wavelength' in p}
+        for wp in cwt_wide_peaks:
+            if wp.get('wavelength') not in existing_wl:
+                _peaks.append(wp)
+                existing_wl.add(wp['wavelength'])
+    if cwt_wide_troughs:
+        existing_wl = {t['wavelength'] for t in _troughs if 'wavelength' in t}
+        for wt in cwt_wide_troughs:
+            if wt.get('wavelength') not in existing_wl:
+                _troughs.append(wt)
+                existing_wl.add(wt['wavelength'])
+    has_wide = bool(cwt_wide_peaks or cwt_wide_troughs)
 
     # ── Spectrum summary (replaces load_spectrum tool call) ──
     spec_lines = [
@@ -256,7 +308,13 @@ def _build_user_message(
         spec_lines.append(f"| Masked regions | {regions_desc} |")
         _masked_msg = (
             f"\nThese regions were removed due to arm overlap or quality cuts. "
-            f"The spectrum has NO data in these ranges — do not expect to find lines there.\n"
+            f"The spectrum has NO data in these ranges. "
+            f"In the Predicted Lines table, mask overlap is noted in [brackets]:\n"
+            f"  - ``[fully masked]`` — entire z-window has no data → assign MASKED\n"
+            f"  - ``[λ_pred masked]`` — nominal position masked, but CWT features may\n"
+            f"    still exist in the clean part of the z-window → evaluate as usual\n"
+            f"  - ``[window partially masked]`` — part of z-window overlapped → flag\n"
+            f"    as caution, but evaluate available features normally\n"
         )
 
     spectrum_summary = (
@@ -266,28 +324,31 @@ def _build_user_message(
     )
 
     predictions_section = _build_predictions_section(
-        redshift, _z_min, _z_max, wavelength_min, wavelength_max, peaks, troughs,
+        redshift, _z_min, _z_max, wavelength_min, wavelength_max, _peaks, _troughs,
+        masked_regions=masked_regions,
     )
 
     return (
         spectrum_summary
         + f"\nVerify the redshift hypothesis z ≈ {redshift}.\n\n"
         f"Verification window: z ∈ [{_z_min}, {_z_max}]\n"
-        f"A fitted line supports the hypothesis ONLY if its implied redshift falls within this window. "
-        f"Use `compute_redshift` with the fitted center and rest wavelength to check.\n"
+        f"A CWT feature supports the hypothesis ONLY if its pre-computed implied_z falls within this window. "
+        f"Each feature in the table already has its z pre-computed — no need to recalculate.\n"
+        f"Lines marked [fully masked] have NO data in the entire z-window — assign status MASKED.\n"
+        f"Lines with [λ_pred masked] or [window partially masked] can still be evaluated.\n"
         + _masked_msg
         + f"\nFITS file: {fits_path}\n"
         f"Cleaned spectrum: {npz_path}\n"
         + (f"Output Report file: {report_path}\n" if report_path else "")
         + (f"Output CSV file: {csv_path}\n" if csv_path else "")
         + predictions_section
-        + "\nThe table above shows predicted lines at this redshift and any features "
-        "already detected by the peak/trough finder whose observed wavelength falls "
-        "within the z-verification window for that line (sorted by |λ − λ_obs|, closest first). "
-        "Adopt CWT pre-detected features when they meet the criteria in Phase 2 Step 4. "
-        "For remaining lines, call `fit_peak` once each — no retries. "
-        "Batch ALL adoptions and fit_peak calls in a single parallel turn.\n"
-        + "\nFollow the skill prompt phases: adopt/batch-fit all lines → write CSV → write report → JSON block."
+        + "\nThe table above shows predicted lines at this redshift and all CWT pre-detected "
+        "features whose observed wavelength + pre-computed implied_z fall within the "
+        "z-verification window. Evaluate and adopt features per the skill prompt criteria. "
+        "Knowledge base (lines, ionization rules, classification diagnostics) is embedded "
+        "in the system prompt — no need to search external files.\n"
+        + "\nBatch ALL line decisions in a single parallel turn.\n"
+        + "\nPhases: evaluate all lines → write CSV → write report → JSON block."
     )
 
 
@@ -353,7 +414,7 @@ def run(
         structured_output : dict or None
             Parsed JSON block from the LLM report (redshift, classification, lines, etc.).
         feature_catalog : list[dict]
-            Raw fit_peak results collected from tool calls.
+            Collected tool results (always empty since fit_peak is removed).
         messages : list
             Full message history (for debugging).
     """
@@ -379,7 +440,7 @@ def run(
 
     agent = create_agent(
         model=llm,
-        tools=TOOLS,
+        tools=_build_tools(),
         system_prompt=system_prompt,
     )
 
@@ -410,22 +471,7 @@ def run(
         raise last_exc
 
     messages = result.get("messages", [])
-    feature_catalog = _collect_fit_results(messages)
-
-    # ── Empty catalog retry ──────────────────────────────────
-    for empty_attempt in range(_EMPTY_RETRIES + 1):
-        if feature_catalog or not _has_fit_calls(messages):
-            break
-        logging.warning(f"Empty catalog retry {empty_attempt + 1}/{_EMPTY_RETRIES} — LLM called fit_peak but results missing")
-        try:
-            result = agent.invoke({"messages": [("user", user_message)]}, config=config)
-        except Exception as e:
-            if not _is_retryable(e):
-                raise
-            logging.warning(f"Empty-catalog retry HTTP error: {e}")
-            break
-        messages = result.get("messages", [])
-        feature_catalog = _collect_fit_results(messages)
+    feature_catalog = []
 
     last_msg = messages[-1]
     report = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
@@ -482,6 +528,8 @@ async def arun(
     max_turns: int = 100,
     verbose: bool = False,
     stream_md_path: str = None,
+    cwt_wide_peaks: list = None,
+    cwt_wide_troughs: list = None,
 ) -> Dict[str, Any]:
     """Run LLM harness for a single redshift hypothesis (async, optional streaming).
 
@@ -511,7 +559,7 @@ async def arun(
     )
 
     system_prompt = _load_skill()
-    agent = create_agent(model=llm, tools=TOOLS, system_prompt=system_prompt)
+    agent = create_agent(model=llm, tools=_build_tools(), system_prompt=system_prompt)
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,
@@ -520,6 +568,7 @@ async def arun(
         peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
+        cwt_wide_peaks=cwt_wide_peaks, cwt_wide_troughs=cwt_wide_troughs,
     )
 
     # ── Streaming path ──────────────────────────────────────────
@@ -600,24 +649,7 @@ async def arun(
 
         last_msg = accumulated_messages[-1] if accumulated_messages else None
         report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
-        feature_catalog = _collect_fit_results(accumulated_messages)
-
-        # ── Empty catalog retry ────────────────────────────────
-        for empty_attempt in range(_EMPTY_RETRIES + 1):
-            if feature_catalog or not _has_fit_calls(accumulated_messages):
-                break
-            logging.warning(f"Empty catalog retry {empty_attempt + 1}/{_EMPTY_RETRIES} in streaming mode")
-            try:
-                config = {"recursion_limit": max_turns}
-                result = await agent.ainvoke({"messages": [("user", user_message)]}, config=config)
-            except Exception as e:
-                if not _is_retryable(e):
-                    logging.warning(f"Empty-catalog retry failed: {e}")
-                    break
-                logging.warning(f"Empty-catalog retry HTTP error: {e}")
-                break
-            accumulated_messages = result.get("messages", [])
-            feature_catalog = _collect_fit_results(accumulated_messages)
+        feature_catalog = []
 
         return {
             "hypothesis_idx": hypothesis_idx,
@@ -647,22 +679,7 @@ async def arun(
         raise last_exc
 
     messages = result.get("messages", [])
-    feature_catalog = _collect_fit_results(messages)
-
-    # ── Empty catalog retry ────────────────────────────────────
-    for empty_attempt in range(_EMPTY_RETRIES + 1):
-        if feature_catalog or not _has_fit_calls(messages):
-            break
-        logging.warning(f"Empty catalog retry {empty_attempt + 1}/{_EMPTY_RETRIES}")
-        try:
-            result = await agent.ainvoke({"messages": [("user", user_message)]}, config=config)
-        except Exception as e:
-            if not _is_retryable(e):
-                raise
-            logging.warning(f"Empty-catalog retry HTTP error: {e}")
-            break
-        messages = result.get("messages", [])
-        feature_catalog = _collect_fit_results(messages)
+    feature_catalog = []
 
     last_msg = messages[-1]
     report = last_msg.content if hasattr(last_msg, "content") else str(last_msg)

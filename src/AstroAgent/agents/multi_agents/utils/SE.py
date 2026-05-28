@@ -13,6 +13,7 @@ import numpy as np
 
 from pathlib import Path
 
+from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     _read_csv_lines,
@@ -140,11 +141,15 @@ async def analyze_failure(
 
     harness_text = "\n\n".join(summaries)
 
+    # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
+    _vendor = _detect_vendor(base_url)
+    _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
     llm = ChatOpenAI(
         model=model,
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
+        extra_body=_extra_body,
     )
 
     async def _stream_one(md, label: str, prompt: str) -> str:
@@ -478,11 +483,15 @@ async def analyze_failure_batch(
         failure_summaries="\n".join(summary_lines),
     )
 
+    # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
+    _vendor = _detect_vendor(base_url)
+    _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
     llm = ChatOpenAI(
         model=model,
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
+        extra_body=_extra_body,
     )
 
     failure_dir = os.path.join(output_dir, "failure")

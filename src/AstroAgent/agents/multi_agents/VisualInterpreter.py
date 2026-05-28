@@ -1,6 +1,5 @@
 import os
 import numpy as np
-# import pandas as pd
 import logging
 
 
@@ -20,9 +19,8 @@ from AstroAgent.agents.multi_agents.utils.VI import (
     run_continuum_fitting_masked,
     brute_force_line_matching,
     _load_spectrum_from_fits,
-    run_local_fitting,
-    run_redshift_scoring,
     run_redshift_scoring_v2,
+    run_redshift_scoring_v3,
 )
 from AstroAgent.agents.multi_agents.utils.simple_feature_finder import (
     run_simple_feature_detection,
@@ -367,49 +365,130 @@ class VisualInterpreter(BaseAgent):
 
             # Phase E2: Redshift scoring — rank hypotheses for LLM triage
             if state['brute_force_matching']:
-                scoring = run_redshift_scoring_v2(
-                    wavelength=spec["wavelength"],
-                    flux=spec["flux"],
-                    continuum_flux=state['continuum']['flux'],
-                    snr=spec["snr"],
-                    brute_force_matches=state['brute_force_matching'],
-                    split_z=1.0,
-                    top=5,
-                    peak_tol=30.0,
-                    scoring_workers=self.runtime.configs.params.scoring_workers,
-                )
-                state['redshift_scoring'] = scoring
-                ResultWriter().write_redshift_scoring(state)
-
-                # ── Check if true redshift is within scoring candidates ──
-                vi_z = spec.get('VI_Z')
-                if vi_z is not None:
-                    tolerance = self.runtime.configs.params.z_tolerance
-                    expected_z = float(vi_z)
-                    all_zs = [h['z'] for h in scoring.get('low_z', []) + scoring.get('high_z', [])]
-                    min_dz = min((abs(z - expected_z) for z in all_zs), default=999)
-                    in_scoring = min_dz <= tolerance
-
-                    if not in_scoring:
-                        logging.info(
-                            f"[VisualInterpreter] True z={expected_z:.4f} NOT in scoring "
-                            f"(min_dz={min_dz:.4f} > tol={tolerance:.4f}, "
-                            f"n_candidates={len(all_zs)}) — skipping harness + synthesis."
+                if self.runtime.configs.params.redshift_scoring_enabled:
+                    use_v3 = getattr(self.runtime.configs.params, 'redshift_scoring_v3', False)
+                    if use_v3:
+                        scoring = run_redshift_scoring_v3(
+                            wavelength=spec["wavelength"],
+                            flux=spec["flux"],
+                            continuum_flux=state['continuum']['flux'],
+                            snr=spec["snr"],
+                            brute_force_matches=state['brute_force_matching'],
+                            peaks=state.get('peaks', []),
+                            troughs=state.get('troughs', []),
+                            split_z=1.0,
+                            top=self.runtime.configs.params.redshift_scoring_top_k,
+                            peak_tol=30.0,
+                            scoring_workers=self.runtime.configs.params.scoring_workers,
                         )
-                        state['skip_synthesis'] = True
+                    else:
+                        # ── v2: raw flux argmin/argmax (legacy) ──
+                        scoring = run_redshift_scoring_v2(
+                            wavelength=spec["wavelength"],
+                            flux=spec["flux"],
+                            continuum_flux=state['continuum']['flux'],
+                            snr=spec["snr"],
+                            brute_force_matches=state['brute_force_matching'],
+                            split_z=1.0,
+                            top=self.runtime.configs.params.redshift_scoring_top_k,
+                            peak_tol=30.0,
+                            scoring_workers=self.runtime.configs.params.scoring_workers,
+                        )
+                    state['redshift_scoring'] = scoring
+                    ResultWriter().write_redshift_scoring(state)
+
+                    # ── Check if true redshift is within scoring candidates ──
+                    expected_z_str = spec.get('VI_Z') or os.environ.get('EXPECTED_Z')
+                    if expected_z_str is not None:
+                        tolerance = self.runtime.configs.params.z_tolerance
+                        expected_z = float(expected_z_str)
+                        all_zs = [h['z'] for h in scoring.get('low_z', []) + scoring.get('high_z', [])]
+                        min_dz = min((abs(z - expected_z) for z in all_zs), default=999)
+                        in_scoring = min_dz <= tolerance
+
+                        if not in_scoring:
+                            logging.info(
+                                f"[VisualInterpreter] True z={expected_z:.4f} NOT in scoring "
+                                f"(min_dz={min_dz:.4f} > tol={tolerance:.4f}, "
+                                f"n_candidates={len(all_zs)}) — skipping harness + synthesis."
+                            )
+                            state['skip_synthesis'] = True
+                        else:
+                            state['skip_synthesis'] = False
                     else:
                         state['skip_synthesis'] = False
+                else:
+                    # ── Scoring OFF: bypass scoring, all hypotheses proceed ──
+                    low = []
+                    high = []
+                    for m in state['brute_force_matching']:
+                        z = m.get('z_center') or m.get('z_max', 0)
+                        if z <= 0:
+                            continue
+                        n_em = m.get('N_emission', 0)
+                        n_ab = m.get('N_absorption', 0)
+                        entry = {
+                            'z': z,
+                            'score': float(n_em + n_ab),
+                            'n_lines': n_em + n_ab,
+                            'details': [],
+                            'hypothesis': m.get('Hypothesis', ''),
+                            'n_em': n_em,
+                            'n_ab': n_ab,
+                        }
+                        if z < 1.0:
+                            low.append(entry)
+                        else:
+                            high.append(entry)
 
-            # Phase F: Local line fitting → new peaks/troughs + plot
-            # if state['brute_force_matching']:
-            #     result = run_local_fitting(
-            #         spec["wavelength"], spec["flux"], state['brute_force_matching']
-            #     )
-            #     ResultWriter().write_local_fitting(state, result)
-            #     state['peaks'] = result["peaks"]
-            #     state['troughs'] = result["troughs"]
+                    low.sort(key=lambda x: -x['score'])
+                    high.sort(key=lambda x: -x['score'])
 
-            # plot_features(state)
+                    state['redshift_scoring'] = {
+                        'split_z': 1.0,
+                        'top': len(low) + len(high),
+                        'low_z': low,
+                        'high_z': high,
+                        'all_low_z': low,
+                        'all_high_z': high,
+                    }
+                    ResultWriter().write_redshift_scoring(state)
+                    state['skip_synthesis'] = False
+
+            # Phase E3: Second CWT with relaxed thresholds for nearby-feature context
+            # (only when using CWT feature finder)
+            state['cwt_wide_peaks'] = []
+            state['cwt_wide_troughs'] = []
+            if params.feature_finder == "cwt" and state.get('brute_force_matching'):
+                relaxed_em_params = dict(emission_detection_params)
+                relaxed_em_params['snr_thresh'] = params.cwt_snr_thresh / 2.0
+                relaxed_em_params['min_ridge_length'] = max(1, params.cwt_min_ridge_length // 2)
+                try:
+                    cwt_wide = run_cwt_feature_detection(
+                        output_dir=state['output_dir'],
+                        file_name=state['file_name'],
+                        wavelength=spec["wavelength"],
+                        flux=spec["flux"],
+                        ivar=ivar_data,
+                        effective_snr=effective_snr_data,
+                        n_iterations=1,
+                        emission_detection_params=relaxed_em_params,
+                        absorption_detection_params={**absorption_detection_params},
+                        verbose=False,
+                    )
+                    df_em_wide = cwt_wide.get('df_emission')
+                    df_ab_wide = cwt_wide.get('df_absorption')
+                    if df_em_wide is not None and len(df_em_wide) > 0:
+                        state['cwt_wide_peaks'] = df_em_wide.to_dict('records')
+                    if df_ab_wide is not None and len(df_ab_wide) > 0:
+                        state['cwt_wide_troughs'] = df_ab_wide.to_dict('records')
+                    logging.info(
+                        f"[VisualInterpreter] Phase E3: relaxed CWT (snr={relaxed_em_params['snr_thresh']:.1f}, "
+                        f"ridge={relaxed_em_params['min_ridge_length']}) → "
+                        f"{len(state['cwt_wide_peaks'])} wide peaks, {len(state['cwt_wide_troughs'])} wide troughs"
+                    )
+                except Exception as exc:
+                    logging.warning(f"[VisualInterpreter] Phase E3 relaxed CWT failed: {exc}")
 
             return state
         except Exception as e:

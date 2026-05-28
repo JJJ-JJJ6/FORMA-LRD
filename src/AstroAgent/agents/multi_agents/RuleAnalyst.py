@@ -25,6 +25,7 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     a_extract_harness_summaries,
 )
+from AstroAgent.agents.multi_agents.utils.plot import plot_harness_candidate
 
 
 class RuleAnalyst(BaseAgent):
@@ -74,6 +75,9 @@ class RuleAnalyst(BaseAgent):
         harness_results = await self._run_targeted_search_batch(state, hypotheses)
         state['harness_results'] = harness_results
 
+        # ── Phase 1b: plot adopted features for each candidate ──
+        self._plot_harness_candidates(state, harness_results)
+
         # ── Phase 2: LLM synthesis ───────────────────────────────
         await self._synthesize(state, harness_results)
 
@@ -116,6 +120,8 @@ class RuleAnalyst(BaseAgent):
                     snr_median=snr_median,
                     peaks=state.get('peaks', []),
                     troughs=state.get('troughs', []),
+                    cwt_wide_peaks=state.get('cwt_wide_peaks'),
+                    cwt_wide_troughs=state.get('cwt_wide_troughs'),
                     z_min=round(hyp['z'] - 0.005, 4),
                     z_max=round(hyp['z'] + 0.005, 4),
                     masked_regions=overlap,
@@ -163,6 +169,47 @@ class RuleAnalyst(BaseAgent):
                 results[i] = r
 
         return results
+
+    # =====================================================================
+    # Plot harness candidate features
+    # =====================================================================
+
+    def _plot_harness_candidates(
+        self, state: SpectroState, harness_results: list,
+    ) -> None:
+        """为每个 harness candidate 绘制采纳的 nearby features 图像。"""
+        spec = state['spectrum']
+        wavelength = spec['wavelength']
+        flux = spec['flux']
+        continuum = state.get('continuum', {})
+        continuum_flux = continuum.get('flux', spec['flux'])
+
+        harness_dir = os.path.join(
+            state['output_dir'], f"{state['file_name']}_harness"
+        )
+
+        for result in harness_results:
+            if result is None:
+                continue
+            idx = result.get('hypothesis_idx', 0)
+            z = result.get('redshift', 0)
+            csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+            output_path = os.path.join(harness_dir, f"{idx}_features.png")
+
+            try:
+                plot_harness_candidate(
+                    wavelength=wavelength,
+                    flux=flux,
+                    continuum_flux=continuum_flux,
+                    lines_csv_path=csv_path,
+                    output_path=output_path,
+                    redshift=z,
+                    title=f"Candidate {idx}",
+                )
+            except Exception as exc:
+                logging.warning(
+                    f"Failed to plot harness candidate {idx} (z={z:.4f}): {exc}"
+                )
 
     # =====================================================================
     # LLM synthesis
