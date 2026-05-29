@@ -1121,13 +1121,15 @@ def brute_force_line_matching(state, tol_wavelength=None):
         obs_wl_max = None
 
     # ── 构建波长 → 峰/谷特征信息的查找表 ────────────────────
-    peak_info = {}   # wavelength -> {amplitude, FWHM_A, FWHM_km_s, width_class}
+    peak_info = {}   # wavelength -> {amplitude, FWHM_A, FWHM_km_s, width_class, snr, ridge_length}
     for p in active_peaks:
         peak_info[p['wavelength']] = {
             'amplitude': p.get('amplitude'),
             'FWHM_A': p.get('FWHM_A'),
             'FWHM_km_s': p.get('FWHM_km_s'),
             'width_class': p.get('width_class'),
+            'snr': p.get('snr'),
+            'ridge_length': p.get('ridge_length'),
         }
     trough_info = {}
     for t in state['troughs']:
@@ -1136,6 +1138,8 @@ def brute_force_line_matching(state, tol_wavelength=None):
             'FWHM_A': t.get('FWHM_A'),
             'FWHM_km_s': t.get('FWHM_km_s'),
             'width_class': t.get('width_class'),
+            'snr': t.get('snr'),
+            'ridge_length': t.get('ridge_length'),
         }
 
     def _fmt_feature(wl, info):
@@ -1397,6 +1401,17 @@ def brute_force_line_matching(state, tol_wavelength=None):
         z_center = round(float(np.median(all_z)), 4)
         z_list = sorted(set(round(float(z), 4) for z in all_z))
 
+        # ── Build matched_lines: {line_name -> feature_info} ──────
+        matched_lines = {}
+        for wl, lname, z in emission_nodes:
+            feat = dict(peak_info.get(wl, {}))
+            feat['wavelength'] = wl
+            matched_lines[lname] = feat
+        for wl, lname, z in absorption_nodes:
+            feat = dict(trough_info.get(wl, {}))
+            feat['wavelength'] = wl
+            matched_lines[lname] = feat
+
         results.append({
             "Hypothesis": hypothesis_str,
             "z_center": z_center,
@@ -1408,6 +1423,7 @@ def brute_force_line_matching(state, tol_wavelength=None):
             "Absorption matches": absorption_formatted,
             "N_emission": n_em,
             "N_absorption": n_ab,
+            "matched_lines": matched_lines,
         })
 
     # 按 N_emission + N_absorption 降序排列
@@ -1419,7 +1435,19 @@ def brute_force_line_matching(state, tol_wavelength=None):
     # 因此此处过滤同时排除「单峰多线冲突」和「单线多峰」两种无效情况。
     results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 1]
 
-    return results
+    # ── 构建顶层 z / zmedian ─────────────────────────────────────
+    all_z_flat = sorted(set(
+        round(float(z), 4)
+        for r in results
+        for z in r['z_list']
+    ))
+    zmedian = round(float(np.median(all_z_flat)), 4) if all_z_flat else None
+
+    return {
+        "z": all_z_flat,
+        "zmedian": zmedian,
+        "hypotheses": results,
+    }
 
 
 # =============================================================================

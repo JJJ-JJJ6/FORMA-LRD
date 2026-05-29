@@ -19,11 +19,6 @@ from AstroAgent.agents.multi_agents.utils.VI import (
     run_continuum_fitting_masked,
     brute_force_line_matching,
     _load_spectrum_from_fits,
-    run_redshift_scoring_v2,
-    run_redshift_scoring_v3,
-)
-from AstroAgent.agents.multi_agents.utils.simple_feature_finder import (
-    run_simple_feature_detection,
 )
 from AstroAgent.agents.multi_agents.utils.cwt_feature_finder import (
     run_cwt_feature_detection,
@@ -265,58 +260,16 @@ class VisualInterpreter(BaseAgent):
             ivar_data = spec.get("ivar", None)
             effective_snr_data = spec.get("snr", 7.0) if ivar_data is None else None
                         
-            # ── 吸收线检测参数（覆盖 find_absorption_lines 默认值）──
-            absorption_detection_params = {
-                # 窗口设置
-                'window_width': params.abs_window_width,
-                'window_overlap': params.abs_window_overlap,
-                # 显著性阈值
-                'delta_chi2_base': params.abs_delta_chi2_base,
-                'dynamic_threshold_factor': params.abs_dynamic_threshold_factor,
-                'global_delta_chi2_threshold': params.abs_global_delta_chi2_threshold,
-                # 谱线宽度限制
-                'fwhm_min': params.abs_fwhm_min,
-                'fwhm_max': params.abs_fwhm_max,
-                # 信噪比深度阈值
-                'snr_depth_threshold': params.abs_snr_depth_threshold,
-                # Smoothed 候选谷参数（宽低振幅谷的先验）
-                'smooth_sigma_trough': params.smooth_sigma_trough,
-                'smooth_prominence_frac_trough': params.smooth_prominence_frac_trough,
-            }
-                        
-            # ── 发射线检测参数（覆盖 find_emission_lines 默认值）──
+            # ── CWT 发射线检测参数 ──
             emission_detection_params = {
-                # 窗口设置
-                'window_width': params.em_window_width,
-                'window_overlap': params.em_window_overlap,
-                # 显著性阈值
-                'delta_chi2_base': params.em_delta_chi2_base,
-                'dynamic_threshold_factor': params.em_dynamic_threshold_factor,
-                'global_delta_chi2_threshold': params.em_global_delta_chi2_threshold,
-                # 系统误差分量（参考 DLA-Toolkit var_lss 思路）
-                'sys_err_frac': params.em_sys_err_frac,
-                # 谱线宽度限制
-                'fwhm_min': params.em_fwhm_min,
-                'fwhm_max': params.em_fwhm_max,
-                # Smoothed 候选峰参数（宽低振幅峰的先验）
-                'smooth_sigma': params.smooth_sigma,
-                'smooth_prominence_frac': params.smooth_prominence_frac,
+                'snr_thresh': params.cwt_snr_thresh,
+                'min_ridge_length': params.cwt_min_ridge_length,
+                'n_scales': params.cwt_n_scales,
+                'min_scale': params.cwt_min_scale,
+                'max_scale': params.cwt_max_scale,
             }
-                        
-            # 根据 FEATURE_FINDER 配置选择算法
-            if params.feature_finder == "cwt":
-                run_feature_detection = run_cwt_feature_detection
-                emission_detection_params.pop('smooth_sigma', None)
-                emission_detection_params.pop('smooth_prominence_frac', None)
-                emission_detection_params['snr_thresh'] = params.cwt_snr_thresh
-                emission_detection_params['min_ridge_length'] = params.cwt_min_ridge_length
-                emission_detection_params['n_scales'] = params.cwt_n_scales
-                emission_detection_params['min_scale'] = params.cwt_min_scale
-                emission_detection_params['max_scale'] = params.cwt_max_scale
-            else:
-                run_feature_detection = run_simple_feature_detection
 
-            feature_result = run_feature_detection(
+            feature_result = run_cwt_feature_detection(
                 output_dir=state['output_dir'],
                 file_name=state['file_name'],
                 wavelength=spec["wavelength"],
@@ -324,7 +277,6 @@ class VisualInterpreter(BaseAgent):
                 ivar=ivar_data,
                 effective_snr=effective_snr_data,
                 n_iterations=params.n_iterations if hasattr(params, 'n_iterations') else 3,
-                absorption_detection_params=absorption_detection_params,
                 emission_detection_params=emission_detection_params,
                 verbose=True,
             )
@@ -362,133 +314,6 @@ class VisualInterpreter(BaseAgent):
             )
 
             ResultWriter().write_brute_force_matching(state)
-
-            # Phase E2: Redshift scoring — rank hypotheses for LLM triage
-            if state['brute_force_matching']:
-                if self.runtime.configs.params.redshift_scoring_enabled:
-                    use_v3 = getattr(self.runtime.configs.params, 'redshift_scoring_v3', False)
-                    if use_v3:
-                        scoring = run_redshift_scoring_v3(
-                            wavelength=spec["wavelength"],
-                            flux=spec["flux"],
-                            continuum_flux=state['continuum']['flux'],
-                            snr=spec["snr"],
-                            brute_force_matches=state['brute_force_matching'],
-                            peaks=state.get('peaks', []),
-                            troughs=state.get('troughs', []),
-                            split_z=1.0,
-                            top=self.runtime.configs.params.redshift_scoring_top_k,
-                            peak_tol=30.0,
-                            scoring_workers=self.runtime.configs.params.scoring_workers,
-                        )
-                    else:
-                        # ── v2: raw flux argmin/argmax (legacy) ──
-                        scoring = run_redshift_scoring_v2(
-                            wavelength=spec["wavelength"],
-                            flux=spec["flux"],
-                            continuum_flux=state['continuum']['flux'],
-                            snr=spec["snr"],
-                            brute_force_matches=state['brute_force_matching'],
-                            split_z=1.0,
-                            top=self.runtime.configs.params.redshift_scoring_top_k,
-                            peak_tol=30.0,
-                            scoring_workers=self.runtime.configs.params.scoring_workers,
-                        )
-                    state['redshift_scoring'] = scoring
-                    ResultWriter().write_redshift_scoring(state)
-
-                    # ── Check if true redshift is within scoring candidates ──
-                    expected_z_str = spec.get('VI_Z') or os.environ.get('EXPECTED_Z')
-                    if expected_z_str is not None:
-                        tolerance = self.runtime.configs.params.z_tolerance
-                        expected_z = float(expected_z_str)
-                        all_zs = [h['z'] for h in scoring.get('low_z', []) + scoring.get('high_z', [])]
-                        min_dz = min((abs(z - expected_z) for z in all_zs), default=999)
-                        in_scoring = min_dz <= tolerance
-
-                        if not in_scoring:
-                            logging.info(
-                                f"[VisualInterpreter] True z={expected_z:.4f} NOT in scoring "
-                                f"(min_dz={min_dz:.4f} > tol={tolerance:.4f}, "
-                                f"n_candidates={len(all_zs)}) — skipping harness + synthesis."
-                            )
-                            state['skip_synthesis'] = True
-                        else:
-                            state['skip_synthesis'] = False
-                    else:
-                        state['skip_synthesis'] = False
-                else:
-                    # ── Scoring OFF: bypass scoring, all hypotheses proceed ──
-                    low = []
-                    high = []
-                    for m in state['brute_force_matching']:
-                        z = m.get('z_center') or m.get('z_max', 0)
-                        if z <= 0:
-                            continue
-                        n_em = m.get('N_emission', 0)
-                        n_ab = m.get('N_absorption', 0)
-                        entry = {
-                            'z': z,
-                            'score': float(n_em + n_ab),
-                            'n_lines': n_em + n_ab,
-                            'details': [],
-                            'hypothesis': m.get('Hypothesis', ''),
-                            'n_em': n_em,
-                            'n_ab': n_ab,
-                        }
-                        if z < 1.0:
-                            low.append(entry)
-                        else:
-                            high.append(entry)
-
-                    low.sort(key=lambda x: -x['score'])
-                    high.sort(key=lambda x: -x['score'])
-
-                    state['redshift_scoring'] = {
-                        'split_z': 1.0,
-                        'top': len(low) + len(high),
-                        'low_z': low,
-                        'high_z': high,
-                        'all_low_z': low,
-                        'all_high_z': high,
-                    }
-                    ResultWriter().write_redshift_scoring(state)
-                    state['skip_synthesis'] = False
-
-            # Phase E3: Second CWT with relaxed thresholds for nearby-feature context
-            # (only when using CWT feature finder)
-            state['cwt_wide_peaks'] = []
-            state['cwt_wide_troughs'] = []
-            if params.feature_finder == "cwt" and state.get('brute_force_matching'):
-                relaxed_em_params = dict(emission_detection_params)
-                relaxed_em_params['snr_thresh'] = params.cwt_snr_thresh / 2.0
-                relaxed_em_params['min_ridge_length'] = max(1, params.cwt_min_ridge_length // 2)
-                try:
-                    cwt_wide = run_cwt_feature_detection(
-                        output_dir=state['output_dir'],
-                        file_name=state['file_name'],
-                        wavelength=spec["wavelength"],
-                        flux=spec["flux"],
-                        ivar=ivar_data,
-                        effective_snr=effective_snr_data,
-                        n_iterations=1,
-                        emission_detection_params=relaxed_em_params,
-                        absorption_detection_params={**absorption_detection_params},
-                        verbose=False,
-                    )
-                    df_em_wide = cwt_wide.get('df_emission')
-                    df_ab_wide = cwt_wide.get('df_absorption')
-                    if df_em_wide is not None and len(df_em_wide) > 0:
-                        state['cwt_wide_peaks'] = df_em_wide.to_dict('records')
-                    if df_ab_wide is not None and len(df_ab_wide) > 0:
-                        state['cwt_wide_troughs'] = df_ab_wide.to_dict('records')
-                    logging.info(
-                        f"[VisualInterpreter] Phase E3: relaxed CWT (snr={relaxed_em_params['snr_thresh']:.1f}, "
-                        f"ridge={relaxed_em_params['min_ridge_length']}) → "
-                        f"{len(state['cwt_wide_peaks'])} wide peaks, {len(state['cwt_wide_troughs'])} wide troughs"
-                    )
-                except Exception as exc:
-                    logging.warning(f"[VisualInterpreter] Phase E3 relaxed CWT failed: {exc}")
 
             return state
         except Exception as e:

@@ -21,7 +21,7 @@ from AstroAgent.agents.multi_agents.harness import (
     synthesize_arun,
 )
 from AstroAgent.agents.multi_agents.utils.RA import (
-    collect_hypotheses,
+    collect_hypotheses_from_bfm,
     build_dn4000_lookup,
     a_extract_harness_summaries,
 )
@@ -42,24 +42,9 @@ class RuleAnalyst(BaseAgent):
     # =====================================================================
 
     async def run(self, state: SpectroState) -> SpectroState:
-        if state.get('skip_synthesis'):
-            logging.info(
-                "[RuleAnalyst] skip_synthesis set — true z not in scoring "
-                "candidates, skipping harness + synthesis."
-            )
-            state['rule_analysis'] = {
-                'redshift': None,
-                'redshift_err': None,
-                'classification': 'Unknown',
-                'confidence': 'LOW',
-                'best_hypothesis_idx': None,
-                'primary_evidence': 'True redshift not in scoring candidates.',
-                'caveats': 'Upstream CWT/scoring issue — no synthesis performed.',
-            }
-            return state
-
-        scoring = state.get('redshift_scoring', {})
-        hypotheses = collect_hypotheses(scoring)
+        hypotheses = collect_hypotheses_from_bfm(
+            state.get('brute_force_matching', {})
+        )
 
         if not hypotheses:
             state['rule_analysis'] = {
@@ -120,8 +105,6 @@ class RuleAnalyst(BaseAgent):
                     snr_median=snr_median,
                     peaks=state.get('peaks', []),
                     troughs=state.get('troughs', []),
-                    cwt_wide_peaks=state.get('cwt_wide_peaks'),
-                    cwt_wide_troughs=state.get('cwt_wide_troughs'),
                     z_min=round(hyp['z'] - 0.005, 4),
                     z_max=round(hyp['z'] + 0.005, 4),
                     masked_regions=overlap,

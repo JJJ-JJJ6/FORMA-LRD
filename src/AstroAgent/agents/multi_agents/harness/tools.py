@@ -508,15 +508,14 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
 
 from pathlib import Path as _Path
 
-_KB_DIR = _Path(__file__).resolve().parent / "kb"
-_HARNESS_SKILL_DIR = _Path(__file__).resolve().parent
+_SKILLS_DIR = _Path(__file__).resolve().parent / "skills"
 
 _GREP_FILES: dict[str, _Path] = {
-    "kb/classification.md": _KB_DIR / "classification.md",
-    "kb/ionization.md": _KB_DIR / "ionization.md",
-    "kb/lines.md": _KB_DIR / "lines.md",
-    "synthesize_skill.md": _HARNESS_SKILL_DIR / "synthesize_skill.md",
-    "targeted_search_skill.md": _HARNESS_SKILL_DIR / "targeted_search_skill.md",
+    "kb/classification.md": _SKILLS_DIR / "kb" / "classification.md",
+    "kb/ionization.md": _SKILLS_DIR / "kb" / "ionization.md",
+    "kb/lines.md": _SKILLS_DIR / "kb" / "lines.md",
+    "synthesize_skill.md": _SKILLS_DIR / "synthesize_skill.md",
+    "targeted_search_skill.md": _SKILLS_DIR / "targeted_search_skill.md",
 }
 
 _grep_cache: dict[str, str] | None = None

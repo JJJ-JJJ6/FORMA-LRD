@@ -36,7 +36,7 @@ from AstroAgent.agents.multi_agents.harness.tools import grep_kb
 # Skill prompt
 # ---------------------------------------------------------------------------
 
-SKILL_PATH = Path(__file__).resolve().parent / "synthesize_skill.md"
+SKILL_PATH = Path(__file__).resolve().parent / "skills" / "synthesize_skill.md"
 
 
 def _load_skill() -> str:

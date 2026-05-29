@@ -27,6 +27,38 @@ def collect_hypotheses(scoring: dict) -> list:
     return hypotheses
 
 
+def collect_hypotheses_from_bfm(bfm: dict) -> list:
+    """Extract hypotheses directly from brute_force_matching output.
+
+    Returns a flat list sorted by N_emission + N_absorption (descending),
+    with each entry in the format RuleAnalyst expects:
+        {z, score, n_lines, details, hypothesis, n_em, n_ab, category}
+    """
+    hypotheses = []
+    if not bfm or not bfm.get('hypotheses'):
+        return hypotheses
+
+    for m in bfm['hypotheses']:
+        z = m.get('z_center', 0)
+        if z <= 0:
+            continue
+        n_em = m.get('N_emission', 0)
+        n_ab = m.get('N_absorption', 0)
+        hypotheses.append({
+            'z': z,
+            'score': float(n_em + n_ab),
+            'n_lines': n_em + n_ab,
+            'details': [],
+            'hypothesis': m.get('Hypothesis', ''),
+            'n_em': n_em,
+            'n_ab': n_ab,
+            'category': 'low' if z < 1.0 else 'high',
+        })
+
+    hypotheses.sort(key=lambda h: -h['score'])
+    return hypotheses
+
+
 # =========================================================================
 # Dn4000 diagnostic
 # =========================================================================

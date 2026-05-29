@@ -213,9 +213,7 @@ Use lowest-ionization LIKELY line to anchor systemic z:
 | 6 | Mg II 2800 | Mg⁺ | May show outflow blueshift |
 | 7 | [O III]a/b 4960/5008 | O⁺⁺ | Weakest anchor, often blueshifted |
 
-**Excluded** (must NOT anchor systemic z): He II, C III], C IV, Ne V, Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
-
-**ELG Exception**: In emission-line dominated objects, Ca K/H is often intrinsically weak. Anchor on [O II] (Priority 2) instead.
+**Excluded** (must NOT anchor systemic z, unless none low-ionization lines): He II, C III], C IV, Ne V, Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
 
 **Outflow Blueshift**: High-ionization lines blueshifted relative to low-ionization by 0–1000 km/s is normal. Δv = (z_high − z_low)/(1+z_low)×c. If a high-ionization line gives a LOWER z than a low-ionization line, suspect misidentification.
 
@@ -223,7 +221,7 @@ Use lowest-ionization LIKELY line to anchor systemic z:
 
 ## Reference: Classification Diagnostics
 
-- **ELG**: Strong narrow emission ([O II], Hβ, [O III], Hα). Weak absorption. Fatal: missing [O II], no Hβ, [O III] doublet spacing wrong. Dn4000 < 1.4.
+- **ELG**: Strong narrow emission ([O II], Hβ, [O III], Hα). Weak absorption.
 - **LRG/BGS**: Strong stellar absorption (Ca K/H, G-band, Mg I, Na D). Weak emission. Fatal: Ca K/H missing pair, Dn4000 < 1.3. Dn4000 > 1.6 for old population.
 - **QSO**: Broad emission (Lyα, C IV, C III], Mg II) FWHM > 2000 km/s. Narrow forbidden lines may coexist. Fatal: all broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing.
 - **Star**: Broad absorption, no emission. Distinction from LRG: broader and deeper Balmer absorption.

@@ -143,12 +143,6 @@ class WorkflowOrchestrator:
         self._check_cancel()
         return result
     
-    def _should_continue_after_vi(self, state: SpectroState) -> str:
-        """Conditional routing: stop after VI when stop_after_vi is enabled."""
-        if self.runtime.configs.params.stop_after_vi:
-            return "stop"
-        return "continue"
-
     def _should_self_evolve(self, state: SpectroState) -> str:
         """Conditional routing: run SelfEvolve only when self_evolve is enabled."""
         if self.runtime.configs.params.self_evolve:
@@ -181,14 +175,7 @@ class WorkflowOrchestrator:
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
-        workflow.add_conditional_edges(
-            "visual_interpreter",
-            self._should_continue_after_vi,
-            {
-                "continue": "rule_analyst",
-                "stop": END,
-            }
-        )
+        workflow.add_edge("visual_interpreter", "rule_analyst")
         # Conditional: SelfEvolve (when self_evolve=true) or skip to next stage
         workflow.add_conditional_edges(
             "rule_analyst",

@@ -58,7 +58,7 @@ def _is_retryable(exc: Exception) -> bool:
 # Skill prompt
 # ---------------------------------------------------------------------------
 
-SKILL_PATH = Path(__file__).resolve().parent / "targeted_search_skill.md"
+SKILL_PATH = Path(__file__).resolve().parent / "skills" / "targeted_search_skill.md"
 
 
 def _load_skill() -> str:
@@ -270,28 +270,12 @@ def _build_user_message(
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
-    cwt_wide_peaks: list = None,
-    cwt_wide_troughs: list = None,
 ) -> str:
     _z_min = z_min if z_min is not None else round(redshift - 0.1, 4)
     _z_max = z_max if z_max is not None else round(redshift + 0.1, 4)
 
-    # Merge wide (relaxed CWT) features into peaks/troughs for richer nearby context
     _peaks = list(peaks or [])
     _troughs = list(troughs or [])
-    if cwt_wide_peaks:
-        existing_wl = {p['wavelength'] for p in _peaks if 'wavelength' in p}
-        for wp in cwt_wide_peaks:
-            if wp.get('wavelength') not in existing_wl:
-                _peaks.append(wp)
-                existing_wl.add(wp['wavelength'])
-    if cwt_wide_troughs:
-        existing_wl = {t['wavelength'] for t in _troughs if 'wavelength' in t}
-        for wt in cwt_wide_troughs:
-            if wt.get('wavelength') not in existing_wl:
-                _troughs.append(wt)
-                existing_wl.add(wt['wavelength'])
-    has_wide = bool(cwt_wide_peaks or cwt_wide_troughs)
 
     # ── Spectrum summary (replaces load_spectrum tool call) ──
     spec_lines = [
@@ -528,8 +512,6 @@ async def arun(
     max_turns: int = 100,
     verbose: bool = False,
     stream_md_path: str = None,
-    cwt_wide_peaks: list = None,
-    cwt_wide_troughs: list = None,
 ) -> Dict[str, Any]:
     """Run LLM harness for a single redshift hypothesis (async, optional streaming).
 
@@ -568,7 +550,6 @@ async def arun(
         peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
-        cwt_wide_peaks=cwt_wide_peaks, cwt_wide_troughs=cwt_wide_troughs,
     )
 
     # ── Streaming path ──────────────────────────────────────────

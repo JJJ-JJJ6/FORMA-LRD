@@ -147,17 +147,28 @@ class ResultWriter:
         os.makedirs(output_dir, exist_ok=True)
         file_name = state.get("file_name", "unknown")
 
-        # single unified key
         data = state.get('brute_force_matching')
-        if data:
-            path = os.path.join(output_dir, f"{file_name}_brute_force_matching.txt")
-            with open(path, "w", encoding=self.encoding) as f:
-                f.write(f"{'='*60}\n  BRUTE FORCE MATCHING\n{'='*60}\n\n")
-                for idx, entry in enumerate(data, start=1):
-                    f.write(f"--- Match #{idx} ---\n")
-                    for key, value in entry.items():
-                        f.write(f"  {key}: {value}\n")
-                    f.write("\n")
+        if not data:
+            return
+
+        path = os.path.join(output_dir, f"{file_name}_brute_force_matching.txt")
+        with open(path, "w", encoding=self.encoding) as f:
+            f.write(f"{'='*60}\n  BRUTE FORCE MATCHING\n{'='*60}\n\n")
+            # new format: dict with z, zmedian, hypotheses
+            if isinstance(data, dict):
+                f.write(f"zmedian: {data.get('zmedian')}\n")
+                z_list = data.get('z', [])
+                f.write(f"z ({len(z_list)} values): {z_list}\n\n")
+                hypotheses = data.get('hypotheses', [])
+            else:
+                # backwards-compat: old list format
+                hypotheses = data
+
+            for idx, entry in enumerate(hypotheses, start=1):
+                f.write(f"--- Match #{idx} ---\n")
+                for key, value in entry.items():
+                    f.write(f"  {key}: {value}\n")
+                f.write("\n")
 
     def write_redshift_scoring(self, state: SpectroState) -> None:
         """将 redshift_scoring 结果写出为 .txt 和 .csv 文件。"""
