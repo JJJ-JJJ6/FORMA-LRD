@@ -515,6 +515,7 @@ def run(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
+        max_tokens=None,
         extra_body=_extra_body,
     )
 
@@ -637,6 +638,7 @@ async def arun(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
+        max_tokens=None,
         extra_body=_extra_body,
     )
 
