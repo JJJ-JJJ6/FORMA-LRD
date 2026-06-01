@@ -31,6 +31,7 @@ from langchain.agents import create_agent
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 from .tools import (
     write_report, write_lines_csv,
+    fit_peak, fit_doublet, predict_lines, compute_redshift,
     EMISSION_LINES, ABSORPTION_LINES, EMISSION_LINE_WIDTHS,
 )
 
@@ -58,11 +59,17 @@ def _is_retryable(exc: Exception) -> bool:
 # Skill prompt
 # ---------------------------------------------------------------------------
 
-SKILL_PATH = Path(__file__).resolve().parent / "skills" / "targeted_search_skill.md"
+SKILL_DIR = Path(__file__).resolve().parent / "skills"
+_SKILL_FILES = {
+    "redrock": "redrock_search_skill.md",
+    "nomad": "targeted_search_skill.md",
+}
 
 
-def _load_skill() -> str:
-    with open(SKILL_PATH) as f:
+def _load_skill(mode: str = "nomad") -> str:
+    filename = _SKILL_FILES.get(mode, _SKILL_FILES["nomad"])
+    skill_path = SKILL_DIR / filename
+    with open(skill_path) as f:
         return f.read()
 
 
@@ -70,7 +77,18 @@ def _load_skill() -> str:
 # Tool list
 # ---------------------------------------------------------------------------
 
-def _build_tools() -> list:
+def _build_tools(mode: str = "nomad") -> list:
+    """Return tool list appropriate for the verification mode.
+
+    nomad (classic BFM): write_report, write_lines_csv only (CWT evaluation).
+    redrock: full tool belt including fitting and prediction tools.
+    """
+    if mode == "redrock":
+        return [
+            write_report, write_lines_csv,
+            fit_peak, fit_doublet,
+            predict_lines, compute_redshift,
+        ]
     return [write_report, write_lines_csv]
 
 
@@ -260,6 +278,7 @@ def _build_user_message(
     fits_path: str,
     npz_path: str,
     *,
+    mode: str = "nomad",
     wavelength_min: float = None,
     wavelength_max: float = None,
     snr_median: float = None,
@@ -312,6 +331,32 @@ def _build_user_message(
         masked_regions=masked_regions,
     )
 
+    # ── Mode-specific instructions ──────────────────────────────
+    _mode_instructions = ""
+    if mode == "redrock":
+        _mode_instructions = (
+            "\n## Fitting Tools Available\n\n"
+            "You have additional tools beyond CWT feature evaluation:\n"
+            "- **`predict_lines`**: Get predicted observed wavelengths for all rest-frame lines at this z.\n"
+            "- **`fit_peak`**: Fit a single Gaussian + linear baseline around a predicted position. "
+            "Use this when the Features column is ``—`` (no CWT detection) or when CWT features are "
+            "all rejected. **CWT features are higher-trust than your own fitting.** Only call fit_peak "
+            "as a LAST RESORT.\n"
+            "- **`fit_doublet`**: Fit two Gaussians + linear baseline for close line pairs "
+            "(Ca H/K, [O III]a/b, [S II]a/b, [N II]a/b, Na D). Use when both components fall "
+            "in the observed range and no CWT features exist for either. The separation check "
+            "provides strong independent confirmation of both redshift AND line identification.\n"
+            "- **`compute_redshift`**: Compute z from a fitted center and rest wavelength.\n\n"
+            "**Doublet guidelines**:\n"
+            "- Ca H/K (3934.8/3969.6 Å): broad absorption, width_3sigma=90, separation_rest=34.8\n"
+            "- [O III]a/b (4960.3/5008.2 Å): narrow emission, width_3sigma=25, separation_rest=47.9\n"
+            "- [S II]a/b (6718.3/6732.7 Å): narrow emission, width_3sigma=25, separation_rest=14.4\n"
+            "- [N II]a/b (6549.8/6585.3 Å): narrow emission, width_3sigma=25, separation_rest=35.5\n\n"
+            "**Workflow**: Evaluate CWT features first → for lines with NO CWT coverage, "
+            "call `predict_lines` → then `fit_peak` (single) or `fit_doublet` (pairs) → "
+            "write CSV → write report → JSON block.\n"
+        )
+
     return (
         spectrum_summary
         + f"\nVerify the redshift hypothesis z ≈ {redshift}.\n\n"
@@ -321,6 +366,7 @@ def _build_user_message(
         f"Lines marked [fully masked] have NO data in the entire z-window — assign status MASKED.\n"
         f"Lines with [λ_pred masked] or [window partially masked] can still be evaluated.\n"
         + _masked_msg
+        + _mode_instructions
         + f"\nFITS file: {fits_path}\n"
         f"Cleaned spectrum: {npz_path}\n"
         + (f"Output Report file: {report_path}\n" if report_path else "")
@@ -345,6 +391,7 @@ def run(
     redshift: float,
     npz_path: str,
     *,
+    mode: str = "nomad",
     hypothesis_idx: int = 0,
     wavelength_min: float = None,
     wavelength_max: float = None,
@@ -373,10 +420,12 @@ def run(
         The central redshift hypothesis to test.
     npz_path : str
         Path to the cleaned spectrum .npz file (wavelength, flux, snr arrays).
+    mode : str
+        "nomad" (classic BFM) or "redrock". Controls skill, tools, and behaviour.
     z_min, z_max : float, optional
         Verification window. A fitted line is considered to support the
         hypothesis only if its implied redshift falls within [z_min, z_max].
-        If not provided, defaults to redshift ± 0.005.
+        If not provided, defaults to redshift ± 0.005 (nomad) or ± 0.1 (redrock).
     model : str, optional
         Model name. Defaults to LLM_MODEL env var or "deepseek-v4-pro".
     api_key : str, optional
@@ -398,7 +447,7 @@ def run(
         structured_output : dict or None
             Parsed JSON block from the LLM report (redshift, classification, lines, etc.).
         feature_catalog : list[dict]
-            Collected tool results (always empty since fit_peak is removed).
+            Collected tool results.
         messages : list
             Full message history (for debugging).
     """
@@ -420,16 +469,17 @@ def run(
         extra_body=_extra_body,
     )
 
-    system_prompt = _load_skill()
+    system_prompt = _load_skill(mode)
 
     agent = create_agent(
         model=llm,
-        tools=_build_tools(),
+        tools=_build_tools(mode),
         system_prompt=system_prompt,
     )
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,
+        mode=mode,
         wavelength_min=wavelength_min, wavelength_max=wavelength_max,
         snr_median=snr_median,
         peaks=peaks, troughs=troughs,
@@ -494,6 +544,7 @@ async def arun(
     redshift: float,
     npz_path: str,
     *,
+    mode: str = "nomad",
     hypothesis_idx: int = 0,
     wavelength_min: float = None,
     wavelength_max: float = None,
@@ -540,11 +591,12 @@ async def arun(
         extra_body=_extra_body,
     )
 
-    system_prompt = _load_skill()
-    agent = create_agent(model=llm, tools=_build_tools(), system_prompt=system_prompt)
+    system_prompt = _load_skill(mode)
+    agent = create_agent(model=llm, tools=_build_tools(mode), system_prompt=system_prompt)
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,
+        mode=mode,
         wavelength_min=wavelength_min, wavelength_max=wavelength_max,
         snr_median=snr_median,
         peaks=peaks, troughs=troughs,

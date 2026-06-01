@@ -30,25 +30,29 @@ def collect_hypotheses(scoring: dict) -> list:
 def collect_hypotheses_from_bfm(bfm: dict) -> list:
     """Extract hypotheses directly from brute_force_matching output.
 
-    Returns a flat list sorted by N_emission + N_absorption (descending),
-    with each entry in the format RuleAnalyst expects:
+    Returns a flat list sorted by score (descending), with each entry in the
+    format RuleAnalyst expects:
         {z, score, n_lines, details, hypothesis, n_em, n_ab, category}
+
+    Uses ``z_representative`` (best-scoring z from v2 internal scoring)
+    as the redshift to test in harness. Falls back to ``z_center``.
     """
     hypotheses = []
     if not bfm or not bfm.get('hypotheses'):
         return hypotheses
 
     for m in bfm['hypotheses']:
-        z = m.get('z_center', 0)
+        z = m.get('z_representative') or m.get('z_center', 0)
         if z <= 0:
             continue
         n_em = m.get('N_emission', 0)
         n_ab = m.get('N_absorption', 0)
+        score = m.get('score', float(n_em + n_ab))
         hypotheses.append({
             'z': z,
-            'score': float(n_em + n_ab),
+            'score': float(score),
             'n_lines': n_em + n_ab,
-            'details': [],
+            'details': m.get('scoring_details', []),
             'hypothesis': m.get('Hypothesis', ''),
             'n_em': n_em,
             'n_ab': n_ab,

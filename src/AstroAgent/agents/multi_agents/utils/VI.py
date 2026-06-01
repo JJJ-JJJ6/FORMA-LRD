@@ -449,21 +449,27 @@ def _load_spectrum_from_fits(fits_path: str,
         hdu_names = [hdu.name.upper() for hdu in hdul]
         logging.info(f"FITS HDU names: {hdu_names}")
 
-        # ── 从 METADATA HDU 读取 VI_Z / VI_SPECTYPE ──────────────
+        # ── 从 FIBERMAP / METADATA HDU 读取 VI_Z / VI_SPECTYPE ──────
         vi_z = None
         vi_spectype = None
-        if 'METADATA' in hdu_names:
+        # 优先从 FIBERMAP 读取（新格式），回退到 METADATA（旧格式）
+        meta_hdu_name = None
+        if 'FIBERMAP' in hdu_names:
+            meta_hdu_name = 'FIBERMAP'
+        elif 'METADATA' in hdu_names:
+            meta_hdu_name = 'METADATA'
+        if meta_hdu_name is not None:
             try:
-                meta = hdul['METADATA'].data
+                meta = hdul[meta_hdu_name].data
                 if 'VI_Z' in meta.dtype.names:
                     vi_z = float(meta['VI_Z'][0])
                 if 'VI_SPECTYPE' in meta.dtype.names:
                     vi_spectype = str(meta['VI_SPECTYPE'][0]).strip()
                 logging.info(
-                    f"FITS METADATA: VI_Z={vi_z}, VI_SPECTYPE={vi_spectype}"
+                    f"FITS {meta_hdu_name}: VI_Z={vi_z}, VI_SPECTYPE={vi_spectype}"
                 )
             except Exception as exc:
-                logging.warning(f"Failed to read FITS METADATA: {exc}")
+                logging.warning(f"Failed to read FITS {meta_hdu_name}: {exc}")
 
         # 检测是否为多波段分波段格式
         # 若 arm_names 由外部配置提供，直接使用；否则自动从 HDU 名推断波段
@@ -503,9 +509,9 @@ def _load_spectrum_from_fits(fits_path: str,
                 wave_hdu = hdul[f'{band}_WAVELENGTH']
                 flux_hdu = hdul[f'{band}_FLUX']
 
-                wave_data = wave_hdu.data
+                wave_data = np.ravel(wave_hdu.data)
                 wavelength_list.append(wave_data)
-                flux_list.append(flux_hdu.data)
+                flux_list.append(np.ravel(flux_hdu.data))
 
                 # 读取 IVAR / SNR（有则读，二者都有则都读）
                 ivar_hdu_name = f'{band}_IVAR'
@@ -514,13 +520,13 @@ def _load_spectrum_from_fits(fits_path: str,
                 band_has_snr = snr_hdu_name in hdu_names
 
                 if band_has_ivar:
-                    ivar_list.append(hdul[ivar_hdu_name].data)
+                    ivar_list.append(np.ravel(hdul[ivar_hdu_name].data))
                     has_ivar = True
                 else:
                     ivar_list.append(None)
 
                 if band_has_snr:
-                    snr_list.append(hdul[snr_hdu_name].data)
+                    snr_list.append(np.ravel(hdul[snr_hdu_name].data))
                     has_snr = True
                 else:
                     snr_list.append(None)
@@ -531,7 +537,7 @@ def _load_spectrum_from_fits(fits_path: str,
                 # 读取 SPECMASK（如果存在）
                 mask_hdu_name = f'{band}_MASK'
                 if mask_hdu_name in hdu_names:
-                    mask_data = hdul[mask_hdu_name].data
+                    mask_data = np.ravel(hdul[mask_hdu_name].data)
                     mask_list.append(mask_data)
                     unique_masks = np.unique(mask_data)
                     if len(unique_masks) > 1 or unique_masks[0] != 0:
@@ -1070,22 +1076,26 @@ def brute_force_line_matching(state, tol_wavelength=None):
 
     返回
     ----
-    list[dict] : 去重后的匹配结果，每个元素对应一个物理场景：
-        {
-            "Hypothesis": "3788.0-Lyα, 4840.0-C IV, ...",
-            "z_max": 2.1246,
-            "z_min": 2.1031,
-            "z_spread": 0.0215,
-            "Emission matches": [...],
-            "Absorption matches": [...],
-            "N_emission": 6,
-            "N_absorption": 1,
-        }
-        结果按 N_emission + N_absorption 降序排列。
+    dict with keys:
+        z : list[float]           — 所有代表红移（去重排序）
+        zmedian : float           — 代表红移中位数
+        hypotheses : list[dict]   — 匹配结果，每个元素参考一个物理场景
     """
 
     if tol_wavelength is None:
         tol_wavelength = 10.0
+
+    # ── 提取光谱数据，供组内 scoring 使用 ─────────────────────
+    spec = state.get('spectrum', {})
+    scoring_wave = np.asarray(spec.get('wavelength', []), dtype=np.float64)
+    scoring_flux = np.asarray(spec.get('flux', []), dtype=np.float64)
+    scoring_snr = np.asarray(spec.get('snr', []), dtype=np.float64)
+    continuum = state.get('continuum', {})
+    continuum_flux = np.asarray(continuum.get('flux', []), dtype=np.float64)
+    _has_scoring_data = (
+        len(scoring_wave) > 0 and len(scoring_flux) > 0
+        and len(continuum_flux) > 0 and len(scoring_snr) > 0
+    )
 
     # [deprecated] 3-mode branch removed — now uses all peaks + all troughs in single pass.
     # Kept for rollback reference:
@@ -1429,22 +1439,50 @@ def brute_force_line_matching(state, tol_wavelength=None):
     # 按 N_emission + N_absorption 降序排列
     results.sort(key=lambda r: r['N_emission'] + r['N_absorption'], reverse=True)
 
-
     # 过滤掉有效独立约束数 < 2 的候选
-    # N_emission / N_absorption 已经是 min(独立波长数, 独立线名数)，
-    # 因此此处过滤同时排除「单峰多线冲突」和「单线多峰」两种无效情况。
     results = [r for r in results if r['N_emission'] + r['N_absorption'] >= 1]
 
-    # ── 构建顶层 z / zmedian ─────────────────────────────────────
-    all_z_flat = sorted(set(
-        round(float(z), 4)
-        for r in results
-        for z in r['z_list']
+    # ── 组内 scoring v2：对每个假设的 z_list 逐 z 打分，选最高分作为代表红移 ──
+    flux_norm = None
+    if _has_scoring_data and results:
+        flux_norm = scoring_flux / np.maximum(continuum_flux, 1e-6)
+
+    for r in results:
+        if flux_norm is None or not r['z_list']:
+            r['z_representative'] = r['z_center']
+            r['score'] = float(r['N_emission'] + r['N_absorption'])
+            r['scoring_details'] = []
+            continue
+
+        best_z = r['z_center']
+        best_score = -1.0
+        best_details = []
+        for z in r['z_list']:
+            s, n_ib, det = _score_one_redshift(
+                z, scoring_wave, flux_norm, scoring_snr, half=20.0,
+            )
+            if s > best_score:
+                best_score = s
+                best_z = z
+                best_details = det
+
+        r['z_representative'] = best_z
+        r['score'] = round(float(best_score), 4)
+        r['scoring_details'] = [
+            (name, morph, round(float(sc), 4), round(float(pred), 1),
+             round(float(obs), 1))
+            for name, morph, sc, pred, obs, *_ in best_details
+        ]
+
+    # ── 构建顶层 z / zmedian（用代表红移）──────────────────────
+    all_z_rep = sorted(set(
+        r['z_representative'] for r in results
+        if r.get('z_representative') is not None
     ))
-    zmedian = round(float(np.median(all_z_flat)), 4) if all_z_flat else None
+    zmedian = round(float(np.median(all_z_rep)), 4) if all_z_rep else None
 
     return {
-        "z": all_z_flat,
+        "z": all_z_rep,
         "zmedian": zmedian,
         "hypotheses": results,
     }
@@ -1824,3 +1862,263 @@ def _dedup_by_primary_peak(candidates, peak_tol=30.0):
             continue
         kept.append(c)
     return kept
+
+
+# ===========================================================
+# Redrock Integration — run rrdesi, parse rrdetails.h5,
+# and convert to brute_force_matching-compatible format
+# ===========================================================
+
+def _run_redrock_subprocess(
+    input_fits: str,
+    output_fits: str,
+    details_h5: str,
+    *,
+    rr_template_dir: str,
+    archetype_dir: str = None,
+    use_archetypes: bool = True,
+    nminima: int = 9,
+    nnearest: int = 2,
+    omp_num_threads: int = 1,
+    per_camera: bool = True,
+    no_legendre: bool = False,
+    legendre_degree: int = 2,
+    legendre_prior: float = 0.1,
+) -> None:
+    """
+    运行 redrock (rrdesi) 拟合红移。
+
+    Parameters
+    ----------
+    input_fits : str
+        输入 FITS 文件路径
+    output_fits : str
+        redrock 输出 FITS 路径
+    details_h5 : str
+        rrdetails.h5 输出路径
+    """
+    import os as _os
+    import shlex as _shlex
+    import subprocess as _subprocess
+    from pathlib import Path as _Path
+
+    _Path(details_h5).parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        "rrdesi",
+        "-i", input_fits,
+        "-o", output_fits,
+        "-d", details_h5,
+        "--nminima", str(nminima),
+    ]
+
+    if use_archetypes:
+        if archetype_dir is None:
+            raise ValueError("ARCHETYPE_DIR is not set but USE_ARCHETYPES=true")
+        cmd.extend(["--archetypes", archetype_dir])
+        cmd.extend(["--archetype-nnearest", str(nnearest)])
+        cmd.extend(["--archetype-legendre-percamera", str(per_camera)])  # rrdesi expects "True"/"False"
+        if no_legendre:
+            cmd.append("--archetypes-no-legendre")
+        else:
+            cmd.extend(["--archetype-legendre-degree", str(legendre_degree)])
+            cmd.extend(["--archetype-legendre-prior", str(legendre_prior)])
+
+    env = _os.environ.copy()
+    env["OMP_NUM_THREADS"] = str(omp_num_threads)
+    env["RR_TEMPLATE_DIR"] = rr_template_dir
+
+    logging.info("Running redrock: %s", " ".join(_shlex.quote(x) for x in cmd))
+
+    result = _subprocess.run(cmd, env=env, text=True, capture_output=True)
+
+    if result.returncode != 0:
+        logging.error("Redrock failed (rc=%d): %s", result.returncode, result.stderr)
+        raise RuntimeError(f"Redrock exited with code {result.returncode}: {result.stderr}")
+
+    logging.info("Redrock finished successfully → %s", output_fits)
+
+
+def _parse_rrdetails_h5(details_h5: str) -> list:
+    """
+    解析 rrdetails.h5 文件，返回所有拟合结果。
+
+    Returns
+    -------
+    list[dict]
+        按 chi2 升序排列的拟合结果列表，每个 dict 包含:
+        z, zerr, zwarn, chi2, deltachi2, spectype, subtype, npixels, fitmethod, znum
+    """
+    try:
+        import h5py
+    except ImportError:
+        raise ImportError("h5py is required to parse rrdetails.h5. Install with: pip install h5py")
+
+    results = []
+
+    with h5py.File(details_h5, 'r') as f:
+        targetids = f['targetids'][()]
+        for targetid in targetids:
+            tid = int(targetid)
+            zfit_path = f'zfit/{tid}/zfit'
+            if zfit_path not in f:
+                continue
+            zfit_data = f[zfit_path][()]
+            for i in range(len(zfit_data)):
+                row = zfit_data[i]
+                results.append({
+                    'targetid': tid,
+                    'z': float(row['z']),
+                    'zerr': float(row['zerr']),
+                    'zwarn': int(row['zwarn']),
+                    'chi2': float(row['chi2']),
+                    'deltachi2': float(row['deltachi2']),
+                    'spectype': row['spectype'].decode('utf-8') if isinstance(row['spectype'], bytes) else str(row['spectype']),
+                    'subtype': row['subtype'].decode('utf-8') if isinstance(row['subtype'], bytes) else str(row['subtype']),
+                    'npixels': int(row['npixels']),
+                    'fitmethod': row['fitmethod'].decode('utf-8') if isinstance(row['fitmethod'], bytes) else str(row['fitmethod']),
+                    'znum': int(row['znum']),
+                })
+
+    # 按 chi2 升序排列（最佳拟合在最前）
+    results.sort(key=lambda x: x['chi2'])
+    return results
+
+
+def _redrock_to_bfm_hypotheses(redrock_results: list) -> dict:
+    """
+    将 redrock 拟合结果转换为 brute_force_matching 兼容的格式。
+
+    适配 collect_hypotheses_from_bfm() 和下游 harness 的输入约定。
+
+    Parameters
+    ----------
+    redrock_results : list[dict]
+        _parse_rrdetails_h5 的输出
+
+    Returns
+    -------
+    dict
+        与 brute_force_line_matching 相同格式的字典:
+        {z, zmedian, hypotheses}
+    """
+    hypotheses = []
+
+    for i, rr in enumerate(redrock_results):
+        z = rr['z']
+        if z <= 0:
+            continue
+
+        # 用 deltachi2 估算得分：deltachi2 越小表示拟合越好
+        # score 映射到 [0, 100]，最佳拟合（deltachi2=0）得满分
+        score = float(100.0 / (1.0 + rr['deltachi2']))
+
+        hypothesis_str = (
+            f"{z:.4f}-{rr['spectype']}/{rr['subtype']}"
+            f" (redrock, χ²={rr['chi2']:.2f})"
+        )
+
+        hypotheses.append({
+            "Hypothesis": hypothesis_str,
+            "z_center": z,
+            "z_list": [z],
+            "z_max": z,
+            "z_min": z,
+            "z_spread": 0.0,
+            "Emission matches": [],
+            "Absorption matches": [],
+            "N_emission": rr['npixels'],
+            "N_absorption": 0,
+            "matched_lines": {},
+            "z_representative": z,
+            "score": score,
+            "source": "redrock",
+            "scoring_details": [
+                ["redrock", rr['spectype'], score,
+                 z, z,
+                 rr['chi2'], rr['deltachi2'],
+                 rr['zwarn']]
+            ],
+            # 额外 redrock 元数据
+            "_redrock": {
+                "spectype": rr['spectype'],
+                "subtype": rr['subtype'],
+                "chi2": rr['chi2'],
+                "deltachi2": rr['deltachi2'],
+                "zerr": rr['zerr'],
+                "zwarn": rr['zwarn'],
+                "npixels": rr['npixels'],
+                "znum": rr['znum'],
+            },
+        })
+
+    # 按 score 降序
+    hypotheses.sort(key=lambda h: -h['score'])
+
+    all_z = sorted(set(h['z_representative'] for h in hypotheses))
+    zmedian = round(float(np.median(all_z)), 4) if all_z else None
+
+    return {
+        "z": all_z,
+        "zmedian": zmedian,
+        "hypotheses": hypotheses,
+    }
+
+
+def run_redrock_pipeline(
+    input_fits: str,
+    output_dir: str,
+    file_name: str,
+    *,
+    rr_template_dir: str,
+    archetype_dir: str = None,
+    use_archetypes: bool = True,
+    nminima: int = 9,
+    nnearest: int = 2,
+    omp_num_threads: int = 1,
+) -> dict:
+    """
+    完整的 Redrock 流水线：运行 rrdesi → 解析 rrdetails.h5 → 转换为 BFM 格式。
+
+    Parameters
+    ----------
+    input_fits : str
+        输入 FITS 文件路径
+    output_dir : str
+        输出目录
+    file_name : str
+        文件名（不含扩展名），用于生成输出文件
+
+    Returns
+    -------
+    dict
+        brute_force_matching 兼容格式的假设列表
+    """
+    import os as _os
+
+    redrock_dir = _os.path.join(output_dir, f"{file_name}_redrock")
+    _os.makedirs(redrock_dir, exist_ok=True)
+
+    output_fits = _os.path.join(redrock_dir, f"{file_name}_redrock.fits")
+    details_h5 = _os.path.join(redrock_dir, f"{file_name}_rrdetails.h5")
+
+    _run_redrock_subprocess(
+        input_fits=input_fits,
+        output_fits=output_fits,
+        details_h5=details_h5,
+        rr_template_dir=rr_template_dir,
+        archetype_dir=archetype_dir,
+        use_archetypes=use_archetypes,
+        nminima=nminima,
+        nnearest=nnearest,
+        omp_num_threads=omp_num_threads,
+    )
+
+    redrock_results = _parse_rrdetails_h5(details_h5)
+    logging.info("Parsed %d redrock fit results from %s", len(redrock_results), details_h5)
+
+    if not redrock_results:
+        logging.warning("Redrock returned no valid fits — falling back to empty hypotheses")
+        return {"z": [], "zmedian": None, "hypotheses": []}
+
+    return _redrock_to_bfm_hypotheses(redrock_results)

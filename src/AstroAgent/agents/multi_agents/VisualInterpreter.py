@@ -19,6 +19,9 @@ from AstroAgent.agents.multi_agents.utils.VI import (
     run_continuum_fitting_masked,
     brute_force_line_matching,
     _load_spectrum_from_fits,
+    run_redshift_scoring_v2,
+    run_redshift_scoring_v3,
+    run_redrock_pipeline,
 )
 from AstroAgent.agents.multi_agents.utils.cwt_feature_finder import (
     run_cwt_feature_detection,
@@ -309,9 +312,33 @@ class VisualInterpreter(BaseAgent):
             plot_features(state)
 
             tol_wavelength = self.runtime.configs.params.tol_wavelength
-            state['brute_force_matching'] = brute_force_line_matching(
-                state, tol_wavelength,
-            )
+
+            print(params.redrock)
+            if params.redrock:
+                # ── Redrock 路径：运行 rrdesi 替代 brute-force line matching ──
+                if params.rr_template_dir is None:
+                    raise ValueError(
+                        "REDROCK=true but RR_TEMPLATE_DIR is not set in .env"
+                    )
+                if params.use_archetypes and params.archetype_dir is None:
+                    raise ValueError(
+                        "REDROCK=true, USE_ARCHETYPES=true but ARCHETYPE_DIR is not set in .env"
+                    )
+                state['brute_force_matching'] = run_redrock_pipeline(
+                    input_fits=state['file_path'],
+                    output_dir=state['output_dir'],
+                    file_name=state['file_name'],
+                    rr_template_dir=params.rr_template_dir,
+                    archetype_dir=params.archetype_dir,
+                    use_archetypes=params.use_archetypes,
+                    nminima=params.rr_nminima,
+                    nnearest=params.rr_nnearest,
+                    omp_num_threads=params.rr_omp_num_threads,
+                )
+            else:
+                state['brute_force_matching'] = brute_force_line_matching(
+                    state, tol_wavelength,
+                )
 
             ResultWriter().write_brute_force_matching(state)
 

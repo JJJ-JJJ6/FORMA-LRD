@@ -42,6 +42,9 @@ class RuleAnalyst(BaseAgent):
     # =====================================================================
 
     async def run(self, state: SpectroState) -> SpectroState:
+        params = self.runtime.configs.params
+        mode = "redrock" if params.redrock else "nomad"
+
         hypotheses = collect_hypotheses_from_bfm(
             state.get('brute_force_matching', {})
         )
@@ -57,14 +60,16 @@ class RuleAnalyst(BaseAgent):
             return state
 
         # ── Phase 1: concurrent harness runs ─────────────────────
-        harness_results = await self._run_targeted_search_batch(state, hypotheses)
+        harness_results = await self._run_targeted_search_batch(
+            state, hypotheses, mode=mode,
+        )
         state['harness_results'] = harness_results
 
         # ── Phase 1b: plot adopted features for each candidate ──
         self._plot_harness_candidates(state, harness_results)
 
         # ── Phase 2: LLM synthesis ───────────────────────────────
-        await self._synthesize(state, harness_results)
+        await self._synthesize(state, harness_results, mode=mode)
 
         # ── Write outputs ────────────────────────────────────────
         self._writer.write_rule_analysis(state)
@@ -76,7 +81,7 @@ class RuleAnalyst(BaseAgent):
     # =====================================================================
 
     async def _run_targeted_search_batch(
-        self, state: SpectroState, hypotheses: list
+        self, state: SpectroState, hypotheses: list, *, mode: str = "nomad",
     ) -> list:
         """Run the first hypothesis serially to warm the KV cache (skill prompt +
         tool definitions), then fan out the rest with bounded concurrency."""
@@ -95,18 +100,23 @@ class RuleAnalyst(BaseAgent):
         async def _run_one(idx: int, hyp: dict) -> dict:
             try:
                 spec = state['spectrum']
+                if mode == "redrock":
+                    z_half = 0.1
+                else:
+                    z_half = 0.005
                 result = await harness_arun(
                     fits_path=state['file_path'],
                     redshift=hyp['z'],
                     npz_path=state['spectrum_npz_path'],
+                    mode=mode,
                     hypothesis_idx=idx + 1,
                     wavelength_min=float(spec['wavelength'][0]),
                     wavelength_max=float(spec['wavelength'][-1]),
                     snr_median=snr_median,
                     peaks=state.get('peaks', []),
                     troughs=state.get('troughs', []),
-                    z_min=round(hyp['z'] - 0.005, 4),
-                    z_max=round(hyp['z'] + 0.005, 4),
+                    z_min=round(hyp['z'] - z_half, 4),
+                    z_max=round(hyp['z'] + z_half, 4),
                     masked_regions=overlap,
                     report_path=os.path.join(harness_dir, f'{idx + 1}_report.md'),
                     csv_path=os.path.join(harness_dir, f'{idx + 1}_lines.csv'),
@@ -201,6 +211,8 @@ class RuleAnalyst(BaseAgent):
     async def _synthesize(
         self, state: SpectroState,
         harness_results: list,
+        *,
+        mode: str = "nomad",
     ) -> None:
         """LLM reviews all harness reports and delivers a final combined
         verdict.  Delegates to harness.synthesize.arun."""
@@ -231,6 +243,7 @@ class RuleAnalyst(BaseAgent):
             fl=fl,
             harness_dir=harness_dir,
             snr=snr,
+            mode=mode,
             model=model_cfg['model'],
             api_key=model_cfg['api_key'],
             base_url=model_cfg['base_url'],

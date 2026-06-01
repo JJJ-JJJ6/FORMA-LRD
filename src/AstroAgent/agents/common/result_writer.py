@@ -164,10 +164,23 @@ class ResultWriter:
                 # backwards-compat: old list format
                 hypotheses = data
 
+            # ── 跳过 verbose 字段，只打印关键字段 ──
+            _key_order = [
+                "Hypothesis", "z_representative", "score", "z_center",
+                "z_list", "z_max", "z_min", "z_spread",
+                "N_emission", "N_absorption",
+                "Emission matches", "Absorption matches",
+                "scoring_details", "matched_lines",
+            ]
             for idx, entry in enumerate(hypotheses, start=1):
                 f.write(f"--- Match #{idx} ---\n")
+                for key in _key_order:
+                    if key in entry:
+                        f.write(f"  {key}: {entry[key]}\n")
+                # 其余字段
                 for key, value in entry.items():
-                    f.write(f"  {key}: {value}\n")
+                    if key not in _key_order:
+                        f.write(f"  {key}: {value}\n")
                 f.write("\n")
 
     def write_redshift_scoring(self, state: SpectroState) -> None:

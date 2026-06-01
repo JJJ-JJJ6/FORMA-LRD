@@ -76,6 +76,7 @@ def _build_user_message(
     fl: np.ndarray,
     snr: np.ndarray | None = None,
     summaries: list[str] | None = None,
+    mode: str = "nomad",
 ) -> str:
     """Build the user prompt with spectrum metadata, harness reports, and
     pre-computed Dn4000 diagnostics.
@@ -85,6 +86,9 @@ def _build_user_message(
     summaries : list[str] or None
         Pre-built markdown summaries (one per hypothesis). If None, they
         are built on the fly via :func:`extract_harness_summary`.
+    mode : str
+        "nomad" or "redrock". Redrock-mode reports may contain fit-derived
+        measurements alongside CWT features.
     """
 
     # ── Build Dn4000 lookup ──
@@ -125,12 +129,27 @@ def _build_user_message(
     # ── Dn4000 diagnostics ──
     diagnostic_slices = prepare_diagnostic_slices(wl, fl, harness_results)
 
+    # ── Mode-specific note ──
+    _mode_note = ""
+    if mode == "redrock":
+        _mode_note = (
+            "\n**Note**: These harness reports come from redrock-mode runs. "
+            "Some line measurements may be fit-derived (fit_peak, fit_doublet) "
+            "rather than CWT-adopted. Fit-derived lines have no ridge_length "
+            "or cwt_snr but provide delta_chi2_per_n and local_snr quality "
+            "metrics. Treat local_snr > 10 as roughly equivalent to "
+            "cwt_snr > 10 + ridge_length >= 5. For doublet fits, the "
+            "separation check is the strongest validation — a matched doublet "
+            "spacing provides independent confirmation of both the redshift "
+            "and the line identification.\n"
+        )
+
     return f"""## Spectrum
 
 - Wavelength range: {spec_wl_range} Å
 - Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}
 - Number of hypotheses tested: {len(harness_results)}
-
+{_mode_note}
 ## Harness Report Summaries
 
 Each summary distills the key structured information from the per-hypothesis
@@ -205,6 +224,7 @@ async def arun(
     max_turns: int = 30,
     stream_md_path: str | None = None,
     summaries: list[str] | None = None,
+    mode: str = "nomad",
 ) -> dict:
     """Run the LLM synthesis agent over multiple harness reports.
 
@@ -243,7 +263,7 @@ async def arun(
     base_url = base_url or os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
 
     system_prompt = _load_skill()
-    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries)
+    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries, mode=mode)
 
     # ── Closure over arrays for zero-copy slicing ────────────────
     _wl = wl

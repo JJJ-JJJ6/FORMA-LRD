@@ -360,7 +360,322 @@ def fit_peak(
 
 
 # ---------------------------------------------------------------------------
-# Tool 4: read_spectrum_region
+# Tool 4: fit_doublet — two-component Gaussian fitting for close line pairs
+# ---------------------------------------------------------------------------
+
+def _doublet_model(x, amp1, center1, sigma1, amp2, center2, sigma2, slope, intercept):
+    """Two Gaussians + linear baseline."""
+    g1 = amp1 * np.exp(-((x - center1) / sigma1) ** 2 / 2)
+    g2 = amp2 * np.exp(-((x - center2) / sigma2) ** 2 / 2)
+    return g1 + g2 + slope * x + intercept
+
+
+# Known doublet rest-frame parameters (name -> (wl1, wl2, sep, amp_ratio_hint))
+_DOUBLET_PARAMS = {
+    "Ca H/K":   (3934.8, 3969.6, 34.8, 0.5, "absorption"),
+    "O III":    (4960.3, 5008.2, 47.9, 3.0, "emission"),
+    "S II":     (6718.3, 6732.7, 14.4, 1.0, "emission"),
+    "N II":     (6549.8, 6585.3, 35.5, 3.0, "emission"),
+    "Na D":     (5891.6, 5897.6,  6.0, 2.0, "absorption"),
+}
+
+
+@tool
+def fit_doublet(
+    npz_path: str,
+    center_guess_1: float,
+    center_guess_2: float,
+    line_type: str = "emission",
+    width_3sigma: float = 25.0,
+    window_half: float = 300.0,
+    separation_rest: float = None,
+    separation_tolerance: float = 5.0,
+    amp_ratio_expected: float = None,
+) -> dict:
+    """Fit a doublet (two Gaussians + linear baseline) around a close line pair.
+
+    Designed for closely-spaced line pairs where individual fitting would
+    suffer from mutual interference:
+
+    - **Ca H/K** (3934.8 / 3969.6 Å): broad absorption, sep=34.8 Å rest.
+      Use line_type="absorption", width_3sigma=90.
+    - **[O III]a/b** (4960.3 / 5008.2 Å): narrow emission, sep=47.9 Å rest,
+      amp ratio b:a ≈ 3:1. Use line_type="emission", width_3sigma=25.
+    - **[S II]a/b** (6718.3 / 6732.7 Å): narrow emission, sep=14.4 Å rest.
+      Use line_type="emission", width_3sigma=25.
+    - **[N II]a/b** (6549.8 / 6585.3 Å): narrow emission, sep=35.5 Å rest,
+      amp ratio b:a ≈ 3:1. Use line_type="emission", width_3sigma=25.
+    - **Na D** (5891.6 / 5897.6 Å): narrow absorption, sep=6.0 Å rest.
+      Use line_type="absorption", width_3sigma=25.
+
+    Parameters
+    ----------
+    npz_path : str
+        Path to the cleaned spectrum .npz file.
+    center_guess_1, center_guess_2 : float
+        Predicted observed wavelengths (Å) for the two components.
+    line_type : str
+        "emission" (amp ≥ 0) or "absorption" (amp ≤ 0). Applied to both.
+    width_3sigma : float
+        Expected physical width (3σ) of each component in Å.
+    window_half : float
+        Half-width of the fitting window in Å (default 300).
+    separation_rest : float, optional
+        Expected rest-frame separation in Å. If provided, checks whether the
+        fitted separation is consistent (within separation_tolerance).
+    separation_tolerance : float
+        Tolerance for separation check in Å (default 5.0).
+    amp_ratio_expected : float, optional
+        Expected ratio amp2/amp1. Used only for a flag, not a constraint.
+
+    Returns
+    -------
+    dict with keys:
+        component_1, component_2 : dict
+            Per-component stats: center, center_err, amplitude, amplitude_err,
+            sigma, fwhm, fwhm_km_s.
+        delta_chi2_per_n : float
+            Δχ²/n for the full model vs linear baseline.
+        local_rms, local_snr : float
+        separation_check : dict
+            observed_sep, expected_sep, match (bool).
+        amp_ratio_check : dict  (if amp_ratio_expected provided)
+            observed_ratio, expected_ratio.
+        flags : list[str]
+        message : str
+    """
+    data = np.load(npz_path)
+    wl_full = data["wavelength"]
+    flux_full = data["flux"]
+
+    mid = (center_guess_1 + center_guess_2) / 2.0
+    half = max(window_half, abs(center_guess_2 - center_guess_1) * 2.0)
+    mask = (wl_full >= mid - half) & (wl_full <= mid + half)
+    wl = wl_full[mask]
+    flux = flux_full[mask]
+
+    min_pts = 20
+    if len(wl) < min_pts:
+        return {
+            "component_1": None, "component_2": None,
+            "delta_chi2_per_n": None, "local_rms": None, "local_snr": None,
+            "separation_check": None, "amp_ratio_check": None,
+            "n_points": len(wl),
+            "flags": ["too_few_points"],
+            "message": f"Only {len(wl)} points in window — need at least {min_pts}.",
+        }
+
+    # ── Initial guess ─────────────────────────────────────────
+    lin_coeffs = np.polyfit(wl, flux, 1)
+    slope0, intercept0 = lin_coeffs[0], lin_coeffs[1]
+    linear_at_c1 = slope0 * center_guess_1 + intercept0
+    linear_at_c2 = slope0 * center_guess_2 + intercept0
+    flux_at_c1 = np.interp(center_guess_1, wl, flux)
+    flux_at_c2 = np.interp(center_guess_2, wl, flux)
+    amp01 = flux_at_c1 - linear_at_c1
+    amp02 = flux_at_c2 - linear_at_c2
+
+    if line_type == "absorption":
+        amp01 = min(amp01, -1e-6)
+        amp02 = min(amp02, -1e-6)
+    else:
+        amp01 = max(amp01, 1e-6)
+        amp02 = max(amp02, 1e-6)
+
+    sigma0 = np.clip(width_3sigma / 3.0, 2.0, half / 4.0)
+    p0 = [amp01, center_guess_1, sigma0, amp02, center_guess_2, sigma0,
+          slope0, intercept0]
+
+    # ── Bounds ─────────────────────────────────────────────────
+    if line_type == "absorption":
+        amp_lo, amp_hi = -np.inf, 0.0
+    else:
+        amp_lo, amp_hi = 0.0, np.inf
+
+    bounds = (
+        [amp_lo, center_guess_1 - 50, 1.0,  amp_lo, center_guess_2 - 50, 1.0,  -np.inf, -np.inf],
+        [amp_hi, center_guess_1 + 50, half, amp_hi, center_guess_2 + 50, half,  np.inf,  np.inf],
+    )
+
+    # ── Fit ────────────────────────────────────────────────────
+    try:
+        popt, pcov = curve_fit(
+            _doublet_model, wl, flux,
+            p0=p0, bounds=bounds, maxfev=10000,
+        )
+    except Exception as e:
+        # Fallback: fit each component individually
+        flags = ["doublet_fit_failed"]
+        msg = f"Doublet fit failed: {e}. "
+        c1_result = _try_fit_single(wl, flux, center_guess_1, width_3sigma,
+                                    line_type, window_half)
+        c2_result = _try_fit_single(wl, flux, center_guess_2, width_3sigma,
+                                    line_type, window_half)
+        if c1_result and c2_result:
+            flags.append("fallback_individual")
+            msg += "Fell back to individual single-Gaussian fits."
+        else:
+            msg += "Individual fits also failed."
+        return _build_doublet_result(None, None, len(wl), flags, msg,
+                                     c1_result, c2_result)
+
+    amp1, c1, s1, amp2, c2, s2, slope, intercept = popt
+    perr = np.sqrt(np.diag(pcov)) if pcov is not None else [None] * 8
+
+    def _comp_stats(i, amp, center, sigma, perr_amp, perr_center):
+        if center == 0:
+            return None
+        fwhm = sigma * 2.35482
+        fwhm_kms = fwhm / center * 2.99792458e5
+        return {
+            "center": round(float(center), 3),
+            "center_err": round(float(perr_center), 4) if perr_center is not None else None,
+            "amplitude": round(float(amp), 6),
+            "amplitude_err": round(float(perr_amp), 6) if perr_amp is not None else None,
+            "sigma": round(float(sigma), 3),
+            "fwhm": round(float(fwhm), 3),
+            "fwhm_km_s": round(float(fwhm_kms), 1) if fwhm_kms is not None else None,
+        }
+
+    c1_info = _comp_stats(1, amp1, c1, s1, perr[0], perr[1])
+    c2_info = _comp_stats(2, amp2, c2, s2, perr[3], perr[4])
+
+    # ── Statistics ─────────────────────────────────────────────
+    fitted = _doublet_model(wl, *popt)
+    linear_only = slope * wl + intercept
+    residuals = flux - fitted
+
+    local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
+    if local_rms < 1e-10:
+        local_rms = np.std(residuals) or 1e-10
+
+    n = len(wl)
+    chi2_full = np.sum((residuals / local_rms) ** 2)
+    chi2_linear = np.sum(((flux - linear_only) / local_rms) ** 2)
+    delta_chi2_per_n = round((chi2_linear - chi2_full) / n, 3)
+
+    max_amp = max(abs(amp1), abs(amp2))
+    local_snr = round(max_amp / local_rms, 2) if local_rms > 0 else None
+
+    # ── Separation check ───────────────────────────────────────
+    sep_check = None
+    if separation_rest is not None and c1_info and c2_info:
+        obs_sep = abs(c1_info["center"] - c2_info["center"])
+        sep_check = {
+            "observed_sep_A": round(obs_sep, 2),
+            "expected_sep_A": round(float(separation_rest), 2),
+            "match": obs_sep <= separation_rest + separation_tolerance,
+        }
+
+    # ── Amplitude ratio check ──────────────────────────────────
+    amp_check = None
+    if amp_ratio_expected is not None and c1_info and c2_info:
+        if abs(c1_info["amplitude"]) > 1e-10:
+            obs_ratio = abs(c2_info["amplitude"]) / abs(c1_info["amplitude"])
+        else:
+            obs_ratio = None
+        amp_check = {
+            "observed_ratio": round(obs_ratio, 2) if obs_ratio is not None else None,
+            "expected_ratio": round(float(amp_ratio_expected), 2),
+        }
+
+    # ── Flags ──────────────────────────────────────────────────
+    flags = []
+    for i, ci, c_guess in [(1, c1_info, center_guess_1), (2, c2_info, center_guess_2)]:
+        if ci and abs(ci["center"] - c_guess) > 50:
+            flags.append(f"center_{i}_deviation_large")
+    if delta_chi2_per_n < 0:
+        flags.append("negative_delta_chi2")
+
+    msg_parts = [f"Fit {'OK' if not flags else 'with warnings'}."]
+    if c1_info:
+        msg_parts.append(
+            f"C1: {c1_info['center']:.2f}±{c1_info.get('center_err', 0) or 0:.3f} Å, "
+            f"amp={c1_info['amplitude']:.4f}, FWHM={c1_info['fwhm']:.1f} Å"
+        )
+    if c2_info:
+        msg_parts.append(
+            f"C2: {c2_info['center']:.2f}±{c2_info.get('center_err', 0) or 0:.3f} Å, "
+            f"amp={c2_info['amplitude']:.4f}, FWHM={c2_info['fwhm']:.1f} Å"
+        )
+    msg_parts.append(f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}")
+    if sep_check:
+        status = "✓" if sep_check["match"] else "✗"
+        msg_parts.append(f"sep={sep_check['observed_sep_A']:.1f} Å {status}")
+
+    return {
+        "component_1": c1_info,
+        "component_2": c2_info,
+        "delta_chi2_per_n": delta_chi2_per_n,
+        "local_rms": round(local_rms, 6),
+        "local_snr": local_snr,
+        "separation_check": sep_check,
+        "amp_ratio_check": amp_check,
+        "n_points": n,
+        "flags": flags,
+        "message": " ".join(msg_parts),
+    }
+
+
+def _try_fit_single(wl, flux, center_guess, width_3sigma, line_type, window_half):
+    """Attempt a single-Gaussian fit. Returns dict or None on failure."""
+    half = min(window_half, 200.0)
+    mask = (wl >= center_guess - half) & (wl <= center_guess + half)
+    w = wl[mask]; f = flux[mask]
+    if len(w) < 10:
+        return None
+    lin = np.polyfit(w, f, 1)
+    s0, i0 = lin[0], lin[1]
+    fa = np.interp(center_guess, w, f)
+    la = s0 * center_guess + i0
+    a0 = fa - la
+    if line_type == "absorption":
+        a0 = min(a0, -1e-6); lo, hi = -np.inf, 0.0
+    else:
+        a0 = max(a0, 1e-6); lo, hi = 0.0, np.inf
+    sig0 = np.clip(width_3sigma / 3.0, 2.0, half / 2)
+    try:
+        popt, _ = curve_fit(
+            _gaussian_plus_linear, w, f,
+            p0=[a0, center_guess, sig0, s0, i0],
+            bounds=([lo, center_guess - 50, 1.0, -np.inf, -np.inf],
+                    [hi, center_guess + 50, half, np.inf, np.inf]),
+            maxfev=5000,
+        )
+        amp, c, s, _, _ = popt
+        fwhm = s * 2.35482
+        return {
+            "center": round(float(c), 3),
+            "center_err": None,
+            "amplitude": round(float(amp), 6),
+            "amplitude_err": None,
+            "sigma": round(float(s), 3),
+            "fwhm": round(float(fwhm), 3),
+            "fwhm_km_s": round(fwhm / c * 2.99792458e5, 1) if c != 0 else None,
+        }
+    except Exception:
+        return None
+
+
+def _build_doublet_result(c1_info, c2_info, n_pts, flags, msg,
+                          fallback_c1=None, fallback_c2=None):
+    """Build a consistent return dict for fit_doublet (normal + fallback paths)."""
+    return {
+        "component_1": c1_info or fallback_c1,
+        "component_2": c2_info or fallback_c2,
+        "delta_chi2_per_n": None,
+        "local_rms": None,
+        "local_snr": None,
+        "separation_check": None,
+        "amp_ratio_check": None,
+        "n_points": n_pts,
+        "flags": flags,
+        "message": msg,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool 6: read_spectrum_region (tool 5 was fit_doublet)
 # ---------------------------------------------------------------------------
 
 @tool
@@ -409,7 +724,7 @@ def read_spectrum_region(
 
 
 # ---------------------------------------------------------------------------
-# Tool 5: write_report
+# Tool 7: write_report
 # ---------------------------------------------------------------------------
 
 @tool
@@ -444,7 +759,7 @@ def write_report(file_path: str, content: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 6: write_lines_csv
+# Tool 8: write_lines_csv
 # ---------------------------------------------------------------------------
 
 @tool
@@ -503,7 +818,7 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 7: grep_kb — search knowledge base and skill files
+# Tool 9: grep_kb — search knowledge base and skill files
 # ---------------------------------------------------------------------------
 
 from pathlib import Path as _Path
@@ -516,6 +831,7 @@ _GREP_FILES: dict[str, _Path] = {
     "kb/lines.md": _SKILLS_DIR / "kb" / "lines.md",
     "synthesize_skill.md": _SKILLS_DIR / "synthesize_skill.md",
     "targeted_search_skill.md": _SKILLS_DIR / "targeted_search_skill.md",
+    "redrock_search_skill.md": _SKILLS_DIR / "redrock_search_skill.md",
 }
 
 _grep_cache: dict[str, str] | None = None
@@ -619,7 +935,7 @@ def grep_kb(pattern: str, A: int = 0, B: int = 0, C: int = 0) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 8: compute_redshift
+# Tool 10: compute_redshift
 # ---------------------------------------------------------------------------
 
 @tool

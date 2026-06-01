@@ -48,6 +48,18 @@ When using `read_spectrum_region`:
 - **Do NOT estimate FWHM in km/s from raw data.** The conversion FWHM(km/s) = FWHM(Å) / λ_obs × c requires precise FWHM measurement that visual inspection of ~10 data points cannot provide. Use the CWT feature's FWHM_km_s from the harness report instead.
 - You may note whether a continuum break (sharp flux increase) is present or absent at a predicted wavelength. This is a binary yes/no judgment — do not attempt to quantify the break amplitude by eye.
 
+### Fit-derived Measurements (Redrock Mode Only)
+
+In redrock-mode harness reports, some line measurements may come from `fit_peak` or `fit_doublet` (Gaussian fitting) rather than CWT pre-detection. These measurements have different quality metrics:
+
+- **`delta_chi2_per_n`** > 0: Gaussian model improves fit over linear baseline. Higher = stronger detection. This is the single best quality indicator for fit-derived lines.
+- **`local_snr`** (|amplitude|/local_rms): analogous to CWT SNR but measured in data space. >10 → robust; 5–10 → moderate; <5 → marginal.
+- **`center_err`** (1σ uncertainty): precision of the fitted center in Å. If |λ_fitted − λ_pred| > 3×center_err, the offset is statistically significant.
+
+Fit-derived measurements have NO ridge_length or cwt_snr. Treat `local_snr > 10` as roughly equivalent to `cwt_snr > 10` + `ridge_length >= 5` in the trust hierarchy. For doublet fits, the **separation check** is the strongest validation — if a doublet spacing matches the known rest-frame separation to within tolerance, this provides independent confirmation of both the redshift AND the line identification. A matched doublet with good S/N should be weighted as strongly as a high-ridge CWT feature.
+
+CWT-derived measurements remain higher trust than fit-derived in general (no model assumptions, no initial-guess dependency), but a high-quality fit with separation verification should not be dismissed simply because it lacks ridge_length.
+
 ## Phase 1: Blind Review (No Spectrum Access)
 
 Start by analysing the harness reports WITHOUT reading the spectrum. Your goal is to determine whether the reports alone provide a decisive answer, or whether you need Phase 2.

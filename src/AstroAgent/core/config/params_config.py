@@ -18,8 +18,17 @@ class ParamsConfig(BaseModel):
     discussion_rounds: int
     harness_concurrency: int
     self_evolve: bool
+    redrock: bool
     failure_batch_size: int
     z_tolerance: float
+
+    # ── Redrock 配置 ──
+    rr_template_dir: Optional[str]
+    archetype_dir: Optional[str]
+    use_archetypes: bool
+    rr_nminima: int
+    rr_nnearest: int
+    rr_omp_num_threads: int
 
     # ── CWT 特征检测参数 ──
     cwt_snr_thresh: float
@@ -53,8 +62,17 @@ class ParamsConfig(BaseModel):
             discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
+            redrock=os.getenv("REDROCK", "false").lower() in ("true", "1", "yes"),
             failure_batch_size=getenv_int("FAILURE_BATCH_SIZE", 5),
             z_tolerance=getenv_float("Z_TOLERANCE", 0.005),
+
+            # ── Redrock 配置 ──
+            rr_template_dir=os.getenv("RR_TEMPLATE_DIR") or None,
+            archetype_dir=os.getenv("ARCHETYPE_DIR") or None,
+            use_archetypes=os.getenv("USE_ARCHETYPES", "true").lower() in ("true", "1", "yes"),
+            rr_nminima=getenv_int("NMINIMA", 9),
+            rr_nnearest=getenv_int("NNEAREST", 2),
+            rr_omp_num_threads=getenv_int("OMP_NUM_THREADS", 1),
 
             # ── CWT 特征检测参数 ──
             cwt_snr_thresh=getenv_float("CWT_SNR_THRESH", 5.0),
