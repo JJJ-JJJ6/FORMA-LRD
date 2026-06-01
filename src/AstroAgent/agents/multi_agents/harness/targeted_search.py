@@ -25,6 +25,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
