@@ -209,7 +209,8 @@ def _find_nearby_features(
 
     Results are sorted by distance to ``obs_wl`` (closest first).
 
-    Returns a compact string like ``peak@5001.2(amp=15.3)`` or ``—`` if none.
+    Returns brief refs like ``peak@5001.2(z=0.0085)`` — full feature details are
+    in the CWT Features table above the predictions section.
     """
     lo = rest_wl * (1.0 + z_min)
     hi = rest_wl * (1.0 + z_max)
@@ -218,40 +219,57 @@ def _find_nearby_features(
         pw = p.get('wavelength', 0)
         if lo <= pw <= hi:
             z_implied = pw / rest_wl - 1.0
-            dist = abs(pw - obs_wl)
-            fwhm_a = p.get('FWHM_A', None)
-            fwhm_k = p.get('FWHM_km_s', None)
-            ridge = p.get('ridge_length', None)
-            cwt_snr = p.get('snr', None)
-            width_str = ""
-            if fwhm_a is not None and fwhm_k is not None:
-                width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
-            extra = ""
-            if ridge is not None:
-                extra += f", ridge={ridge}"
-            if cwt_snr is not None:
-                extra += f", snr={cwt_snr:.1f}"
-            nearby.append((dist, f"peak@{pw:.1f}(z={z_implied:.4f}, amp={p.get('amplitude', 0):.1f}{width_str}{extra})"))
+            nearby.append((abs(pw - obs_wl), f"peak@{pw:.1f}(z={z_implied:.4f})"))
     for t in (troughs or []):
         tw = t.get('wavelength', 0)
         if lo <= tw <= hi:
             z_implied = tw / rest_wl - 1.0
-            dist = abs(tw - obs_wl)
-            fwhm_a = t.get('FWHM_A', None)
-            fwhm_k = t.get('FWHM_km_s', None)
-            ridge = t.get('ridge_length', None)
-            cwt_snr = t.get('snr', None)
-            width_str = ""
-            if fwhm_a is not None and fwhm_k is not None:
-                width_str = f", FWHM={fwhm_a:.1f}Å/{fwhm_k:.0f}km/s"
-            extra = ""
-            if ridge is not None:
-                extra += f", ridge={ridge}"
-            if cwt_snr is not None:
-                extra += f", snr={cwt_snr:.1f}"
-            nearby.append((dist, f"trough@{tw:.1f}(z={z_implied:.4f}, amp={t.get('amplitude', 0):.1f}{width_str}{extra})"))
+            nearby.append((abs(tw - obs_wl), f"trough@{tw:.1f}(z={z_implied:.4f})"))
     nearby.sort(key=lambda x: x[0])
     return ", ".join(n[1] for n in nearby) if nearby else "—"
+
+
+def _build_cwt_features_table(peaks: list, troughs: list) -> str:
+    """Build a compact table of all CWT-detected features — printed once, above
+    the predicted-lines table.  The per-line ``Nearby Features`` column only
+    references wavelengths so the LLM can cross-reference this table for
+    FWHM / ridge / SNR details."""
+    lines = ["## CWT Detected Features\n"]
+    col = "| λ (Å) | Amp | FWHM (Å) | FWHM (km/s) | Ridge | SNR |"
+    sep = "|-------|-----|----------|-------------|-------|-----|"
+
+    def _row(f: dict) -> str:
+        wl = f.get('wavelength', 0)
+        amp = f.get('amplitude', 0)
+        fwhm_a = f.get('FWHM_A', None)
+        fwhm_k = f.get('FWHM_km_s', None)
+        ridge = f.get('ridge_length', None)
+        snr = f.get('snr', None)
+        return (
+            f"| {wl:.1f} | {amp:.1f} | "
+            f"{f'{fwhm_a:.1f}' if isinstance(fwhm_a, (int, float)) else '—'} | "
+            f"{f'{fwhm_k:.0f}' if isinstance(fwhm_k, (int, float)) else '—'} | "
+            f"{f'{ridge}' if isinstance(ridge, (int, float)) else '—'} | "
+            f"{f'{snr:.1f}' if isinstance(snr, (int, float)) else '—'} |"
+        )
+
+    if peaks:
+        lines.append(f"### Emission (peaks) — {len(peaks)} features\n")
+        lines.append(col)
+        lines.append(sep)
+        for p in peaks:
+            lines.append(_row(p))
+        lines.append("")
+
+    if troughs:
+        lines.append(f"### Absorption (troughs) — {len(troughs)} features\n")
+        lines.append(col)
+        lines.append(sep)
+        for t in troughs:
+            lines.append(_row(t))
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _build_predictions_section(
@@ -310,12 +328,10 @@ def _build_predictions_section(
 
     rows.sort(key=lambda r: r[0])
 
-    lo_ex = 1216.0 * (1.0 + z_min)
-    hi_ex = 1216.0 * (1.0 + z_max)
     header = (
-        f"| Name | λ_rest (Å) | λ_obs (Å) | Type | Width | Features in z-window "
-        f"(z, amp, FWHM, ridge, snr; mask notes in [brackets]) [{lo_ex:.1f}..{hi_ex:.1f} Å for Lyα] |\n"
-        "|------|-----------|----------|------|-------|------------------------------------------------------------|"
+        "| Name | λ_rest (Å) | λ_obs (Å) | Type | Width | Nearby Features "
+        "(ref@λ(z); cross-ref CWT table above for details) |\n"
+        "|------|-----------|----------|------|-------|----------------------------------------------------------|"
     )
     return "\n## Predicted Lines at z = {:.4f}\n\n{}\n{}\n".format(
         redshift, header, "\n".join(r[1] for r in rows)
@@ -380,6 +396,8 @@ def _build_user_message(
         masked_regions=masked_regions,
     )
 
+    cwt_table = _build_cwt_features_table(_peaks, _troughs)
+
     # ── Mode-specific instructions ──────────────────────────────
     _mode_instructions = ""
     if mode == "redrock":
@@ -420,10 +438,12 @@ def _build_user_message(
         f"Cleaned spectrum: {npz_path}\n"
         + (f"Output Report file: {report_path}\n" if report_path else "")
         + (f"Output CSV file: {csv_path}\n" if csv_path else "")
+        + "\n" + cwt_table + "\n"
         + predictions_section
-        + "\nThe table above shows predicted lines at this redshift and all CWT pre-detected "
-        "features whose observed wavelength + pre-computed implied_z fall within the "
-        "z-verification window. Evaluate and adopt features per the skill prompt criteria. "
+        + "\nThe CWT table lists all pre-detected features with their quality metrics. "
+        "The Predicted Lines table references nearby features by wavelength + implied_z — "
+        "cross-reference with the CWT table for FWHM, ridge, and SNR details. "
+        "Evaluate and adopt features per the skill prompt criteria. "
         "Knowledge base (lines, ionization rules, classification diagnostics) is embedded "
         "in the system prompt — no need to search external files.\n"
         + "\nBatch ALL line decisions in a single parallel turn.\n"
