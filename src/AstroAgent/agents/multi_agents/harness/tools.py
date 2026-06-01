@@ -191,6 +191,108 @@ def _gaussian_plus_linear(x, amp, center, sigma, slope, intercept):
     return amp * np.exp(-(x - center) ** 2 / (2 * sigma ** 2)) + slope * x + intercept
 
 
+def _do_fit_peak(
+    wl_full: np.ndarray,
+    flux_full: np.ndarray,
+    center_guess: float,
+    width_3sigma: float,
+    line_type: str = "emission",
+    window_half: float = 200.0,
+) -> dict:
+    """Core fitting logic — works on in-memory arrays (no file I/O)."""
+    mask = (wl_full >= center_guess - window_half) & (wl_full <= center_guess + window_half)
+    wl = wl_full[mask]
+    flux = flux_full[mask]
+
+    if len(wl) < 10:
+        return {
+            "center": None, "center_err": None,
+            "amplitude": None, "amplitude_err": None,
+            "sigma": None, "fwhm": None, "fwhm_km_s": None,
+            "delta_chi2_per_n": None, "local_rms": None, "local_snr": None,
+            "n_points": len(wl),
+            "flags": ["too_few_points"],
+            "message": f"Only {len(wl)} points in window — need at least 10.",
+        }
+
+    lin_coeffs = np.polyfit(wl, flux, 1)
+    slope0, intercept0 = lin_coeffs[0], lin_coeffs[1]
+    flux_at_center = np.interp(center_guess, wl, flux)
+    linear_at_center = slope0 * center_guess + intercept0
+    amp0 = flux_at_center - linear_at_center
+
+    if line_type == "absorption":
+        amp0 = min(amp0, -1e-6); amp_lower, amp_upper = -np.inf, 0.0
+    else:
+        amp0 = max(amp0, 1e-6);  amp_lower, amp_upper = 0.0, np.inf
+
+    sigma0 = np.clip(width_3sigma / 3.0, 2.0, window_half / 2)
+    p0 = [amp0, center_guess, sigma0, slope0, intercept0]
+    bounds = (
+        [amp_lower, center_guess - 50, 1.0,      -np.inf, -np.inf],
+        [amp_upper, center_guess + 50, window_half, np.inf,  np.inf],
+    )
+
+    try:
+        popt, pcov = curve_fit(_gaussian_plus_linear, wl, flux, p0=p0, bounds=bounds, maxfev=5000)
+    except Exception as e:
+        return {
+            "center": None, "center_err": None,
+            "amplitude": None, "amplitude_err": None,
+            "sigma": None, "fwhm": None, "fwhm_km_s": None,
+            "delta_chi2_per_n": None, "local_rms": None, "local_snr": None,
+            "n_points": len(wl),
+            "flags": ["fit_failed"],
+            "message": f"curve_fit failed: {e}",
+        }
+
+    amp, center, sigma, slope, intercept = popt
+    perr = np.sqrt(np.diag(pcov)) if pcov is not None else [None] * 5
+
+    fitted = _gaussian_plus_linear(wl, *popt)
+    linear_only = slope * wl + intercept
+    residuals = flux - fitted
+
+    local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
+    if local_rms < 1e-10:
+        local_rms = np.std(residuals) or 1e-10
+
+    n = len(wl)
+    chi2_full = np.sum((residuals / local_rms) ** 2)
+    chi2_linear = np.sum(((flux - linear_only) / local_rms) ** 2)
+    delta_chi2_per_n = round((chi2_linear - chi2_full) / n, 3)
+    local_snr = round(abs(amp) / local_rms, 2)
+    fwhm = sigma * 2.35482
+    fwhm_km_s = fwhm / center * 2.99792458e5 if center != 0 else None
+
+    flags = []
+    if abs(center - center_guess) > 50:
+        flags.append("center_deviation_large")
+    if delta_chi2_per_n < 0:
+        flags.append("negative_delta_chi2")
+
+    return {
+        "center": round(center, 3),
+        "center_err": round(perr[1], 4) if perr[1] is not None else None,
+        "amplitude": round(amp, 6),
+        "amplitude_err": round(perr[0], 6) if perr[0] is not None else None,
+        "sigma": round(sigma, 3),
+        "fwhm": round(fwhm, 3),
+        "fwhm_km_s": round(fwhm_km_s, 1) if fwhm_km_s is not None else None,
+        "delta_chi2_per_n": delta_chi2_per_n,
+        "local_rms": round(local_rms, 6),
+        "local_snr": local_snr,
+        "n_points": n,
+        "flags": flags,
+        "message": (
+            f"Fit {'OK' if not flags else 'with warnings'}. "
+            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp:.4f}, "
+            f"FWHM={fwhm:.1f} Å ({fwhm_km_s:.0f} km/s), "
+            f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}"
+        ),
+    }
+
+
 @tool
 def fit_peak(
     npz_path: str,
@@ -221,142 +323,11 @@ def fit_peak(
 
     Returns
     -------
-    dict with keys:
-        center : float            — fitted Gaussian center (Å)
-        center_err : float        — 1σ uncertainty on center
-        amplitude : float         — fitted amplitude (positive=emission, negative=absorption)
-        amplitude_err : float
-        sigma : float             — Gaussian σ (Å)
-        fwhm : float              — FWHM (Å)
-        fwhm_km_s : float         — FWHM (km/s at the fitted center)
-        delta_chi2_per_n : float  — Δχ² per data point (positive = Gaussian improves fit)
-        local_rms : float         — RMS of fit residuals (Å)
-        local_snr : float         — |amplitude| / local_rms
-        n_points : int            — number of data points in window
-        flags : list[str]         — warnings (empty if all ok)
-        message : str             — human-readable summary
+    dict — see _do_fit_peak for field descriptions.
     """
     data = np.load(npz_path)
-    wl_full = data["wavelength"]
-    flux_full = data["flux"]
-
-    # Select window
-    mask = (wl_full >= center_guess - window_half) & (wl_full <= center_guess + window_half)
-    wl = wl_full[mask]
-    flux = flux_full[mask]
-
-    if len(wl) < 10:
-        return {
-            "center": None, "center_err": None,
-            "amplitude": None, "amplitude_err": None,
-            "sigma": None, "fwhm": None, "fwhm_km_s": None,
-            "delta_chi2_per_n": None, "local_rms": None, "local_snr": None,
-            "n_points": len(wl),
-            "flags": ["too_few_points"],
-            "message": f"Only {len(wl)} points in window — need at least 10.",
-        }
-
-    # ── Initial guess ──────────────────────────────────────
-    # Quick linear fit for baseline initial guess
-    lin_coeffs = np.polyfit(wl, flux, 1)
-    slope0, intercept0 = lin_coeffs[0], lin_coeffs[1]
-
-    # Interpolate flux at center_guess for amplitude initial guess
-    flux_at_center = np.interp(center_guess, wl, flux)
-    linear_at_center = slope0 * center_guess + intercept0
-    amp0 = flux_at_center - linear_at_center
-
-    # Clamp amp0 to respect line_type (narrower search space)
-    if line_type == "absorption":
-        amp0 = min(amp0, -1e-6)
-    else:
-        amp0 = max(amp0, 1e-6)
-
-    sigma0 = width_3sigma / 3.0
-    sigma0 = np.clip(sigma0, 2.0, window_half / 2)
-
-    p0 = [amp0, center_guess, sigma0, slope0, intercept0]
-
-    # ── Bounds ─────────────────────────────────────────────
-    if line_type == "absorption":
-        amp_lower, amp_upper = -np.inf, 0.0
-    else:
-        amp_lower, amp_upper = 0.0, np.inf
-
-    bounds = (
-        [amp_lower,  center_guess - 50, 1.0,  -np.inf, -np.inf],
-        [amp_upper,  center_guess + 50, window_half, np.inf,  np.inf],
-    )
-
-    # ── Fit ────────────────────────────────────────────────
-    try:
-        popt, pcov = curve_fit(
-            _gaussian_plus_linear, wl, flux,
-            p0=p0, bounds=bounds,
-            maxfev=5000,
-        )
-    except Exception as e:
-        return {
-            "center": None, "center_err": None,
-            "amplitude": None, "amplitude_err": None,
-            "sigma": None, "fwhm": None, "fwhm_km_s": None,
-            "delta_chi2_per_n": None, "local_rms": None, "local_snr": None,
-            "n_points": len(wl),
-            "flags": ["fit_failed"],
-            "message": f"curve_fit failed: {e}",
-        }
-
-    amp, center, sigma, slope, intercept = popt
-    perr = np.sqrt(np.diag(pcov)) if pcov is not None else [None] * 5
-
-    # ── Statistics ─────────────────────────────────────────
-    fitted = _gaussian_plus_linear(wl, *popt)
-    linear_only = slope * wl + intercept
-    residuals = flux - fitted
-
-    # Robust RMS estimate (MAD-based)
-    local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
-    if local_rms < 1e-10:
-        local_rms = np.std(residuals) or 1e-10
-
-    n = len(wl)
-    chi2_full = np.sum((residuals / local_rms) ** 2)
-    chi2_linear = np.sum(((flux - linear_only) / local_rms) ** 2)
-    delta_chi2_per_n = round((chi2_linear - chi2_full) / n, 3)
-
-    local_snr = round(abs(amp) / local_rms, 2)
-
-    fwhm = sigma * 2.35482
-    fwhm_km_s = fwhm / center * 2.99792458e5 if center != 0 else None
-
-    # ── Flags ──────────────────────────────────────────────
-    flags = []
-    center_dev = abs(center - center_guess)
-    if center_dev > 50:
-        flags.append("center_deviation_large")
-    if delta_chi2_per_n < 0:
-        flags.append("negative_delta_chi2")
-
-    return {
-        "center": round(center, 3),
-        "center_err": round(perr[1], 4) if perr[1] is not None else None,
-        "amplitude": round(amp, 6),
-        "amplitude_err": round(perr[0], 6) if perr[0] is not None else None,
-        "sigma": round(sigma, 3),
-        "fwhm": round(fwhm, 3),
-        "fwhm_km_s": round(fwhm_km_s, 1) if fwhm_km_s is not None else None,
-        "delta_chi2_per_n": delta_chi2_per_n,
-        "local_rms": round(local_rms, 6),
-        "local_snr": local_snr,
-        "n_points": n,
-        "flags": flags,
-        "message": (
-            f"Fit {'OK' if not flags else 'with warnings'}. "
-            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp:.4f}, "
-            f"FWHM={fwhm:.1f} Å ({fwhm_km_s:.0f} km/s), "
-            f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}"
-        ),
-    }
+    return _do_fit_peak(data["wavelength"], data["flux"], center_guess,
+                        width_3sigma, line_type, window_half)
 
 
 # ---------------------------------------------------------------------------
@@ -380,9 +351,9 @@ _DOUBLET_PARAMS = {
 }
 
 
-@tool
-def fit_doublet(
-    npz_path: str,
+def _do_fit_doublet(
+    wl_full: np.ndarray,
+    flux_full: np.ndarray,
     center_guess_1: float,
     center_guess_2: float,
     line_type: str = "emission",
@@ -392,62 +363,7 @@ def fit_doublet(
     separation_tolerance: float = 5.0,
     amp_ratio_expected: float = None,
 ) -> dict:
-    """Fit a doublet (two Gaussians + linear baseline) around a close line pair.
-
-    Designed for closely-spaced line pairs where individual fitting would
-    suffer from mutual interference:
-
-    - **Ca H/K** (3934.8 / 3969.6 Å): broad absorption, sep=34.8 Å rest.
-      Use line_type="absorption", width_3sigma=90.
-    - **[O III]a/b** (4960.3 / 5008.2 Å): narrow emission, sep=47.9 Å rest,
-      amp ratio b:a ≈ 3:1. Use line_type="emission", width_3sigma=25.
-    - **[S II]a/b** (6718.3 / 6732.7 Å): narrow emission, sep=14.4 Å rest.
-      Use line_type="emission", width_3sigma=25.
-    - **[N II]a/b** (6549.8 / 6585.3 Å): narrow emission, sep=35.5 Å rest,
-      amp ratio b:a ≈ 3:1. Use line_type="emission", width_3sigma=25.
-    - **Na D** (5891.6 / 5897.6 Å): narrow absorption, sep=6.0 Å rest.
-      Use line_type="absorption", width_3sigma=25.
-
-    Parameters
-    ----------
-    npz_path : str
-        Path to the cleaned spectrum .npz file.
-    center_guess_1, center_guess_2 : float
-        Predicted observed wavelengths (Å) for the two components.
-    line_type : str
-        "emission" (amp ≥ 0) or "absorption" (amp ≤ 0). Applied to both.
-    width_3sigma : float
-        Expected physical width (3σ) of each component in Å.
-    window_half : float
-        Half-width of the fitting window in Å (default 300).
-    separation_rest : float, optional
-        Expected rest-frame separation in Å. If provided, checks whether the
-        fitted separation is consistent (within separation_tolerance).
-    separation_tolerance : float
-        Tolerance for separation check in Å (default 5.0).
-    amp_ratio_expected : float, optional
-        Expected ratio amp2/amp1. Used only for a flag, not a constraint.
-
-    Returns
-    -------
-    dict with keys:
-        component_1, component_2 : dict
-            Per-component stats: center, center_err, amplitude, amplitude_err,
-            sigma, fwhm, fwhm_km_s.
-        delta_chi2_per_n : float
-            Δχ²/n for the full model vs linear baseline.
-        local_rms, local_snr : float
-        separation_check : dict
-            observed_sep, expected_sep, match (bool).
-        amp_ratio_check : dict  (if amp_ratio_expected provided)
-            observed_ratio, expected_ratio.
-        flags : list[str]
-        message : str
-    """
-    data = np.load(npz_path)
-    wl_full = data["wavelength"]
-    flux_full = data["flux"]
-
+    """Core doublet fitting — works on in-memory arrays (no file I/O)."""
     mid = (center_guess_1 + center_guess_2) / 2.0
     half = max(window_half, abs(center_guess_2 - center_guess_1) * 2.0)
     mask = (wl_full >= mid - half) & (wl_full <= mid + half)
@@ -615,6 +531,29 @@ def fit_doublet(
         "flags": flags,
         "message": " ".join(msg_parts),
     }
+
+
+@tool
+def fit_doublet(
+    npz_path: str,
+    center_guess_1: float,
+    center_guess_2: float,
+    line_type: str = "emission",
+    width_3sigma: float = 25.0,
+    window_half: float = 300.0,
+    separation_rest: float = None,
+    separation_tolerance: float = 5.0,
+    amp_ratio_expected: float = None,
+) -> dict:
+    """Fit a doublet (two Gaussians + linear baseline) around a close line pair.
+
+    (See _do_fit_doublet for full parameter docs.)
+    """
+    data = np.load(npz_path)
+    return _do_fit_doublet(data["wavelength"], data["flux"],
+                           center_guess_1, center_guess_2,
+                           line_type, width_3sigma, window_half,
+                           separation_rest, separation_tolerance, amp_ratio_expected)
 
 
 def _try_fit_single(wl, flux, center_guess, width_3sigma, line_type, window_half):

@@ -30,8 +30,8 @@ from langchain.agents import create_agent
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 from .tools import (
-    write_report, write_lines_csv,
-    fit_peak, fit_doublet, predict_lines, compute_redshift,
+    write_report, write_lines_csv, compute_redshift,
+    _do_fit_peak, _do_fit_doublet,
     EMISSION_LINES, ABSORPTION_LINES, EMISSION_LINE_WIDTHS,
 )
 
@@ -77,17 +77,63 @@ def _load_skill(mode: str = "nomad") -> str:
 # Tool list
 # ---------------------------------------------------------------------------
 
-def _build_tools(mode: str = "nomad") -> list:
+def _build_tools(mode: str = "nomad", npz_path: str = None) -> list:
     """Return tool list appropriate for the verification mode.
 
     nomad (classic BFM): write_report, write_lines_csv only (CWT evaluation).
-    redrock: full tool belt including fitting and prediction tools.
+    redrock: full tool belt including fitting tools.  The LLM calls fit_peak /
+    fit_doublet with only physical parameters — the spectrum arrays are captured
+    via closure (no npz_path needed).
     """
     if mode == "redrock":
+        data = np.load(npz_path)
+        _wl = data["wavelength"]
+        _fl = data["flux"]
+
+        @tool
+        def _fit_peak(
+            center_guess: float,
+            width_3sigma: float,
+            line_type: str = "emission",
+            window_half: float = 200.0,
+        ) -> dict:
+            """Fit a single Gaussian + linear baseline around a predicted line.
+
+            Parameters
+            ----------
+            center_guess : float
+                λ_obs from the Predicted Lines table (Å).
+            width_3sigma : float
+                Broad=90, narrow=25, both=50, absorption=20.
+            line_type : "emission" or "absorption".
+            window_half : float
+                Half-width of fitting window (default 200 Å).
+            """
+            return _do_fit_peak(_wl, _fl, center_guess, width_3sigma, line_type, window_half)
+
+        @tool
+        def _fit_doublet(
+            center_guess_1: float,
+            center_guess_2: float,
+            line_type: str = "emission",
+            width_3sigma: float = 25.0,
+            window_half: float = 300.0,
+            separation_rest: float = None,
+            separation_tolerance: float = 5.0,
+            amp_ratio_expected: float = None,
+        ) -> dict:
+            """Fit two Gaussians + linear baseline for a close line pair.
+
+            See the user message for doublet guidelines (Ca H/K, [O III]a/b, etc.).
+            """
+            return _do_fit_doublet(_wl, _fl, center_guess_1, center_guess_2,
+                                   line_type, width_3sigma, window_half,
+                                   separation_rest, separation_tolerance, amp_ratio_expected)
+
         return [
             write_report, write_lines_csv,
-            fit_peak, fit_doublet,
-            predict_lines, compute_redshift,
+            _fit_peak, _fit_doublet,
+            compute_redshift,
         ]
     return [write_report, write_lines_csv]
 
@@ -337,9 +383,9 @@ def _build_user_message(
         _mode_instructions = (
             "\n## Fitting Tools Available\n\n"
             "You have additional tools beyond CWT feature evaluation:\n"
-            "- **`predict_lines`**: Get predicted observed wavelengths for all rest-frame lines at this z.\n"
             "- **`fit_peak`**: Fit a single Gaussian + linear baseline around a predicted position. "
-            "Use this when the Features column is ``—`` (no CWT detection) or when CWT features are "
+            "Use the λ_obs value from the Predicted Lines table as center_guess. "
+            "Only call this when the Features column is ``—`` (no CWT detection) or when CWT features are "
             "all rejected. **CWT features are higher-trust than your own fitting.** Only call fit_peak "
             "as a LAST RESORT.\n"
             "- **`fit_doublet`**: Fit two Gaussians + linear baseline for close line pairs "
@@ -353,8 +399,8 @@ def _build_user_message(
             "- [S II]a/b (6718.3/6732.7 Å): narrow emission, width_3sigma=25, separation_rest=14.4\n"
             "- [N II]a/b (6549.8/6585.3 Å): narrow emission, width_3sigma=25, separation_rest=35.5\n\n"
             "**Workflow**: Evaluate CWT features first → for lines with NO CWT coverage, "
-            "call `predict_lines` → then `fit_peak` (single) or `fit_doublet` (pairs) → "
-            "write CSV → write report → JSON block.\n"
+            "use λ_obs from the table above as center_guess → call `fit_peak` (single) "
+            "or `fit_doublet` (pairs) → write CSV → write report → JSON block.\n"
         )
 
     return (
@@ -473,7 +519,7 @@ def run(
 
     agent = create_agent(
         model=llm,
-        tools=_build_tools(mode),
+        tools=_build_tools(mode, npz_path),
         system_prompt=system_prompt,
     )
 
@@ -592,7 +638,7 @@ async def arun(
     )
 
     system_prompt = _load_skill(mode)
-    agent = create_agent(model=llm, tools=_build_tools(mode), system_prompt=system_prompt)
+    agent = create_agent(model=llm, tools=_build_tools(mode, npz_path), system_prompt=system_prompt)
 
     user_message = _build_user_message(
         redshift, fits_path, npz_path,

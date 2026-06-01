@@ -120,6 +120,7 @@ Unified table of ALL evaluated lines, grouped by status: **LIKELY** → **MARGIN
 | `λ_rest` | rest wavelength (Å) |
 | `λ_pred` | predicted observed λ at this z |
 | `λ_fit` | CWT feature wavelength, or "—" |
+| `λ_err` | CWT wavelength_err (or "—") |
 | `offset` | λ_fit − λ_pred (or "—") |
 | `FWHM (Å)` | CWT FWHM_A (or "—") |
 | `FWHM` | CWT FWHM_km_s (or "—") |
