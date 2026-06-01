@@ -29,6 +29,7 @@ import numpy as np
 
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
+from langchain_core.tools import tool
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 from .tools import (
