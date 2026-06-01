@@ -281,7 +281,7 @@ def _build_predictions_section(
             continue
         lo = rest_wl * (1.0 + z_min)
         hi = rest_wl * (1.0 + z_max)
-        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)
+        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, [])
         mask_note = _mask_overlap_label(lo, hi, obs_wl, masked_regions)
         rows.append((
             obs_wl,
@@ -297,7 +297,7 @@ def _build_predictions_section(
             continue
         lo = rest_wl * (1.0 + z_min)
         hi = rest_wl * (1.0 + z_max)
-        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, peaks, troughs)
+        features = _find_nearby_features(rest_wl, obs_wl, z_min, z_max, [], troughs)
         mask_note = _mask_overlap_label(lo, hi, obs_wl, masked_regions)
         rows.append((
             obs_wl,
