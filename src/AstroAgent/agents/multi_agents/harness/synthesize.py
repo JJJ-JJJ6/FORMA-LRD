@@ -29,7 +29,7 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     extract_harness_summary,
 )
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +77,8 @@ def _build_user_message(
     snr: np.ndarray | None = None,
     summaries: list[str] | None = None,
     mode: str = "nomad",
+    report_path: str | None = None,
+    csv_path: str | None = None,
 ) -> str:
     """Build the user prompt with spectrum metadata, harness reports, and
     pre-computed Dn4000 diagnostics.
@@ -144,12 +146,19 @@ def _build_user_message(
             "and the line identification.\n"
         )
 
+    _output_paths = ""
+    if report_path:
+        _output_paths += f"Output Synthesis Report: {report_path}\n"
+    if csv_path:
+        _output_paths += f"Output Synthesis CSV: {csv_path}\n"
+
     return f"""## Spectrum
 
 - Wavelength range: {spec_wl_range} Å
 - Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}
 - Number of hypotheses tested: {len(harness_results)}
 {_mode_note}
+{_output_paths}
 ## Harness Report Summaries
 
 Each summary distills the key structured information from the per-hypothesis
@@ -164,7 +173,7 @@ deeper look at a specific hypothesis is needed.
 
 ## Task
 
-Follow the Phase 1 → Phase 2 → Phase 3 strategy from your system prompt.
+Follow the Phase 1 → Phase 2 → Phase 3 → Phase 4 strategy from your system prompt.
 
 Phase 1: Blind review — analyse the harness summaries WITHOUT calling
 read_spectrum_region. Build the contradiction matrix from the LIKELY/MARGINAL
@@ -180,7 +189,10 @@ wavelength windows from the contradiction matrix that discriminate between
 remaining plausible hypotheses. Read as little data as possible — target each
 read at a specific question.
 
-Phase 3: Output the final verdict as a JSON block per the specification.
+Phase 3: Write the synthesis CSV (one row per hypothesis) via `write_synthesis_csv`,
+then write the synthesis report via `write_report`.
+
+Phase 4: Output the final verdict as a JSON block per the specification.
 """
 
 
@@ -225,6 +237,8 @@ async def arun(
     stream_md_path: str | None = None,
     summaries: list[str] | None = None,
     mode: str = "nomad",
+    report_path: str | None = None,
+    csv_path: str | None = None,
 ) -> dict:
     """Run the LLM synthesis agent over multiple harness reports.
 
@@ -254,7 +268,8 @@ async def arun(
     Returns
     -------
     dict
-        The parsed synthesis verdict with keys: redshift, redshift_err,
+        The parsed synthesis verdict with keys: redshift, anchor_line,
+        anchor_wavelength, wavelength_error,
         classification, confidence, best_hypothesis_idx, primary_evidence,
         excluded_hypotheses, caveats.
     """
@@ -263,7 +278,8 @@ async def arun(
     base_url = base_url or os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
 
     system_prompt = _load_skill()
-    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries, mode=mode)
+    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries,
+                                      mode=mode, report_path=report_path, csv_path=csv_path)
 
     # ── Closure over arrays for zero-copy slicing ────────────────
     _wl = wl
@@ -327,7 +343,7 @@ async def arun(
 
     agent = create_agent(
         model=llm,
-        tools=[read_spectrum_region, grep_kb],
+        tools=[read_spectrum_region, grep_kb, write_report, write_synthesis_csv],
         system_prompt=system_prompt,
     )
 
@@ -399,7 +415,9 @@ async def arun(
         if parsed is None:
             parsed = {
                 "redshift": None,
-                "redshift_err": None,
+                "anchor_line": None,
+                "anchor_wavelength": None,
+                "wavelength_error": None,
                 "classification": "Unknown",
                 "confidence": "LOW",
                 "best_hypothesis_idx": None,
@@ -424,7 +442,9 @@ async def arun(
         if parsed is None:
             parsed = {
                 "redshift": None,
-                "redshift_err": None,
+                "anchor_line": None,
+                "anchor_wavelength": None,
+                "wavelength_error": None,
                 "classification": "Unknown",
                 "confidence": "LOW",
                 "best_hypothesis_idx": None,
@@ -436,7 +456,9 @@ async def arun(
         logging.warning(f"Synthesis agent failed: {exc}")
         parsed = {
             "redshift": None,
-            "redshift_err": None,
+            "anchor_line": None,
+                "anchor_wavelength": None,
+                "wavelength_error": None,
             "classification": "Unknown",
             "confidence": "LOW",
             "best_hypothesis_idx": None,

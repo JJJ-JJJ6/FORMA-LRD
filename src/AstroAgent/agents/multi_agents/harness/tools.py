@@ -757,7 +757,63 @@ def write_lines_csv(file_path: str, lines: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 9: grep_kb — search knowledge base and skill files
+# Tool 9: write_synthesis_csv — hypothesis-level synthesis results
+# ---------------------------------------------------------------------------
+
+@tool
+def write_synthesis_csv(file_path: str, rows: list) -> dict:
+    """Write the final line catalog for the confirmed redshift hypothesis.
+
+    One row per evaluated spectral line from the best hypothesis.
+    This is the definitive line catalog — downstream code should not need
+    to consult individual harness CSVs.
+
+    Parameters
+    ----------
+    file_path : str
+        Absolute path for the output .csv file.
+    rows : list[dict]
+        Each dict must have the following keys:
+            name : str                — line name (e.g. "Lyα", "Ca K_abs")
+            rest_wavelength : float   — rest-frame λ (Å)
+            predicted_obs : float     — predicted observed λ at this z
+            fitted_center : float or null — CWT or fitted center (Å)
+            fitted_center_err : float or null — wavelength uncertainty (Å)
+            amplitude : float or null
+            amplitude_err : float or null
+            fitted_sigma : float or null
+            fwhm_km_s : float or null
+            ridge_length : int or null   — CWT only
+            cwt_snr : float or null      — CWT only
+            delta_chi2_per_n : float or null — fit-derived only
+            local_snr : float or null        — fit-derived only
+            source : str               — "CWT", "fit_peak", or "fit_doublet"
+            implied_z : float or null
+            status : str               — LIKELY, MARGINAL, NOT_FOUND, or MASKED
+            is_anchor : bool           — true if this line anchors the systemic z
+    """
+    import csv
+    import os
+
+    columns = [
+        "name", "rest_wavelength", "predicted_obs",
+        "fitted_center", "fitted_center_err",
+        "amplitude", "amplitude_err", "fitted_sigma", "fwhm_km_s",
+        "ridge_length", "cwt_snr", "delta_chi2_per_n", "local_snr",
+        "source", "implied_z", "status", "is_anchor",
+    ]
+
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+    with open(file_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    return {"path": file_path, "n_rows": len(rows)}
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: grep_kb — search knowledge base and skill files
 # ---------------------------------------------------------------------------
 
 from pathlib import Path as _Path
@@ -874,7 +930,7 @@ def grep_kb(pattern: str, A: int = 0, B: int = 0, C: int = 0) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool 10: compute_redshift
+# Tool 11: compute_redshift
 # ---------------------------------------------------------------------------
 
 @tool

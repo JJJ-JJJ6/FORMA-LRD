@@ -659,7 +659,9 @@ def extract_verdict_summary(rule_analysis: dict) -> dict:
     """
     return {
         "redshift": rule_analysis.get("redshift"),
-        "redshift_err": rule_analysis.get("redshift_err"),
+        "anchor_line": rule_analysis.get("anchor_line"),
+        "anchor_wavelength": rule_analysis.get("anchor_wavelength"),
+        "wavelength_error": rule_analysis.get("wavelength_error"),
         "classification": rule_analysis.get("classification", "Unknown"),
         "confidence": rule_analysis.get("confidence", "LOW"),
         "best_hypothesis_idx": rule_analysis.get("best_hypothesis_idx"),

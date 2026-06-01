@@ -248,6 +248,8 @@ class RuleAnalyst(BaseAgent):
             api_key=model_cfg['api_key'],
             base_url=model_cfg['base_url'],
             stream_md_path=os.path.join(harness_dir, 'synthesis_stream.md'),
+            report_path=os.path.join(harness_dir, 'synthesis_report.md'),
+            csv_path=os.path.join(harness_dir, 'synthesis.csv'),
             summaries=summaries,
         )
 

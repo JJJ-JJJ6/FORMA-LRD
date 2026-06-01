@@ -137,7 +137,9 @@ Output a JSON block with the following structure:
 ```json
 {
     "redshift": <float or null>,
-    "redshift_err": <float or null>,
+    "anchor_line": "<line name used as redshift anchor, or null>",
+    "anchor_wavelength": <float or null — observed wavelength of the anchor feature (Å)>,
+    "wavelength_error": <float or null — measurement uncertainty on anchor_wavelength (Å)>,
     "classification": "<QSO | Galaxy (ELG) | Galaxy (LRG/BGS) | Star | Unknown>",
     "confidence": "<HIGH | MEDIUM | LOW>",
     "best_hypothesis_idx": <int or null — the harness hypothesis idx that best matches>,
@@ -164,3 +166,77 @@ Output a JSON block with the following structure:
 ### Systemic redshift rule
 
 Use the lowest-ionization LIKELY line. Use `grep_kb` to search `kb/ionization.md` for the complete priority table (Priority 1: Ca K/H_abs → Priority 7: [O III]) and the list of excluded lines (He II, C III], C IV, Ne V, Lyα). If no LIKELY line exists at any priority level 1–7, the best available MARGINAL line may be used — note this downgrade explicitly.
+
+## Phase 4: Output Report & CSV
+
+Before the JSON block, write two output files.
+
+### 4a. Final Line Catalog CSV
+
+Call `write_synthesis_csv` with ONE ROW PER EVALUATED LINE from the **confirmed best hypothesis only**. This is the definitive line catalog for the final redshift. Required columns per row:
+
+| Column | Value |
+|--------|-------|
+| `name` | Line name (e.g. "Hβ", "Ca K_abs") |
+| `rest_wavelength` | Rest-frame λ (Å) |
+| `predicted_obs` | Predicted observed λ at this z |
+| `fitted_center` | CWT or fitted center (Å, or null) |
+| `fitted_center_err` | Wavelength uncertainty (Å, or null) |
+| `amplitude` | Line amplitude (or null) |
+| `amplitude_err` | Amplitude uncertainty (or null) |
+| `fitted_sigma` | Gaussian σ (Å, or null) |
+| `fwhm_km_s` | FWHM in km/s (or null) |
+| `ridge_length` | CWT ridge (or null for fit-derived) |
+| `cwt_snr` | CWT SNR (or null for fit-derived) |
+| `delta_chi2_per_n` | Fit quality (or null for CWT-derived) |
+| `local_snr` | Fit S/N (or null for CWT-derived) |
+| `source` | "CWT", "fit_peak", or "fit_doublet" |
+| `implied_z` | λ_fit / λ_rest − 1 (or null) |
+| `status` | LIKELY, MARGINAL, NOT_FOUND, or MASKED |
+| `is_anchor` | true if this line anchors the systemic z, else false |
+
+If no hypothesis is confirmed (redshift=null), write an empty CSV (header only).
+
+### 4b. Synthesis Report
+
+Call `write_report`. Required sections (in order, exact headings):
+
+**## 1. Spectrum & Run Summary**
+Key-value block: wavelength coverage, median SNR, number of hypotheses tested, mode (redrock/nomad), harness directory.
+
+**## 2. Hypotheses Overview Table**
+
+| Idx | z | Verdict | Classification | N(L) | N(M) | N(N) | N(#) | Anchor | Dn4000 | σ_z |
+|-----|---|---------|---------------|------|------|------|------|--------|--------|-----|
+
+(N(L)=LIKELY, N(M)=MARGINAL, N(N)=NOT_FOUND, N(#)=MASKED)
+
+All tested hypotheses, sorted by verdict then by z. Bold the best hypothesis row.
+
+**## 3. Contradiction Matrix**
+List spectral features claimed by multiple hypotheses as DIFFERENT rest-frame lines. For each conflicting λ_obs:
+- The observed wavelength and its properties (from harness reports)
+- Which hypothesis claims what line at what implied z
+- Your assessment of the most physically credible identification
+
+If no contradictions exist, note that explicitly.
+
+**## 4. Per-Hypothesis Assessment**
+One subsection per hypothesis (`### 4a. H1 z=...`). Cover:
+- Line inventory (confirmed, missing, masked)
+- Internal consistency (FWHM vs width_class, doublet spacing, ionization priorities)
+- Dn4000 consistency with classification
+- Strengths and weaknesses
+
+**## 5. Final Verdict**
+- Best redshift, anchor line, anchor wavelength, wavelength error
+- Classification and confidence with reasoning
+- Primary evidence (1–2 sentences citing specific lines and measurements)
+- Why each excluded hypothesis was rejected (one sentence each)
+
+**## 6. Caveats & Recommendations**
+Bullet list. One concise point each. Include: limitations from masked regions, ambiguous blends, insufficient line inventory warnings, recommendations for follow-up.
+
+---
+
+Write the CSV first, then the report, then the JSON block. Do not add extra sections beyond those listed.
