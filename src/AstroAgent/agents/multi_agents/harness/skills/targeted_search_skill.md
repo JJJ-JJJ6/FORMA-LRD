@@ -44,7 +44,7 @@ If ``[λ_pred masked]`` or ``[window partially masked]``: note the mask overlap 
 
 If the "Features in z-window" column has actual features (not just `—` and not just a ``[fully masked]`` annotation):
 
-   a. **Evaluate each listed feature** against the predicted line:
+   a. **Evaluate each listed feature** against the predicted line. **Do NOT copy-paste the full feature list into your reasoning** — it wastes tokens and provides zero information. Instead, summarize: "N features in window, best candidate is peak@XXXX(z=...)" or "all features rejected (type mismatch / offset >80Å)". Only quote individual features when they are the selected best candidate or when explaining a specific rejection.
       - **Type match**: `peak` → emission line; `trough` → absorption line. Mismatch → reject this feature.
       - **Wavelength offset** |λ_feat − λ_pred|: < 20 Å excellent; 20–80 Å acceptable; > 80 Å → reject.
       - **FWHM vs width_class** (see Line Reference table below): broad lines expect FWHM > 2000 km/s; narrow lines < 2000 km/s; `both`: either ok. Flag mismatches but don't reject solely on FWHM.
