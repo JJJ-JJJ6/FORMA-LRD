@@ -82,7 +82,7 @@ def plot_spectrum_snr(state: SpectroState):
     axs[1].legend(fontsize=15)
 
     fig.savefig(os.path.join(state['output_dir'], f"{state['file_name']}_spectrum.png"), bbox_inches='tight')
-    return fig
+    plt.close(fig)
 
 
 def plot_spec_extract(state: SpectroState):
@@ -113,7 +113,6 @@ def plot_spec_extract(state: SpectroState):
         bbox_inches='tight'
     )
     plt.close()
-    return fig
 
 
 def plot_continuum(state: SpectroState):
@@ -136,7 +135,6 @@ def plot_continuum(state: SpectroState):
         bbox_inches='tight'
     )
     plt.close()
-    return fig
 
 def plot_residual_spectrum(state: SpectroState):
     """
@@ -159,7 +157,6 @@ def plot_residual_spectrum(state: SpectroState):
         bbox_inches='tight'
     )
     plt.close()
-    return fig
 
 
 def plot_masked_spectrum(state: SpectroState):
@@ -190,7 +187,6 @@ def plot_masked_spectrum(state: SpectroState):
     )
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
-    return fig
 
 
 def plot_features(state: SpectroState, wavelength_label: bool = True):
@@ -340,7 +336,6 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
     fig.savefig(os.path.join(state['output_dir'], f"{state['file_name']}_features.png"),
                 dpi=150, bbox_inches='tight')
     plt.close(fig)
-    return fig
 
 
 def plot_harness_candidate(
@@ -507,4 +502,3 @@ def plot_harness_candidate(
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"Plot harness candidate: {n_em} emission, {n_abs} absorption → {output_path}")
-    return fig

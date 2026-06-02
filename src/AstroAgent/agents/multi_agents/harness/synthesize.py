@@ -29,6 +29,26 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     extract_harness_summary,
 )
+
+
+def _resolve_max_tokens() -> int | None:
+    """Resolve max_tokens from env ``LLM_MAX_TOKENS``.
+
+    When the env var is empty / unset and the provider is DeepSeek, we default
+    to a generous value (16 384) to prevent output truncation.
+    """
+    env_val = os.environ.get("LLM_MAX_TOKENS", "").strip()
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    base_url = os.environ.get("LLM_BASE_URL", "")
+    if "deepseek" in base_url.lower():
+        return 16384
+    return None
+
+
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv
 
 
@@ -233,7 +253,7 @@ async def arun(
     api_key: str | None = None,
     base_url: str | None = None,
     temperature: float = 0.1,
-    max_turns: int = 30,
+    max_turns: int = 150,
     stream_md_path: str | None = None,
     summaries: list[str] | None = None,
     mode: str = "nomad",
@@ -260,7 +280,7 @@ async def arun(
     temperature : float
         LLM temperature (default 0.1).
     max_turns : int
-        Maximum agent turns / recursion_limit (default 30).
+        Maximum agent turns / recursion_limit (default 150).
     stream_md_path : str, optional
         If set, stream the full conversation (system prompt + every LLM
         turn + tool calls + tool results) to this .md file in real time.
@@ -338,7 +358,7 @@ async def arun(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
-        max_tokens=None,
+        max_tokens=_resolve_max_tokens(),
         extra_body=extra_body,
     )
 
@@ -402,7 +422,6 @@ async def arun(
         except Exception as exc:
             md.write(f"\n\n> ❌ Synthesis streaming failed: {exc}\n\n")
             md.flush()
-            md.close()
             raise
         finally:
             md.close()

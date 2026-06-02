@@ -29,10 +29,10 @@ def _normalise_spectype(raw: str) -> str:
     in synthesis classification."""
     mapping = {
         "QSO": "QSO",
-        "ELG": "Galaxy (ELG)",
-        "LRG": "Galaxy (LRG/BGS)",
-        "BGS": "Galaxy (LRG/BGS)",
-        "STAR": "Star",
+        "ELG": "Galaxy",
+        "LRG": "Galaxy",
+        "BGS": "Galaxy",
+        "STAR": "Unknown",
         "GALAXY": "Galaxy",
     }
     return mapping.get(raw.upper().strip(), raw)

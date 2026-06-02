@@ -101,7 +101,7 @@ Only enter this phase when the blind review identifies a specific degeneracy tha
 
 Physics-based tiebreakers (ordered by reliability, all independent of CWT/harness pipeline). Use `grep_kb` to search `kb/lines.md` for detailed spacing numbers and ratio rules.
 
-1. **Dn4000 pre-computed index** — the Dn4000 value computed by RA.py middleware is the single most important continuum-based tiebreaker, completely independent of the CWT→harness pipeline. Check the "Dn4000 Comparison" table in your user message: Dn4000 > 1.6 at a given z strongly supports LRG; Dn4000 < 1.3 at a claimed LRG redshift is disqualifying. **Use the pre-computed Dn4000 — do not attempt to measure it yourself from read_spectrum_region data.**
+1. **Dn4000 pre-computed index** — the Dn4000 value computed by RA.py middleware is a continuum-based reference metric, completely independent of the CWT→harness pipeline. Check the "Dn4000 Comparison" table in your user message. Dn4000 > 1.6 is characteristic of old stellar populations; Dn4000 < 1.3 is atypical for old populations but is NOT disqualifying for any galaxy classification. Use Dn4000 to inform your reasoning (noted in caveats if anomalous), but do NOT use it as the sole basis for rejecting or reclassifying a hypothesis. **Use the pre-computed Dn4000 — do not attempt to measure it yourself from read_spectrum_region data.**
 
 2. **4000 Å break visual confirmation** — for hypotheses where Dn4000 is pre-computed, you may use `read_spectrum_region` to visually confirm the break at 4000×(1+z) Å. Binary check: sharp flux increase (>50% over <100 Å)?
 
@@ -140,7 +140,7 @@ Output a JSON block with the following structure:
     "anchor_line": "<line name used as redshift anchor, or null>",
     "anchor_wavelength": <float or null — observed wavelength of the anchor feature (Å)>,
     "wavelength_error": <float or null — measurement uncertainty on anchor_wavelength (Å)>,
-    "classification": "<QSO | Galaxy (ELG) | Galaxy (LRG/BGS) | Star | Unknown>",
+    "classification": "<Galaxy | QSO | Unknown>",
     "confidence": "<HIGH | MEDIUM | LOW>",
     "best_hypothesis_idx": <int or null — the harness hypothesis idx that best matches>,
     "primary_evidence": "<1–2 sentences>",
@@ -162,6 +162,33 @@ Output a JSON block with the following structure:
 - **Confidence LOW**: degeneracy could not be fully resolved, or the best hypothesis has significant internal inconsistencies.
 - **≤2 LIKELY lines rule**: If the best hypothesis has ≤2 LIKELY lines (regardless of how many MARGINAL lines it has), confidence MUST be at most MEDIUM, and the verdict MUST explicitly note that the line inventory is insufficient for a confident redshift determination. A hypothesis supported by only 1–2 lines cannot be distinguished from a chance alignment of CWT-detected features with predicted positions. **Do not use continuum features (Dn4000, 4000 Å break) to upgrade confidence in this scenario** — continuum features cannot independently confirm a redshift; they can only serve as exclusion criteria for competing hypotheses.
 - **If no hypothesis is credible**: redshift=null, classification="Unknown", confidence="LOW". Do not guess. Do not pick the "least bad" option. It is better to report uncertainty than to commit to a wrong redshift. A false positive classification wastes telescope time on follow-up; an honest null result invites re-observation or complementary data that can resolve the ambiguity.
+
+### Classification rules
+
+The knowledge base uses sub-type labels (ELG, LRG/BGS, Host Galaxy dominated AGN) for internal reasoning and physical diagnostics. The final JSON `classification` field must use ONLY the top-level categories:
+
+- `Galaxy` — all galaxy sub-types including ELG, LRG, BGS, LRG/BGS, composite, star-forming galaxies
+- `QSO` — all AGN types including pure QSO, Type 1 AGN, Host Galaxy dominated AGN
+- `Unknown` — unclassifiable spectra
+
+**Mapping rule**: Host Galaxy dominated AGN → `QSO`. Do NOT output "Galaxy (ELG)", "Galaxy (LRG)", "Galaxy (BGS)", "Host Galaxy dominated AGN", "Composite (SF+AGN)", or any other sub-type in the JSON classification field. The synthesis report and CSV may use sub-type labels for diagnostic discussion.
+
+### AGN/QSO Classification Safeguard
+
+Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN indicators and judge their authenticity. **A single real AGN line (Ne V or Mg II) CAN support QSO classification** — but only if confirmed genuine by visual inspection. CWT detections alone are not sufficient for AGN classification; the CWT pipeline can fit broad Gaussians to noise or misidentify continuum fluctuations as emission lines.
+
+1. **Read the spectrum around AGN indicators**:
+   - For **Mg II** (2800 Å): use `read_spectrum_region` to examine **±200 Å** around the predicted observed wavelength. Is there a genuinely broad emission peak (FWHM > 2000 km/s) rising clearly above the continuum? Or is the "emission" just broad noise / continuum wiggle around a narrow absorption feature?
+   - For **Ne V** (3426 Å): read **±100 Å**. Is there a clear narrow emission peak? Or is it a noise spike / continuum fluctuation at the limit of detectability?
+
+2. **Weigh AGN vs Galaxy evidence**: Classification should reflect which physical picture is more convincingly supported by the spectrum as a whole:
+   - If **Galaxy features are clear and self-consistent** (Ca K/H doublet with correct spacing, multiple absorption lines at consistent z, well-matched narrow emission doublets like [O III] with correct 3:1 ratio) while **AGN features look questionable** (broad "Mg II emission" that is actually noise wings around a narrow absorption, "Ne V" that is a continuum wiggle, wrong amplitudes or line ratios) → classify as **`Galaxy`**
+   - If **AGN features are genuinely prominent** (clear broad emission distinct from noise and absorption, correct relative amplitudes, consistent redshift) and **Galaxy absorption is weak or absent** → classify as **`QSO`**
+   - Both Ne V and Mg II CAN independently support QSO — the question is whether the feature is **REAL**, not whether it has a companion line
+
+3. **Mg II emission vs absorption coexistence**: When Mg II_abs is also claimed near the same observed wavelength, the CWT may have fitted broad noise adjacent to the absorption trough as "Mg II emission." Use `read_spectrum_region` to examine the region: is the emission component a real broad peak clearly distinct from the absorption, or just vague broad wings around a dominant narrow absorption? If the narrow absorption dominates with only vague broad wings → the emission claim is likely a CWT artifact.
+
+4. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
 
 ### Systemic redshift rule
 

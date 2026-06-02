@@ -79,7 +79,20 @@ wavelength_2 → Ca H_abs  (middle, ~3970 Å)
 wavelength_3 → Hε_abs    (longest, ~3970 Å — blended with Ca H)
 ```
 
-### Mg II emission + absorption (2800 Å rest)
-In AGN host galaxies, broad Mg II emission (BLR) superimposed on narrow Mg II absorption (ISM).
-CWT may produce spurious narrow peaks from overfitting the broad profile.
-Flag as MARGINAL, note ambiguity for synthesis agent — do not attempt to resolve yourself.
+### Mg II Emission vs Absorption Coexistence (2800 Å rest)
+
+Mg II 2800 Å can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM, FWHM < 1000 km/s). In AGN host galaxies, broad Mg II emission may be superimposed on narrow Mg II absorption. However, this is easily confused by CWT pipeline artifacts.
+
+**When both Mg II emission AND Mg II_abs are claimed near the same observed wavelength:**
+
+1. **Center coincidence**: The emission and absorption centers must fall within each other's FWHM. If `|λ_em − λ_abs| > max(FWHM_em, FWHM_abs)`, the two features are physically unrelated — one is a misidentification.
+
+2. **Absorption-dominant false emission**: If the CWT feature at the predicted Mg II position is NARROW and in ABSORPTION (FWHM < 1000 km/s, negative amplitude), the nearby broad "Mg II emission" is likely a CWT artifact from:
+   - Overfitting the continuum between absorption troughs
+   - Broad noise on the wings of the absorption feature being fitted as a separate Gaussian
+   - A spurious broad Gaussian from poor baseline subtraction
+
+3. **Default to absorption**: In ambiguous cases, prefer the Mg II absorption interpretation. Mg II ISM absorption is ubiquitous; Mg II BLR emission requires a genuine QSO. The emission claim requires POSITIVE evidence: clearly broad profile (FWHM > 2000 km/s), clearly distinct from the absorption feature, and supported by at least one other AGN indicator (Ne V, C III], C IV).
+
+4. **CWT broad-line artifact**: CWT may produce spurious narrow peaks from overfitting a genuinely broad profile. Conversely, it may fit a broad Gaussian to noise adjacent to a narrow absorption feature. Both failure modes must be considered.
+Flag ambiguous cases as MARGINAL and note the ambiguity for the synthesis agent.

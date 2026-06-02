@@ -176,16 +176,7 @@ class WorkflowOrchestrator:
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
         workflow.add_edge("visual_interpreter", "rule_analyst")
-        # Conditional: SelfEvolve (when self_evolve=true) or skip to next stage
-        workflow.add_conditional_edges(
-            "rule_analyst",
-            self._should_self_evolve,
-            {
-                "self_evolve": "self_evolve",
-                "skip": END,  # TODO: 测试用，测完改为 analysis_auditor_critique
-            }
-        )
-        workflow.add_edge("self_evolve", END)  # TODO: 测试用，测完改为 analysis_auditor_critique
+        workflow.add_edge("rule_analyst", END)
         # workflow.add_edge("rule_analyst", "analysis_auditor_critique")
         workflow.add_edge("analysis_auditor_critique", "refinement_assistant_patch")
         # Loop: patch → critique if more rounds needed, else → verdict
@@ -197,9 +188,16 @@ class WorkflowOrchestrator:
                 "verdict": "analysis_auditor_verdict",
             }
         )
-        workflow.add_edge("analysis_auditor_verdict", "refinement_assistant_final")
-        workflow.add_edge("refinement_assistant_final", "synthesis_host")
-        workflow.add_edge("synthesis_host", END)
+        # After verdict: optionally run SelfEvolve (ground-truth check), then end
+        workflow.add_conditional_edges(
+            "analysis_auditor_verdict",
+            self._should_self_evolve,
+            {
+                "self_evolve": "self_evolve",
+                "skip": END,
+            }
+        )
+        workflow.add_edge("self_evolve", END)
 
         return workflow.compile()
     

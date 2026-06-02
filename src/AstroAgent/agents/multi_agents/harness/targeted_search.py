@@ -57,6 +57,24 @@ def _is_retryable(exc: Exception) -> bool:
     return any(kw in msg for kw in _RETRYABLE_KW)
 
 
+def _resolve_max_tokens() -> int | None:
+    """Resolve max_tokens from env ``LLM_MAX_TOKENS``.
+
+    When the env var is empty / unset and the provider is DeepSeek, we default
+    to a generous value (16 384) to prevent output truncation that causes
+    "insufficient tool messages following tool_calls" errors.
+    """
+    env_val = os.environ.get("LLM_MAX_TOKENS", "").strip()
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    base_url = os.environ.get("LLM_BASE_URL", "")
+    if "deepseek" in base_url.lower():
+        return 16384
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Skill prompt
@@ -535,7 +553,7 @@ def run(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
-        max_tokens=None,
+        max_tokens=_resolve_max_tokens(),
         extra_body=_extra_body,
     )
 
@@ -658,7 +676,7 @@ async def arun(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
-        max_tokens=None,
+        max_tokens=_resolve_max_tokens(),
         extra_body=_extra_body,
     )
 
