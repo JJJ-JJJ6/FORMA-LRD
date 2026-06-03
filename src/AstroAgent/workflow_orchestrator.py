@@ -11,7 +11,6 @@ from AstroAgent.agents.common.base_agent import _is_connection_error, _is_timeou
 import copy
 
 #########################
-# To be done
 from AstroAgent.agents.multi_agents.VisualInterpreter import VisualInterpreter
 from AstroAgent.agents.multi_agents.RuleAnalyst import RuleAnalyst
 from AstroAgent.agents.multi_agents.SelfEvolve import SelfEvolve
@@ -27,7 +26,6 @@ class WorkflowOrchestrator:
     Workflow orchestrator: manage the entire agent interaction workflow
     """
 
-
     # 定义语言到代理类的映射
     AGENT_CLASSES = {
         'VisualInterpreter': VisualInterpreter,
@@ -37,30 +35,26 @@ class WorkflowOrchestrator:
         'RefinementAssistant': RefinementAssistant,
         'SynthesisHost': SynthesisHost
     }
-    
+
     def __init__(
-            self, 
+            self,
             configs: Dict[str, Any],
         ):
 
         self.configs = configs
 
-        # language = self.configs.language  # 默认使用 'CN'
-
-        # self.agent_classes = self.AGENT_CLASSES.get(language, self.AGENT_CLASSES["CN"])
-
         # 初始化运行时容器
         self.runtime = RuntimeContainer(self.configs)
-        
+
         # 初始化所有智能体
         self.spectro_agents = self._initialize_agents()
-        
+
         # 创建状态图
         self.workflow = self._create_workflow()
-        
-        
+
+
         print("🚀 工作流编排器初始化完成")
-    
+
     def _initialize_agents(self) -> Dict[str, Any]:
         """
         初始化所有智能体
@@ -74,10 +68,9 @@ class WorkflowOrchestrator:
             '_Refinement_Assistant': self.AGENT_CLASSES['RefinementAssistant'](self.runtime),
             '_Synthesis_Host': self.AGENT_CLASSES['SynthesisHost'](self.runtime)
         }
-        # print(f"初始化了 {len(spectro_agents)} 个智能体")
         print(f"Initialized {len(spectro_agents)} agents")
         return spectro_agents
-    
+
     def _check_cancel(self):
         """
         检查是否需要取消分析
@@ -93,42 +86,21 @@ class WorkflowOrchestrator:
         result = await self.spectro_agents["_Visual_Interpreter"].run(state, plot=True)
         self._check_cancel()
         return result
-    
+
     async def _rule_analyst_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
         print('Stage 2: Rule Analyst')
         result = await self.spectro_agents["_Rule_Analyst"].run(state)
         self._check_cancel()
         return result
-    
-    async def _analysis_auditor_critique_node(self, state: SpectroState) -> SpectroState:
+
+    async def _analysis_auditor_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
-        print('Stage 3a: Analysis Auditor — Per-path Critique')
+        print('Stage 3: Analysis Auditor — Synthesis Audit')
         result = await self.spectro_agents["_Analysis_Auditor"].run(state)
         self._check_cancel()
         return result
 
-    async def _refinement_assistant_patch_node(self, state: SpectroState) -> SpectroState:
-        self._check_cancel()
-        print('Stage 3b: Refinement Assistant — Per-path Patch')
-        result = await self.spectro_agents["_Refinement_Assistant"].run(state)
-        self._check_cancel()
-        return result
-
-    async def _analysis_auditor_verdict_node(self, state: SpectroState) -> SpectroState:
-        self._check_cancel()
-        print('Stage 3c: Analysis Auditor — Cross-type Verdict')
-        result = await self.spectro_agents["_Analysis_Auditor"].run_verdict(state)
-        self._check_cancel()
-        return result
-
-    async def _refinement_assistant_final_node(self, state: SpectroState) -> SpectroState:
-        self._check_cancel()
-        print('Stage 3d: Refinement Assistant — Final Report')
-        result = await self.spectro_agents["_Refinement_Assistant"].run_final(state)
-        self._check_cancel()
-        return result
-    
     async def _self_evolve_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
         print('Stage 2b: Self-Evolve — Ground-truth Check')
@@ -136,74 +108,25 @@ class WorkflowOrchestrator:
         self._check_cancel()
         return result
 
-    async def _synthesis_host_node(self, state: SpectroState) -> SpectroState:
-        self._check_cancel()
-        print('Stage 4: Synthesis Host')
-        result = await self.spectro_agents["_Synthesis_Host"].run(state)
-        self._check_cancel()
-        return result
-    
-    def _should_self_evolve(self, state: SpectroState) -> str:
-        """Conditional routing: run SelfEvolve only when self_evolve is enabled."""
-        if self.runtime.configs.params.self_evolve:
-            return "self_evolve"
-        return "skip"
-
-    def _should_continue_discussion(self, state: SpectroState) -> str:
-        """Conditional routing: continue the critique→patch loop or proceed to verdict."""
-        max_rounds = state.get('discussion_rounds')
-        if max_rounds is None:
-            max_rounds = self.runtime.configs.params.discussion_rounds
-        max_rounds = max(1, max_rounds)
-        current = state.get('current_discussion_round', 0)
-        if current < max_rounds:
-            return "continue"
-        return "verdict"
-
     def _create_workflow(self) -> StateGraph:
 
         workflow = StateGraph(SpectroState)
 
         workflow.add_node("visual_interpreter", self._visual_interpreter_node)
         workflow.add_node("rule_analyst", self._rule_analyst_node)
-        workflow.add_node("self_evolve", self._self_evolve_node)
-        workflow.add_node("analysis_auditor_critique", self._analysis_auditor_critique_node)
-        workflow.add_node("refinement_assistant_patch", self._refinement_assistant_patch_node)
-        workflow.add_node("analysis_auditor_verdict", self._analysis_auditor_verdict_node)
-        workflow.add_node("refinement_assistant_final", self._refinement_assistant_final_node)
-        workflow.add_node("synthesis_host", self._synthesis_host_node)
+        workflow.add_node("analysis_auditor", self._analysis_auditor_node)
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
         workflow.add_edge("visual_interpreter", "rule_analyst")
-        workflow.add_edge("rule_analyst", END)
-        # workflow.add_edge("rule_analyst", "analysis_auditor_critique")
-        workflow.add_edge("analysis_auditor_critique", "refinement_assistant_patch")
-        # Loop: patch → critique if more rounds needed, else → verdict
-        workflow.add_conditional_edges(
-            "refinement_assistant_patch",
-            self._should_continue_discussion,
-            {
-                "continue": "analysis_auditor_critique",
-                "verdict": "analysis_auditor_verdict",
-            }
-        )
-        # After verdict: optionally run SelfEvolve (ground-truth check), then end
-        workflow.add_conditional_edges(
-            "analysis_auditor_verdict",
-            self._should_self_evolve,
-            {
-                "self_evolve": "self_evolve",
-                "skip": END,
-            }
-        )
-        workflow.add_edge("self_evolve", END)
+        workflow.add_edge("rule_analyst", "analysis_auditor")
+        workflow.add_edge("analysis_auditor", END)
 
         return workflow.compile()
-    
+
 
     async def run_analysis_single(self, state, cancel_checker=None) -> SpectroState:
-        
+
         print("🚀 Start MCP LLM Spectro Agent")
         # 存储取消检查器
         self.cancel_checker = cancel_checker
@@ -220,14 +143,14 @@ class WorkflowOrchestrator:
             try:
                 # 检查取消状态
                 self._check_cancel()
-                
+
                 # 运行工作流
                 workflow_result = await self.workflow.ainvoke(current_state)
                 final_state = workflow_result
-                    
+
                 print("✅ 分析流程完成")
                 return final_state
-                
+
             except asyncio.CancelledError as e:
                 print(f"⚠️ 分析流程已取消: {e}")
                 return current_state

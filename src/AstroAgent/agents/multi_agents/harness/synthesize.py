@@ -196,6 +196,73 @@ def _is_numeric(val) -> bool:
         return False
 
 
+def _build_line_tables(harness_results: list, harness_dir: str) -> str:
+    """Build per-hypothesis line tables from lines.csv with ALL columns.
+
+    The synthesis agent needs the raw measurement data (fitted_center_err,
+    fitted_sigma, fwhm_km_s, etc.) to populate write_synthesis_csv accurately.
+    These tables provide every column that the CSV output requires.
+    """
+    import csv as _csv
+
+    sections = []
+
+    for r in harness_results:
+        idx = r["hypothesis_idx"]
+        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        if not os.path.exists(csv_path):
+            sections.append(
+                f"### H{idx}\n\n*No lines.csv found.*\n"
+            )
+            continue
+
+        rows = []
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+
+        if not rows:
+            sections.append(
+                f"### H{idx}\n\n*No lines evaluated.*\n"
+            )
+            continue
+
+        # Identify columns present (some may be absent in nomad vs redrock)
+        cols = list(rows[0].keys())
+
+        header = (
+            "| " + " | ".join(cols) + " |\n"
+            "|" + "|".join(["------"] * len(cols)) + "|"
+        )
+
+        body_lines = []
+        for row in rows:
+            vals = []
+            for c in cols:
+                v = (row.get(c) or "").strip()
+                vals.append(v if v else "—")
+            body_lines.append("| " + " | ".join(vals) + " |")
+
+        sections.append(
+            f"### H{idx}\n\n"
+            f"{header}\n"
+            + "\n".join(body_lines)
+            + "\n"
+        )
+
+    if not sections:
+        return "\n## Per-Hypothesis Line Data\n\n*No line catalogs available.*\n"
+
+    return (
+        "\n## Per-Hypothesis Line Data\n\n"
+        "Full measurement tables from each harness run.  Reference these when "
+        "calling `write_synthesis_csv` — every column the CSV requires is "
+        "present here.\n\n"
+        + "\n".join(sections)
+    )
+
+
 # ---------------------------------------------------------------------------
 # User message builder
 # ---------------------------------------------------------------------------
@@ -265,6 +332,9 @@ def _build_user_message(
     # ── Adopted feature catalog ──
     adopted_catalog = _build_adopted_catalog(harness_results, harness_dir)
 
+    # ── Per-hypothesis full line tables (for CSV population) ──
+    line_tables = _build_line_tables(harness_results, harness_dir)
+
     # ── Mode-specific note ──
     _mode_note = ""
     if mode == "redrock":
@@ -306,6 +376,8 @@ deeper look at a specific hypothesis is needed.
 {diagnostic_slices}
 
 {adopted_catalog}
+
+{line_tables}
 
 ## Task
 
