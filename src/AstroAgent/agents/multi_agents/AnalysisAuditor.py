@@ -352,10 +352,9 @@ class AnalysisAuditor(BaseAgent):
         # ── Resolve harness directory ──
         harness_dir = state.get("harness_dir")
         if not harness_dir:
-            # Reconstruct from runtime config
-            params = self.runtime.configs.params
-            output_dir = params.output_dir or ""
-            file_name = params.file_name or ""
+            # Reconstruct from state (same pattern as RuleAnalyst)
+            output_dir = state.get("output_dir") or ""
+            file_name = state.get("file_name") or ""
             if output_dir and file_name:
                 harness_dir = os.path.join(output_dir, f"{file_name}_harness")
             else:
