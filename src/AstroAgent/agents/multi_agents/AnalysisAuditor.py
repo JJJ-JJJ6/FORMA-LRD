@@ -18,6 +18,7 @@ import numpy as np
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
 
 from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
@@ -56,6 +57,22 @@ def _resolve_max_tokens() -> int | None:
     return None
 
 
+def _find_last_ai_message(messages: list):
+    """Return the last AI message, skipping tool/other message types."""
+    for msg in reversed(messages):
+        if getattr(msg, "type", None) == "ai":
+            return msg
+    return None
+
+
+def _is_truncated(messages: list) -> bool:
+    """Check whether the last AI message was truncated by max_tokens."""
+    last_ai = _find_last_ai_message(messages)
+    if last_ai is None:
+        return False
+    return last_ai.response_metadata.get("finish_reason") == "length"
+
+
 def _extract_json_block(text: str) -> Optional[dict]:
     """Extract the JSON verdict block from the LLM response."""
     m = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
@@ -72,6 +89,28 @@ def _extract_json_block(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
     return None
+
+
+# ---------------------------------------------------------------------------
+# Formatting helpers (for streaming output)
+# ---------------------------------------------------------------------------
+
+def _format_tool_call(tc) -> str:
+    """Format a single tool call as readable markdown."""
+    name = tc.get("name", "unknown")
+    args = tc.get("args", {})
+    args_json = json.dumps(args, indent=2, ensure_ascii=False)
+    return f"**`{name}`**\n```json\n{args_json}\n```"
+
+
+def _format_tool_result(msg) -> str:
+    """Format a tool result message as readable markdown."""
+    content = msg.content if hasattr(msg, "content") else str(msg)
+    try:
+        parsed = json.loads(content) if isinstance(content, str) else content
+        return f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
+    except (json.JSONDecodeError, TypeError):
+        return str(content)
 
 
 # ---------------------------------------------------------------------------
@@ -391,13 +430,197 @@ class AnalysisAuditor(BaseAgent):
             system_prompt=system_prompt,
         )
 
-        # ── Run agent ──
+        config = {"recursion_limit": 100}
+
+        # ── Streaming path ──────────────────────────────────────────
+        stream_md_path = os.path.join(harness_dir, "auditor_stream.md")
+        if os.path.isdir(harness_dir):
+            os.makedirs(harness_dir, exist_ok=True)
+
+            try:
+                md = open(stream_md_path, "w", encoding="utf-8")
+                md.write("# Auditor — Synthesis Audit\n\n")
+                md.write("---\n\n")
+                md.write("<details>\n<summary>System Prompt</summary>\n\n")
+                md.write(system_prompt)
+                md.write("\n</details>\n\n---\n\n")
+                md.write(f"### User\n\n{user_prompt}\n\n")
+                md.flush()
+
+                accumulated_messages = []
+                turn = 0
+
+                try:
+                    async for event in agent.astream(
+                        {"messages": [("user", user_prompt)]},
+                        config=config,
+                        stream_mode="updates",
+                    ):
+                        for _node_name, update in event.items():
+                            msgs = update.get("messages", [])
+                            for msg in msgs:
+                                accumulated_messages.append(msg)
+                                msg_type = getattr(msg, "type", None)
+
+                                if msg_type == "ai":
+                                    turn += 1
+                                    content = msg.content if hasattr(msg, "content") else ""
+                                    tool_calls = getattr(msg, "tool_calls", None)
+                                    lines = []
+                                    if content:
+                                        lines.append(content.strip())
+                                    if tool_calls:
+                                        for tc in tool_calls:
+                                            lines.append(_format_tool_call(tc))
+                                    if lines:
+                                        md.write(f"### Assistant (turn {turn})\n\n")
+                                        md.write("\n\n".join(lines))
+                                        md.write("\n\n")
+                                        md.flush()
+
+                                elif msg_type == "tool":
+                                    md.write("### Tool Result\n\n")
+                                    md.write(_format_tool_result(msg))
+                                    md.write("\n\n")
+                                    md.flush()
+                except Exception as exc:
+                    md.write(f"\n\n> ❌ Audit streaming failed: {exc}\n\n")
+                    md.flush()
+                    raise
+                finally:
+                    md.close()
+
+                # ── Truncation detection ─
+                if _is_truncated(accumulated_messages):
+                    logging.warning(
+                        "Auditor output truncated (finish_reason=length). "
+                        "Requesting continuation..."
+                    )
+                    try:
+                        _ctn_md = open(stream_md_path, "a", encoding="utf-8")
+                        continuation_msgs = list(accumulated_messages)
+                        continuation_msgs.append(
+                            HumanMessage(
+                                content=(
+                                    "Your previous response was truncated. Continue EXACTLY "
+                                    "from where you stopped. Do NOT repeat anything. Output "
+                                    "ONLY the remaining content."
+                                )
+                            )
+                        )
+                        async for event in agent.astream(
+                            {"messages": continuation_msgs},
+                            config=config,
+                            stream_mode="updates",
+                        ):
+                            for _node_name, update in event.items():
+                                for msg in update.get("messages", []):
+                                    msg_type = getattr(msg, "type", None)
+                                    if msg_type == "ai":
+                                        content = (
+                                            msg.content
+                                            if hasattr(msg, "content")
+                                            else ""
+                                        )
+                                        _ctn_md.write(
+                                            "### Assistant (continuation)\n\n"
+                                            f"{content.strip()}\n\n"
+                                        )
+                                        _ctn_md.flush()
+                                    accumulated_messages.append(msg)
+                        _ctn_md.close()
+                        logging.info("Auditor continuation completed successfully.")
+                    except Exception as exc:
+                        logging.warning(
+                            f"Auditor continuation retry failed: {exc}. "
+                            "Returning truncated result."
+                        )
+                        try:
+                            _ctn_md.close()
+                        except Exception:
+                            pass
+
+                # ── Parse from accumulated messages ─
+                last_msg = _find_last_ai_message(accumulated_messages)
+                raw_content = (
+                    last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+                )
+
+                state["auditor_verdict"] = raw_content
+
+                parsed = _extract_json_block(raw_content)
+                if parsed is None:
+                    print("[AnalysisAuditor] Could not extract JSON from audit response.")
+                    state["auditor_verdict_json"] = {
+                        "verdict": "UNCERTAIN",
+                        "calibrated_confidence": "LOW",
+                        "spectrum_quality": "unknown",
+                        "key_issues": ["Failed to parse JSON from auditor response."],
+                        "recommendation": f"Raw response (first 500 chars): {raw_content[:500]}",
+                    }
+                    return state
+
+                state["auditor_verdict_json"] = parsed
+
+                print(
+                    "[AnalysisAuditor] Verdict: {} | Confidence: {} | Quality: {}".format(
+                        parsed.get("verdict", "?"),
+                        parsed.get("calibrated_confidence", "?"),
+                        parsed.get("spectrum_quality", "?"),
+                    )
+                )
+                if parsed.get("key_issues"):
+                    for issue in parsed["key_issues"]:
+                        print(f"  ⚠ {issue}")
+
+                return state
+
+            except Exception as exc:
+                logging.warning(
+                    f"[AnalysisAuditor] Streaming path failed: {exc}. "
+                    "Falling back to non-streaming ainvoke."
+                )
+                try:
+                    md.close()
+                except Exception:
+                    pass
+
+        # ── Non-streaming fallback ──────────────────────────────────
         try:
             result = await agent.ainvoke(
                 {"messages": [("user", user_prompt)]},
-                config={"recursion_limit": 100},
+                config=config,
             )
             messages = result.get("messages", [])
+
+            # Truncation detection
+            if _is_truncated(messages):
+                logging.warning(
+                    "Auditor output truncated (finish_reason=length). "
+                    "Requesting continuation..."
+                )
+                try:
+                    continuation_msgs = list(messages)
+                    continuation_msgs.append(
+                        HumanMessage(
+                            content=(
+                                "Your previous response was truncated. Continue EXACTLY "
+                                "from where you stopped. Do NOT repeat anything. Output "
+                                "ONLY the remaining content."
+                            )
+                        )
+                    )
+                    continuation_result = await agent.ainvoke(
+                        {"messages": continuation_msgs}, config=config
+                    )
+                    messages.extend(continuation_result.get("messages", []))
+                    logging.info("Auditor continuation completed successfully.")
+                except Exception as exc:
+                    logging.warning(
+                        f"Auditor continuation retry failed: {exc}. "
+                        "Returning truncated result."
+                    )
+
             if not messages:
                 print("[AnalysisAuditor] LLM returned no messages.")
                 state["auditor_verdict"] = "ERROR: no messages"
@@ -410,12 +633,13 @@ class AnalysisAuditor(BaseAgent):
                 }
                 return state
 
-            last_msg = messages[-1]
-            raw_content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+            last_msg = _find_last_ai_message(messages)
+            raw_content = (
+                last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+            )
 
             state["auditor_verdict"] = raw_content
 
-            # ── Parse JSON ──
             parsed = _extract_json_block(raw_content)
             if parsed is None:
                 print("[AnalysisAuditor] Could not extract JSON from audit response.")
