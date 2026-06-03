@@ -46,7 +46,7 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them. The tool acc
 
 * **Spectral Morphology**: Continuum dominated by host galaxy. Continuum alone is not a reliable discriminator.
 * **Emission-Line Features**: Contains strong AGN-characteristic emission lines:
-    - Ne [V] (3426 Å) — strong AGN indicator, almost absent in non-AGN
+    - [Ne V] (3426 Å) — strong AGN indicator, almost absent in non-AGN
     - C III] (1909 Å)
     - Mg II (2800 Å) — may appear as a broad emission line
 * **Absorption Lines**: Host galaxy absorption lines (Ca K/H, G-band, Mg b, Na D) are **possible but NOT required**. The primary discriminating criterion is the presence of at least one AGN-characteristic emission line.
@@ -81,7 +81,7 @@ LRGs and BGS are treated uniformly — both come from old-star-dominated stellar
 | He II | 1640.0 | both | QSO: broad+narrow; galaxy: narrow only |
 | C III] | 1909.0 | broad | Semi-forbidden, BLR |
 | Mg II | 2800.0 | broad | BLR broad line; can also be absorption |
-| Ne [V] | 3426.0 | narrow | Strong AGN indicator |
+| [Ne V] | 3426.0 | narrow | Strong AGN indicator |
 | [O II] | 3727.0 | narrow | Star-forming region forbidden line |
 | Hε | 3970.1 | both | Balmer series |
 | Hδ | 4102.9 | both | Balmer series |
@@ -107,7 +107,7 @@ LRGs and BGS are treated uniformly — both come from old-star-dominated stellar
 | Hδ_abs | 4102.9 | Balmer absorption |
 | Hγ_abs | 4341.7 | Balmer absorption |
 | Hβ_abs | 4862.7 | Balmer absorption |
-| Mg_abs | 5176.7 | Host galaxy Mg b absorption |
+| Mg I_abs | 5176.7 | Host galaxy Mg b absorption |
 | Na D_abs | 5895.6 | ISM / host galaxy absorption |
 | Hα_abs | 6564.6 | Balmer absorption |
 | CaT1_abs | 8498.0 | Calcium triplet |

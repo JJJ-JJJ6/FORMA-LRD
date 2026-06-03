@@ -338,6 +338,62 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
     plt.close(fig)
 
 
+def _normalize_line_name(name: str) -> str:
+    """Normalize line name variants to canonical form for lookup.
+
+    Handles common LLM-generated variants:
+      - ``O [II]`` / ``[O II]`` / ``O II`` / ``O[II]`` → ``[O II]``
+      - ``Ne [V]`` / ``Ne V`` → ``[Ne V]``
+      - ``Mg_abs`` / ``Mg I_abs`` → ``Mg I_abs``
+    """
+    # Normalize: strip extra spaces inside brackets, make consistent bracket positions
+    import re
+
+    # Remove spaces between element and bracket: "O [II]" → "O[II]" → "[O II]"
+    # Or: "Ne [V]" → "Ne[V]" → "[Ne V]"
+    # First unify to no-space form
+    cleaned = re.sub(r'([A-Za-z]+)\s+\[([IVab]+)\]', r'\1[\2]', name)
+
+    # Known forbidden-line normalization table
+    _forbidden_map = {
+        # bracket-around-ionization → bracket-around-element
+        "O[II]": "[O II]",
+        "N[II]a": "[N II]a",
+        "N[II]b": "[N II]b",
+        "S[II]a": "[S II]a",
+        "S[II]b": "[S II]b",
+        "O[III]a": "[O III]a",
+        "O[III]b": "[O III]b",
+        "Ne[V]": "[Ne V]",
+        # no-bracket variants
+        "O II": "[O II]",
+        "O IIIa": "[O III]a",
+        "O IIIb": "[O III]b",
+        "N IIa": "[N II]a",
+        "N IIb": "[N II]b",
+        "S IIa": "[S II]a",
+        "S IIb": "[S II]b",
+        "Ne V": "[Ne V]",
+        # bracket-around-element (already canonical, no-op)
+        "[O II]": "[O II]",
+        "[O III]a": "[O III]a",
+        "[O III]b": "[O III]b",
+        "[N II]a": "[N II]a",
+        "[N II]b": "[N II]b",
+        "[S II]a": "[S II]a",
+        "[S II]b": "[S II]b",
+        "[Ne V]": "[Ne V]",
+    }
+    if cleaned in _forbidden_map:
+        cleaned = _forbidden_map[cleaned]
+
+    # Mg_abs → Mg I_abs
+    if cleaned == "Mg_abs":
+        cleaned = "Mg I_abs"
+
+    return cleaned
+
+
 def plot_harness_candidate(
     wavelength,
     flux,
@@ -405,12 +461,14 @@ def plot_harness_candidate(
     n_abs = 0
     n_em = 0
 
+    from AstroAgent.agents.multi_agents.harness.tools import EMISSION_LINES, ABSORPTION_LINES
+
     for row in adopted_lines:
         name = row.get("name", "")
-        # 从 EMISSION_LINES 或 ABSORPTION_LINES 判断类型
-        from AstroAgent.agents.multi_agents.harness.tools import EMISSION_LINES, ABSORPTION_LINES
-        is_emission = name in EMISSION_LINES
-        is_absorption = name in ABSORPTION_LINES
+        # Normalize line name to canonical form (handles LLM-generated variants)
+        canonical_name = _normalize_line_name(name)
+        is_emission = canonical_name in EMISSION_LINES
+        is_absorption = canonical_name in ABSORPTION_LINES
 
         center = None
         for key in ("fitted_center", "predicted_obs"):

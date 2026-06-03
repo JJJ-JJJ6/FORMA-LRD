@@ -13,7 +13,7 @@ import numpy as np
 
 from pathlib import Path
 
-from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
+from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.utils.RA import (
     build_dn4000_lookup,
     _read_csv_lines,
@@ -80,7 +80,6 @@ async def analyze_failure(
     dict
         Parsed failure analysis with keys: root_cause, explanation, suggested_fix.
     """
-    from langchain_openai import ChatOpenAI
     from langchain.agents import create_agent
     from langchain_core.tools import tool
     from AstroAgent.agents.multi_agents.harness.tools import grep_kb
@@ -144,7 +143,7 @@ async def analyze_failure(
     # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
     _vendor = _detect_vendor(base_url)
     _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
-    llm = ChatOpenAI(
+    llm = _create_chat_openai(
         model=model,
         api_key=api_key,
         base_url=base_url,
@@ -458,8 +457,6 @@ async def analyze_failure_batch(
     Returns the parsed batch analysis dict, or None if no pending failures
     or the LLM call fails.
     """
-    from langchain_openai import ChatOpenAI
-
     pending = _read_pending_failures(output_dir)
     if not pending:
         return None
@@ -486,7 +483,7 @@ async def analyze_failure_batch(
     # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
     _vendor = _detect_vendor(base_url)
     _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
-    llm = ChatOpenAI(
+    llm = _create_chat_openai(
         model=model,
         api_key=api_key,
         base_url=base_url,

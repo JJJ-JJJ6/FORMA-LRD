@@ -27,11 +27,11 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
 
-from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
+from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from .tools import (
     write_report, write_lines_csv, compute_redshift,
     _do_fit_peak, _do_fit_doublet,
@@ -74,6 +74,22 @@ def _resolve_max_tokens() -> int | None:
     if "deepseek" in base_url.lower():
         return 16384
     return None
+
+
+def _find_last_ai_message(messages: list):
+    """Return the last AI message, skipping tool/other message types."""
+    for msg in reversed(messages):
+        if getattr(msg, "type", None) == "ai":
+            return msg
+    return None
+
+
+def _is_truncated(messages: list) -> bool:
+    """Check whether the last AI message was truncated by max_tokens."""
+    last_ai = _find_last_ai_message(messages)
+    if last_ai is None:
+        return False
+    return last_ai.response_metadata.get("finish_reason") == "length"
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +243,8 @@ def _find_nearby_features(
 
     Results are sorted by distance to ``obs_wl`` (closest first).
 
-    Returns brief refs like ``peak@5001.2(z=0.0085)`` — full feature details are
-    in the CWT Features table above the predictions section.
+    Returns brief refs like ``peak@5001.2±0.3(z=0.0085)`` — full feature details
+    are in the CWT Features table above the predictions section.
     """
     lo = rest_wl * (1.0 + z_min)
     hi = rest_wl * (1.0 + z_max)
@@ -236,13 +252,17 @@ def _find_nearby_features(
     for p in (peaks or []):
         pw = p.get('wavelength', 0)
         if lo <= pw <= hi:
+            pw_err = p.get('wavelength_err')
             z_implied = pw / rest_wl - 1.0
-            nearby.append((abs(pw - obs_wl), f"peak@{pw:.1f}(z={z_implied:.4f})"))
+            err_str = f"±{pw_err:.1f}" if isinstance(pw_err, (int, float)) else ""
+            nearby.append((abs(pw - obs_wl), f"peak@{pw:.1f}{err_str}(z={z_implied:.4f})"))
     for t in (troughs or []):
         tw = t.get('wavelength', 0)
         if lo <= tw <= hi:
+            tw_err = t.get('wavelength_err')
             z_implied = tw / rest_wl - 1.0
-            nearby.append((abs(tw - obs_wl), f"trough@{tw:.1f}(z={z_implied:.4f})"))
+            err_str = f"±{tw_err:.1f}" if isinstance(tw_err, (int, float)) else ""
+            nearby.append((abs(tw - obs_wl), f"trough@{tw:.1f}{err_str}(z={z_implied:.4f})"))
     nearby.sort(key=lambda x: x[0])
     return ", ".join(n[1] for n in nearby) if nearby else "—"
 
@@ -253,18 +273,21 @@ def _build_cwt_features_table(peaks: list, troughs: list) -> str:
     references wavelengths so the LLM can cross-reference this table for
     FWHM / ridge / SNR details."""
     lines = ["## CWT Detected Features\n"]
-    col = "| λ (Å) | Amp | FWHM (Å) | FWHM (km/s) | Ridge | SNR |"
-    sep = "|-------|-----|----------|-------------|-------|-----|"
+    col = "| λ (Å) | λ_err (Å) | Amp | FWHM (Å) | FWHM (km/s) | Ridge | SNR |"
+    sep = "|-------|-----------|-----|----------|-------------|-------|-----|"
 
     def _row(f: dict) -> str:
         wl = f.get('wavelength', 0)
+        wl_err = f.get('wavelength_err', None)
         amp = f.get('amplitude', 0)
         fwhm_a = f.get('FWHM_A', None)
         fwhm_k = f.get('FWHM_km_s', None)
         ridge = f.get('ridge_length', None)
         snr = f.get('snr', None)
         return (
-            f"| {wl:.1f} | {amp:.1f} | "
+            f"| {wl:.1f} | "
+            f"{f'{wl_err:.1f}' if isinstance(wl_err, (int, float)) else '—'} | "
+            f"{amp:.1f} | "
             f"{f'{fwhm_a:.1f}' if isinstance(fwhm_a, (int, float)) else '—'} | "
             f"{f'{fwhm_k:.0f}' if isinstance(fwhm_k, (int, float)) else '—'} | "
             f"{f'{ridge}' if isinstance(ridge, (int, float)) else '—'} | "
@@ -548,7 +571,7 @@ def run(
     # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
     _vendor = _detect_vendor(base_url)
     _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
-    llm = ChatOpenAI(
+    llm = _create_chat_openai(
         model=model,
         api_key=api_key,
         base_url=base_url,
@@ -592,11 +615,37 @@ def run(
     else:
         raise last_exc
 
+    # ── Truncation detection (sync path) ─
     messages = result.get("messages", [])
+    if _is_truncated(messages):
+        logging.warning(
+            "Output truncated (finish_reason=length). Requesting continuation..."
+        )
+        try:
+            continuation_msgs = list(messages)
+            continuation_msgs.append(
+                HumanMessage(
+                    content=(
+                        "Your previous response was truncated by the token limit. "
+                        "Continue EXACTLY from where you stopped. Do NOT repeat "
+                        "anything already written."
+                    )
+                )
+            )
+            continuation_result = agent.invoke(
+                {"messages": continuation_msgs}, config=config
+            )
+            messages.extend(continuation_result.get("messages", []))
+            logging.info("Continuation completed successfully.")
+        except Exception as exc:
+            logging.warning(
+                f"Continuation retry failed: {exc}. Returning truncated result."
+            )
+
     feature_catalog = []
 
-    last_msg = messages[-1]
-    report = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    last_msg = _find_last_ai_message(messages)
+    report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
     structured_output = _extract_json_block(report)
 
     return {
@@ -671,7 +720,7 @@ async def arun(
     # Always disable thinking — multi-turn tool calling can't pass back reasoning_content
     _vendor = _detect_vendor(base_url)
     _extra_body = _build_thinking_extra_body("disabled", _vendor) if _vendor != "unknown" else None
-    llm = ChatOpenAI(
+    llm = _create_chat_openai(
         model=model,
         api_key=api_key,
         base_url=base_url,
@@ -769,7 +818,65 @@ async def arun(
         else:
             raise last_exc
 
-        last_msg = accumulated_messages[-1] if accumulated_messages else None
+        # ── Truncation detection (streaming path) ─
+        if _is_truncated(accumulated_messages):
+            logging.warning(
+                "Output truncated (finish_reason=length). Requesting continuation..."
+            )
+            # Re-open stream_md in append mode for continuation output
+            _ctn_md = None
+            if stream_md_path:
+                try:
+                    _ctn_md = open(stream_md_path, "a", encoding="utf-8")
+                except Exception:
+                    pass
+            try:
+                continuation_msgs = list(accumulated_messages)
+                continuation_msgs.append(
+                    HumanMessage(
+                        content=(
+                            "Your previous response was truncated by the token limit. "
+                            "Continue EXACTLY from where you stopped. Do NOT repeat "
+                            "anything already written. Be concise — focus on completing "
+                            "the remaining line evaluations and the Phase 3 report "
+                            "(sections 13a–13g)."
+                        )
+                    )
+                )
+                async for event in agent.astream(
+                    {"messages": continuation_msgs},
+                    config=config,
+                    stream_mode="updates",
+                ):
+                    for _node_name, update in event.items():
+                        for msg in update.get("messages", []):
+                            msg_type = getattr(msg, "type", None)
+                            if msg_type == "ai":
+                                content = (
+                                    msg.content
+                                    if hasattr(msg, "content")
+                                    else ""
+                                )
+                                if _ctn_md:
+                                    _ctn_md.write(
+                                        "### Assistant (continuation)\n\n"
+                                        f"{content.strip()}\n\n"
+                                    )
+                                    _ctn_md.flush()
+                            accumulated_messages.append(msg)
+                logging.info("Continuation completed successfully.")
+            except Exception as exc:
+                logging.warning(
+                    f"Continuation retry failed: {exc}. Returning truncated result."
+                )
+            finally:
+                if _ctn_md:
+                    try:
+                        _ctn_md.close()
+                    except Exception:
+                        pass
+
+        last_msg = _find_last_ai_message(accumulated_messages)
         report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
         feature_catalog = []
 
@@ -800,11 +907,37 @@ async def arun(
     else:
         raise last_exc
 
+    # ── Truncation detection (non‑streaming path) ─
     messages = result.get("messages", [])
+    if _is_truncated(messages):
+        logging.warning(
+            "Output truncated (finish_reason=length). Requesting continuation..."
+        )
+        try:
+            continuation_msgs = list(messages)
+            continuation_msgs.append(
+                HumanMessage(
+                    content=(
+                        "Your previous response was truncated by the token limit. "
+                        "Continue EXACTLY from where you stopped. Do NOT repeat "
+                        "anything already written."
+                    )
+                )
+            )
+            continuation_result = await agent.ainvoke(
+                {"messages": continuation_msgs}, config=config
+            )
+            messages.extend(continuation_result.get("messages", []))
+            logging.info("Continuation completed successfully.")
+        except Exception as exc:
+            logging.warning(
+                f"Continuation retry failed: {exc}. Returning truncated result."
+            )
+
     feature_catalog = []
 
-    last_msg = messages[-1]
-    report = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    last_msg = _find_last_ai_message(messages)
+    report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
 
     return {
         "hypothesis_idx": hypothesis_idx,

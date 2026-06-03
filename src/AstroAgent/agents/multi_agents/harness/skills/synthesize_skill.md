@@ -93,6 +93,31 @@ After the blind review:
 
 - **If NO hypothesis is credible** (all have internal inconsistencies, or the only LIKELY lines are high-ionization with no low-ionization anchor) → deliver UNSUPPORTED with LOW confidence. Do NOT proceed to Phase 2 — reading spectrum data will not rescue fundamentally broken hypotheses.
 
+### 1d. Analyse the Adopted Feature Catalog
+
+Your user message includes a pre-built **Adopted Feature Catalog** — all LIKELY + MARGINAL features from every hypothesis, pooled together, sorted by |amplitude| descending, with no line identifications. The median amplitude is pre-computed. This catalog is the objective, hypothesis-independent view of what the spectrum actually contains.
+
+**The workflow**:
+
+1. **Read the catalog**: Note the median amplitude. Only features significantly above it (≥ 2× median, or in the top ~25%) are potentially discriminating. Features near or below the median are at the noise floor — they cannot distinguish hypotheses.
+
+2. **Verify the high-amplitude outliers**: For each feature with amplitude well above the baseline, call `read_spectrum_region` on λ_obs ± 150 Å and judge whether it is REAL:
+   - **Real**: A clean, isolated peak or trough clearly standing above the local noise. Width is visually consistent with the CWT measurement.
+   - **Not real (noise)**: The feature sits in a noise-dominated region (±100 Å shows many oscillations of similar amplitude). Or it's a narrow skyline residual (red edge). Or it's noise-blur broadening (CWT FWHM is broad but the raw spectrum shows only a narrow wiggle).
+   - **Edge artifact**: λ_obs < 4000 Å or > 9000 Å, and the feature is indistinguishable from edge noise.
+
+3. **Map verified features to hypotheses**: Once you know which features are real, check which hypotheses can physically explain them (cross-reference the per-hypothesis harness summaries for line identifications):
+   - A hypothesis that self-consistently explains multiple REAL high-amplitude features has genuine physical evidence.
+   - A hypothesis whose "adopted" high-amplitude features all failed verification is fitting noise — its line inventory counts are meaningless regardless of how many LIKELY lines are listed.
+   - If the real high-amplitude features are NOT claimed by any hypothesis, all hypotheses are missing the most prominent spectral features — a red flag that the pipeline is lost.
+
+4. **SNR adequacy**: After completing steps 1–3, you have one of three outcomes:
+   - **Clear signal**: Multiple real high-amplitude features favour one hypothesis. Proceed to Phase 2 for detailed comparison.
+   - **No discriminating features**: Every adopted feature has amplitude near or below the median, OR all high-amplitude features failed verification. The spectrum is noise-dominated — output `classification="Unknown"`, `confidence="LOW"`, primary_evidence="Insufficient SNR — adopted features not distinguishable from the noise floor (median = X, highest adopted = Y)."
+   - **Ambiguous**: Real features exist but don't cleanly favour one hypothesis. Proceed to Phase 2.
+
+5. **Report quantitative details** in your Phase 3 verdict: "Adopted catalog: N features. Baseline (median) = X. Top outliers verified: [λ₀ at amp=Y → real/fake, explained by H?]. SNR adequacy: [clear/ambiguous/insufficient]."
+
 ## Phase 2: Targeted Spectrum Investigation
 
 Only enter this phase when the blind review identifies a specific degeneracy that can be resolved by examining the spectrum at discriminating wavelengths. **Read as little data as possible** — each read should target a specific question.
@@ -175,24 +200,30 @@ The knowledge base uses sub-type labels (ELG, LRG/BGS, Host Galaxy dominated AGN
 
 ### AGN/QSO Classification Safeguard
 
-Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN indicators and judge their authenticity. **A single real AGN line (Ne V or Mg II) CAN support QSO classification** — but only if confirmed genuine by visual inspection. CWT detections alone are not sufficient for AGN classification; the CWT pipeline can fit broad Gaussians to noise or misidentify continuum fluctuations as emission lines.
+Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN indicators and judge their authenticity. **A single real AGN line ([Ne V] or Mg II) CAN support QSO classification** — but only if confirmed genuine by visual inspection. CWT detections alone are NOT sufficient for AGN classification; the CWT pipeline can fit broad Gaussians to noise or misidentify continuum fluctuations as emission lines.
 
-1. **Read the spectrum around AGN indicators**:
+**This is a mandatory step.** If you classify as `QSO` without having called `read_spectrum_region` on the supporting AGN line(s), the classification is invalid.
+
+1. **Read the spectrum around EVERY claimed AGN indicator** (no exceptions):
    - For **Mg II** (2800 Å): use `read_spectrum_region` to examine **±200 Å** around the predicted observed wavelength. Is there a genuinely broad emission peak (FWHM > 2000 km/s) rising clearly above the continuum? Or is the "emission" just broad noise / continuum wiggle around a narrow absorption feature?
-   - For **Ne V** (3426 Å): read **±100 Å**. Is there a clear narrow emission peak? Or is it a noise spike / continuum fluctuation at the limit of detectability?
+   - For **[Ne V]** (3426 Å): read **±100 Å**. Is there a clear narrow emission peak? Or is it a noise spike / continuum fluctuation at the limit of detectability?
+   - For **C III]** (1909 Å): read **±150 Å**. This line frequently falls in the DESI blue edge zone (λ_obs < 4000 Å) where noise is elevated. Is there a genuine broad emission peak, or is it a noise fluctuation at the spectrum edge?
+   - For **Lyα** (1216 Å) and **C IV** (1549 Å): these almost always fall in the blue edge zone at moderate redshifts. They carry the highest presumption of unreliability. Read ±150 Å and report whether any emission is visually distinguishable from the blue-edge noise envelope.
 
-2. **Weigh AGN vs Galaxy evidence**: Classification should reflect which physical picture is more convincingly supported by the spectrum as a whole:
-   - If **Galaxy features are clear and self-consistent** (Ca K/H doublet with correct spacing, multiple absorption lines at consistent z, well-matched narrow emission doublets like [O III] with correct 3:1 ratio) while **AGN features look questionable** (broad "Mg II emission" that is actually noise wings around a narrow absorption, "Ne V" that is a continuum wiggle, wrong amplitudes or line ratios) → classify as **`Galaxy`**
+2. **Additional scrutiny for edge-zone AGN lines**: If any AGN indicator falls with λ_pred < 4000 Å (blue edge) or λ_pred > 9000 Å (red edge), the spectrum read is doubly mandatory. Flag these features explicitly in your reasoning. If the read shows the feature is indistinguishable from edge noise, it carries zero weight regardless of CWT status.
+
+3. **Weigh AGN vs Galaxy evidence**: Classification should reflect which physical picture is more convincingly supported by the spectrum as a whole:
+   - If **Galaxy features are clear and self-consistent** (Ca K/H doublet with correct spacing, multiple absorption lines at consistent z, well-matched narrow emission doublets like [O III] with correct 3:1 ratio) while **AGN features look questionable** (broad "Mg II emission" that is actually noise wings around a narrow absorption, "[Ne V]" that is a continuum wiggle, wrong amplitudes or line ratios) → classify as **`Galaxy`**
    - If **AGN features are genuinely prominent** (clear broad emission distinct from noise and absorption, correct relative amplitudes, consistent redshift) and **Galaxy absorption is weak or absent** → classify as **`QSO`**
-   - Both Ne V and Mg II CAN independently support QSO — the question is whether the feature is **REAL**, not whether it has a companion line
+   - Both [Ne V] and Mg II CAN independently support QSO — the question is whether the feature is **REAL**, not whether it has a companion line
 
-3. **Mg II emission vs absorption coexistence**: When Mg II_abs is also claimed near the same observed wavelength, the CWT may have fitted broad noise adjacent to the absorption trough as "Mg II emission." Use `read_spectrum_region` to examine the region: is the emission component a real broad peak clearly distinct from the absorption, or just vague broad wings around a dominant narrow absorption? If the narrow absorption dominates with only vague broad wings → the emission claim is likely a CWT artifact.
+4. **Mg II emission vs absorption coexistence**: When Mg II_abs is also claimed near the same observed wavelength, the CWT may have fitted broad noise adjacent to the absorption trough as "Mg II emission." Use `read_spectrum_region` to examine the region: is the emission component a real broad peak clearly distinct from the absorption, or just vague broad wings around a dominant narrow absorption? If the narrow absorption dominates with only vague broad wings → the emission claim is likely a CWT artifact.
 
-4. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
+5. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
 
 ### Systemic redshift rule
 
-Use the lowest-ionization LIKELY line. Use `grep_kb` to search `kb/ionization.md` for the complete priority table (Priority 1: Ca K/H_abs → Priority 7: [O III]) and the list of excluded lines (He II, C III], C IV, Ne V, Lyα). If no LIKELY line exists at any priority level 1–7, the best available MARGINAL line may be used — note this downgrade explicitly.
+Use the lowest-ionization LIKELY line. Use `grep_kb` to search `kb/ionization.md` for the complete priority table (Priority 1: Ca K/H_abs → Priority 7: [O III]) and the list of excluded lines (He II, C III], C IV, [Ne V], Lyα). If no LIKELY line exists at any priority level 1–7, the best available MARGINAL line may be used — note this downgrade explicitly.
 
 ## Phase 4: Output Report & CSV
 

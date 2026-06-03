@@ -35,6 +35,25 @@ You have 5 tools (more than the classic Nomad mode):
 
 **Important**: CWT features are HIGHER TRUST than your own fitting. Only call `fit_peak` or `fit_doublet` as a LAST RESORT — when the "Features in z-window" column is `—` or all listed CWT features are rejected.
 
+## Token Budget
+
+Your output limit is ~16K tokens. With 25+ predicted lines to evaluate.
+
+**Compact per-line format**:
+- **NOT_FOUND / MASKED** → one short line. No justification needed.
+  ```
+  ### CaT1_abs → NOT_FOUND (no feature within 80Å)
+  ### [O II] → MASKED (fully masked)
+  ```
+- **MARGINAL / LIKELY** → one line with the best candidate + key metrics.
+  ```
+  ### Ca K_abs → LIKELY, trough@7088.8 offset=2.3Å ridge=8 snr=8.2
+  ### Mg II → MARGINAL, best peak@5052.8 offset=10.1Å but FWHM inconsistent
+  ```
+- **Do NOT** copy-paste the full CWT feature list. Summarize: "N features in window; best is ..."
+
+**Priority**: Spend tokens on the Phase 3 report. Phase 2 evaluations should be terse.
+
 ## Phase 1: Prepare
 
 1. Review the **Spectrum Summary** in the user message for wavelength coverage, median SNR, and masked regions.
@@ -165,7 +184,7 @@ Do not add extra sections. Write the report only after ALL lines have been evalu
 | C III] | 1909.0 | em | broad |
 | Mg II | 2800.0 | em | broad |
 | Mg II_abs | 2800.0 | abs | absorption |
-| Ne V | 3426.0 | em | narrow |
+| [Ne V] | 3426.0 | em | narrow |
 | [O II] | 3727.0 | em | narrow |
 | Ca K_abs | 3934.8 | abs | absorption |
 | Ca H_abs | 3969.6 | abs | absorption |
@@ -218,7 +237,7 @@ Do not add extra sections. Write the report only after ALL lines have been evalu
 | 6 | Mg II 2800 | May show outflow blueshift |
 | 7 | [O III]a/b | Weakest anchor, often blueshifted |
 
-**Excluded** (must NOT anchor systemic z): He II, C III], C IV, Ne V, Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
+**Excluded** (must NOT anchor systemic z): He II, C III], C IV, [Ne V], Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
 
 ## Reference: Classification Diagnostics
 
@@ -226,4 +245,4 @@ Do not add extra sections. Write the report only after ALL lines have been evalu
 - **LRG/BGS**: Strong stellar absorption (Ca K/H, G-band, Mg I, Na D). Weak emission. Fatal: Ca K/H missing pair.
 - **QSO**: Broad emission (Lyα, C IV, C III], Mg II) FWHM > 2000 km/s. Narrow forbidden lines may coexist.
 - **Star**: Broad absorption, no emission.
-- **Ne V as AGN indicator**: Ne V (3426 Å) almost never present in non-AGN objects.
+- **[Ne V] as AGN indicator**: [Ne V] (3426 Å) almost never present in non-AGN objects.

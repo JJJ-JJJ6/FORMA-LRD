@@ -14,7 +14,7 @@ Use the lowest-ionization LIKELY line to anchor systemic z. Priority from lowest
 | 6 | Mg II 2800 | Mg⁺ (~15.0 eV) | May show outflow blueshift |
 | 7 | [O III]a/b 4960/5008 | O⁺⁺ (~35.1 eV) | Weakest anchor, often blueshifted |
 
-**Excluded** (must NOT anchor systemic z): He II (He⁺, 54.4 eV), C III] (C⁺⁺, 47.9 eV), C IV (C⁺⁺⁺, 64.5 eV), Ne V (Ne⁺⁺⁺⁺, 97.1 eV), Lyα (1216).
+**Excluded** (must NOT anchor systemic z): He II (He⁺, 54.4 eV), C III] (C⁺⁺, 47.9 eV), C IV (C⁺⁺⁺, 64.5 eV), [Ne V] (Ne⁺⁺⁺⁺, 97.1 eV), Lyα (1216).
 These high-ionization lines are routinely blueshifted by AGN outflows (hundreds of km/s). If only excluded lines are available, flag the redshift as potentially biased.
 
 ## ELG Exception

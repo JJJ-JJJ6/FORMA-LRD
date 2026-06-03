@@ -30,12 +30,12 @@
 **Distinction from LRG**: Star spectra show broader and deeper Balmer absorption than LRGs.
 **If suspected**: Flag as UNKNOWN rather than committing if evidence is marginal.
 
-## Ne V as AGN Indicator
+## [Ne V] as AGN Indicator
 
-Ne V (3426 Å) is a high-ionization forbidden line almost never present in non-AGN objects. However, it is a weak line easily mimicked by noise. Before using Ne V as AGN evidence:
+[Ne V] (3426 Å) is a high-ionization forbidden line almost never present in non-AGN objects. However, it is a weak line easily mimicked by noise. Before using [Ne V] as AGN evidence:
 1. **Read the spectrum ±50 Å** around the predicted observed wavelength using `read_spectrum_region`
 2. Verify the feature is a genuine emission peak rising clearly above the local continuum, not a continuum wiggle or noise spike at the detection limit
-3. **Weigh against Galaxy features**: Check whether Galaxy indicators (Ca K/H absorption doublet, narrow emission lines with correct doublet spacing) or AGN indicators dominate the spectrum. **Ne V CAN independently support QSO classification** — but only if the peak is visually convincing, not merely a CWT detection at the noise limit. If Galaxy features are clear and self-consistent while the Ne V feature is marginal, default to Galaxy.
+3. **Weigh against Galaxy features**: Check whether Galaxy indicators (Ca K/H absorption doublet, narrow emission lines with correct doublet spacing) or AGN indicators dominate the spectrum. **[Ne V] CAN independently support QSO classification** — but only if the peak is visually convincing, not merely a CWT detection at the noise limit. If Galaxy features are clear and self-consistent while the [Ne V] feature is marginal, default to Galaxy.
 
 ## Mg II Emission vs Absorption Coexistence
 

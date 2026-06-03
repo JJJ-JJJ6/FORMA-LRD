@@ -25,7 +25,7 @@ You have access to two tools:
 | `grep_kb(pattern, A, B, C)` | Search the knowledge base for classification rules, line tables, doublet ratios, ionization priorities |
 | `read_spectrum_region(wl_min, wl_max, stride)` | Read raw spectrum slices at discriminating wavelengths to resolve cross-type ambiguities |
 
-**When to read the spectrum**: When two hypotheses from different paths claim different line identifications for the same observed feature, read that wavelength ±50–100 Å to determine which identification is correct. Also read around claimed AGN indicators (Mg II ±150 Å, Ne V ±50 Å) to verify feature authenticity — is it a real emission peak, or broad noise / continuum wiggle?
+**When to read the spectrum**: When two hypotheses from different paths claim different line identifications for the same observed feature, read that wavelength ±50–100 Å to determine which identification is correct. Also read around claimed AGN indicators (Mg II ±150 Å, [Ne V] ±50 Å) to verify feature authenticity — is it a real emission peak, or broad noise / continuum wiggle?
 
 ## Background: QSO Spectral Classification
 
@@ -35,9 +35,9 @@ You have access to two tools:
 
 ### Case 2: Host Galaxy-Dominated AGN
 * Continuum dominated by host galaxy — not a reliable discriminator.
-* **Must contain at least one of**: Ne [V] (3426), C III] (1909), Mg II (2800). Otherwise consider ELG.
+* **Must contain at least one of**: [Ne V] (3426), C III] (1909), Mg II (2800). Otherwise consider ELG.
 * Absorption lines (Ca K/H, G-band, Mg b, Na D) are **possible but NOT required**. Primary criterion is AGN-characteristic emission lines.
-* **Feature authenticity**: The peak-finding algorithm may misidentify broad noise as emission. Before accepting Host AGN based on Mg II or Ne V, read the spectrum to confirm the feature is a genuine emission peak, not a CWT artifact.
+* **Feature authenticity**: The peak-finding algorithm may misidentify broad noise as emission. Before accepting Host AGN based on Mg II or [Ne V], read the spectrum to confirm the feature is a genuine emission peak, not a CWT artifact.
 
 ## Background: ELG Spectral Classification
 
@@ -65,7 +65,7 @@ You have access to two tools:
 | He II | 1640.0 | both | QSO both; galaxy narrow only |
 | C III] | 1909.0 | broad | BLR, semi-forbidden |
 | Mg II | 2800.0 | broad | BLR; can also be absorption |
-| Ne [V] | 3426.0 | narrow | Strong AGN indicator |
+| [Ne V] | 3426.0 | narrow | Strong AGN indicator |
 | [O II] | 3727.0 | narrow | Star-forming |
 | Hβ | 4862.7 | both | Balmer |
 | [O III]a | 4960.3 | narrow | NLR doublet (weaker), ratio a:b≈1:3 |
@@ -88,7 +88,7 @@ You have access to two tools:
 | Hδ_abs | 4102.9 | Balmer |
 | Hγ_abs | 4341.7 | Balmer |
 | Hβ_abs | 4862.7 | Balmer |
-| Mg_abs | 5176.7 | Mg b |
+| Mg I_abs | 5176.7 | Mg b |
 | Na D_abs | 5895.6 | ISM/host galaxy |
 | CaT1_abs | 8498.0 | Calcium triplet |
 | CaT2_abs | 8542.0 | Calcium triplet |
@@ -101,7 +101,7 @@ Width classification: **broad** > 2000 km/s, **narrow** < 1000 km/s, **intermedi
 ### R1 Judgment Priority (high → low)
 
 1. **Physical coherence**: Does the line combination conform to the typical characteristics of the corresponding type?
-   * Typical QSO: broad emission lines, Adopted_pairs should NOT contain significant absorption lines. Host AGN may have absorption lines but MUST be accompanied by typical AGN emission lines (Ne [V]/Mg II/C III]). **If Host AGN hypothesis has NONE of these in Adopted_pairs → fatal flaw, MUST reject.**
+   * Typical QSO: broad emission lines, Adopted_pairs should NOT contain significant absorption lines. Host AGN may have absorption lines but MUST be accompanied by typical AGN emission lines ([Ne V]/Mg II/C III]). **If Host AGN hypothesis has NONE of these in Adopted_pairs → fatal flaw, MUST reject.**
    * Host AGN: at least one AGN-characteristic line, may have absorption lines. **Before accepting, verify AGN line authenticity** — if the only AGN line is a marginal CWT detection without clear spectrum-level confirmation, downgrade confidence.
    * ELG: narrow emission lines, [O III] doublet ratio ~1:3. Missing [O III] at coherent z does not outweigh multiple well-matched lines.
    * LRG/BGS: absorption lines (Ca K/H most characteristic). Even without Ca K/H, other absorption lines (G-band, Mg b, Na D) still support LRG/BGS. If NO absorption lines present, consider ELG.
@@ -198,11 +198,67 @@ Triggers if:
 
 Output: `Source_path="unknown"`, `Hypothesis="Cannot confirm"`, `Confidence="low"`, all else null. Do NOT output any redshift estimate or line pairing.
 
+## Spectrum Integrity Checks
+
+Before adjudicating between hypotheses, verify that the underlying spectral features are physically real — not CWT artifacts, edge noise, or skyline residuals. This step is your primary advantage over the upstream pipeline: you can READ the spectrum while they could only trust CWT outputs.
+
+### Feature Authenticity (Three-Question Test)
+
+For every key discriminating line (especially the top 3 adopted lines per hypothesis), call `read_spectrum_region` on λ_pred ± 50 Å and answer:
+
+1. **Peak clarity**: Is there a single, well-defined peak or trough, or does the signal oscillate multiple times within ±50 Å? Multiple oscillations of similar amplitude → likely noise. A single dominant feature that is visually obvious → real.
+
+2. **Width sanity**: Look at the feature by eye. Does the apparent visual width roughly match the CWT FWHM in the harness report? If CWT reports a broad feature (FWHM > 2000 km/s) but the raw spectrum shows only a narrow wiggle with no clear wings, the CWT width is a noise-blur artifact. Conversely, if CWT reports a narrow line but the spectrum shows a broad complex, the fitted Gaussian is only capturing one component of a blended feature.
+
+3. **Neighborhood comparison**: Is this feature notably stronger than adjacent features within ±100 Å? Scan the full readout — if the ±100 Å region is densely populated with features of similar amplitude, this is a noise-dominated zone. ALL features in such a zone are suspect, regardless of their CWT status.
+
+**Decision rule**: If ≥2 of these checks fail for a key discriminating feature, recommend rejecting it entirely regardless of its CWT status (LIKELY, MARGINAL, or otherwise).
+
+### Edge Zone Investigation
+
+The DESI spectrum is unreliable at both wavelength extremes:
+
+- **Blue edge** (λ_obs < 4000 Å): Throughput falls steeply. Noise is non-Gaussian with frequent outlier spikes that CWT interprets as real peaks. High-ionization AGN lines (Lyα, C IV, He II, C III]) that fall here at moderate-to-high z are **presumptively unreliable**.
+- **Red edge** (λ_obs > 9000 Å): Dense OH skyline residuals contaminate the spectrum. Even after sky subtraction, residual OH lines appear as narrow emission/absorption features at fixed observed wavelengths.
+
+**When any key discriminating line falls in an edge zone**, you MUST read the FULL edge segment:
+- Blue edge: `read_spectrum_region(λ_min, 4000)` — read the entire blue edge zone
+- Red edge: `read_spectrum_region(9000, λ_max)` — read the entire red edge zone
+
+From these complete reads, assess:
+- Is the claimed feature visually distinguishable from the noise envelope, or does it blend into the general noise?
+- Are there multiple features of similar amplitude in the edge zone? If yes, the edge zone is noise-dominated — no single feature within it is reliable.
+- For the red edge specifically: could the claimed feature be a residual skyline at a fixed observed wavelength? Cross-check the observed wavelength against known OH line positions (grep_kb pattern="skyline|OH").
+
+**Decision rule**: If the key discriminating features for a hypothesis ALL fall in edge zones AND the spectrum read shows they are indistinguishable from edge noise → recommend rejecting the hypothesis even if its line inventory looks strong on paper.
+
+### Holistic SNR Judgment
+
+After examining the spectrum at discriminating wavelengths, step back and assess the overall data quality:
+
+- **High-quality spectrum**: Key features are visually striking — they tower above the local noise. The CWT statuses (LIKELY/MARGINAL) align with what you see. The winning hypothesis deserves genuine confidence.
+- **Marginal-quality spectrum**: Key features are barely above the noise. They are detectable but not dominant. The winning hypothesis may be correct, but confidence should be capped at MEDIUM.
+- **Noise-dominated spectrum**: Even the "best" adopted features are lost in a sea of comparable fluctuations. In this case, the correct answer is **NOT to pick the least-bad hypothesis** — it is to declare `Cannot confirm`. ALL hypotheses are fitting noise, and the pipeline should not commit to any redshift.
+
+Report this assessment explicitly in your V-3 adjudication: "Spectrum quality assessment: [high / marginal / noise-dominated]. [1–2 sentence justification citing specific reads]."
+
 ## Methodology
 
 ### Step V-1: Overview of Path Summaries
 
 Briefly list all input hypotheses, noting: source path, confidence level, number of Adopted_pairs lines, redshift warning presence, width mismatches, Suggested_redshift.
+
+### Step V-1.5: Spectrum Integrity Checks (MANDATORY before V-2)
+
+Before comparing hypotheses, perform the **Spectrum Integrity Checks** described above:
+
+1. **Feature Authenticity**: For the top 3 discriminating features per hypothesis, call `read_spectrum_region` on λ_pred ± 50 Å. Apply the Three-Question Test (peak clarity, width sanity, neighborhood comparison). If ≥2 checks fail for a key feature → recommend rejection.
+
+2. **Edge Zone Investigation**: If any key discriminating line falls in λ_obs < 4000 Å or λ_obs > 9000 Å, read the FULL edge zone. Assess whether the feature is distinguishable from edge noise or skyline residuals.
+
+3. **Holistic SNR Judgment**: After examining all key features, classify the spectrum as high-quality / marginal / noise-dominated. Report this assessment.
+
+Features that fail authenticity checks are excluded from the V-2 comparison — do not waste time comparing hypotheses over features that are not real.
 
 ### Step V-2: Cross-Type Comprehensive Comparison
 

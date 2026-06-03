@@ -19,11 +19,11 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
 
-from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
+from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.utils.RA import (
     prepare_diagnostic_slices,
     build_dn4000_lookup,
@@ -47,6 +47,22 @@ def _resolve_max_tokens() -> int | None:
     if "deepseek" in base_url.lower():
         return 16384
     return None
+
+
+def _find_last_ai_message(messages: list):
+    """Return the last AI message, skipping tool/other message types."""
+    for msg in reversed(messages):
+        if getattr(msg, "type", None) == "ai":
+            return msg
+    return None
+
+
+def _is_truncated(messages: list) -> bool:
+    """Check whether the last AI message was truncated by max_tokens."""
+    last_ai = _find_last_ai_message(messages)
+    if last_ai is None:
+        return False
+    return last_ai.response_metadata.get("finish_reason") == "length"
 
 
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv
@@ -83,6 +99,101 @@ def _extract_json_block(text: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             pass
     return None
+
+
+# ---------------------------------------------------------------------------
+# Adopted feature catalog builder
+# ---------------------------------------------------------------------------
+
+def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
+    """Build a unified feature catalog from per-hypothesis lines.csv files.
+
+    Collects all LIKELY + MARGINAL features, sorts by |amplitude| descending,
+    and pre-computes the median amplitude baseline.  The table intentionally
+    omits line names — the LLM first verifies which features are real, then
+    maps them to hypotheses.
+    """
+    import csv as _csv
+
+    all_features = []
+    for r in harness_results:
+        idx = r["hypothesis_idx"]
+        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        if not os.path.exists(csv_path):
+            continue
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                status = (row.get("status") or "").strip()
+                if status not in ("LIKELY", "MARGINAL"):
+                    continue
+                try:
+                    wl = float(row.get("fitted_center", 0) or 0)
+                except (ValueError, TypeError):
+                    wl = 0.0
+                try:
+                    amp = float(row.get("amplitude", 0) or 0)
+                except (ValueError, TypeError):
+                    amp = 0.0
+                snr = row.get("cwt_snr") or row.get("local_snr") or "—"
+                ridge = row.get("ridge_length") or "—"
+                all_features.append(
+                    {
+                        "hypothesis_idx": idx,
+                        "wavelength": wl,
+                        "amplitude": abs(amp),
+                        "cwt_snr": snr,
+                        "ridge_length": ridge,
+                        "status": status,
+                    }
+                )
+
+    if not all_features:
+        return (
+            "\n## Adopted Feature Catalog\n\n"
+            "*No adopted features found across any hypothesis.*\n"
+        )
+
+    # Sort by |amplitude| descending
+    all_features.sort(key=lambda f: f["amplitude"], reverse=True)
+
+    amplitudes = [f["amplitude"] for f in all_features]
+    median_amp = float(np.median(amplitudes))
+
+    lines = [
+        "## Adopted Feature Catalog\n",
+        "All LIKELY + MARGINAL features from every hypothesis, sorted by "
+        "|amplitude| descending. **No line identifications** — use "
+        "`read_spectrum_region` to verify which (if any) of the high-amplitude "
+        "outliers are real spectral features, then map them to hypotheses.\n",
+        f"**Median |amplitude|: {median_amp:.3f}** "
+        f"— features near or below this are at the noise floor.",
+        f"**Top quartile threshold: {amplitudes[max(0, len(amplitudes)//4)]:.3f}**\n",
+        "| Rank | λ_obs (Å) | \\|Amp\\| | SNR | Ridge | Status | H |",
+        "|------|----------|---------|-----|-------|--------|---|",
+    ]
+
+    for i, f in enumerate(all_features, 1):
+        snr_str = (
+            f"{float(f['cwt_snr']):.1f}"
+            if _is_numeric(f["cwt_snr"])
+            else str(f["cwt_snr"])
+        )
+        lines.append(
+            f"| {i} | {f['wavelength']:.1f} | {f['amplitude']:.3f} | "
+            f"{snr_str} | {f['ridge_length']} | {f['status']} | "
+            f"H{f['hypothesis_idx']} |"
+        )
+
+    return "\n".join(lines)
+
+
+def _is_numeric(val) -> bool:
+    try:
+        float(val)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +262,9 @@ def _build_user_message(
     # ── Dn4000 diagnostics ──
     diagnostic_slices = prepare_diagnostic_slices(wl, fl, harness_results)
 
+    # ── Adopted feature catalog ──
+    adopted_catalog = _build_adopted_catalog(harness_results, harness_dir)
+
     # ── Mode-specific note ──
     _mode_note = ""
     if mode == "redrock":
@@ -190,6 +304,8 @@ deeper look at a specific hypothesis is needed.
 ## Pre-computed Dn4000 Diagnostics
 
 {diagnostic_slices}
+
+{adopted_catalog}
 
 ## Task
 
@@ -353,7 +469,7 @@ async def arun(
         else None
     )
 
-    llm = ChatOpenAI(
+    llm = _create_chat_openai(
         model=model,
         api_key=api_key,
         base_url=base_url,
@@ -426,7 +542,57 @@ async def arun(
         finally:
             md.close()
 
-        last_msg = accumulated_messages[-1] if accumulated_messages else None
+        # ── Truncation detection (streaming path) ─
+        if _is_truncated(accumulated_messages):
+            logging.warning(
+                "Synthesis output truncated (finish_reason=length). "
+                "Requesting continuation..."
+            )
+            try:
+                _ctn_md = open(stream_md_path, "a", encoding="utf-8")
+                continuation_msgs = list(accumulated_messages)
+                continuation_msgs.append(
+                    HumanMessage(
+                        content=(
+                            "Your previous response was truncated. Continue EXACTLY "
+                            "from where you stopped. Do NOT repeat anything. Output "
+                            "ONLY the remaining content — do not wrap in markdown fences."
+                        )
+                    )
+                )
+                async for event in agent.astream(
+                    {"messages": continuation_msgs},
+                    config=config,
+                    stream_mode="updates",
+                ):
+                    for _node_name, update in event.items():
+                        for msg in update.get("messages", []):
+                            msg_type = getattr(msg, "type", None)
+                            if msg_type == "ai":
+                                content = (
+                                    msg.content
+                                    if hasattr(msg, "content")
+                                    else ""
+                                )
+                                _ctn_md.write(
+                                    "### Assistant (continuation)\n\n"
+                                    f"{content.strip()}\n\n"
+                                )
+                                _ctn_md.flush()
+                            accumulated_messages.append(msg)
+                _ctn_md.close()
+                logging.info("Synthesis continuation completed successfully.")
+            except Exception as exc:
+                logging.warning(
+                    f"Synthesis continuation retry failed: {exc}. "
+                    "Returning truncated result."
+                )
+                try:
+                    _ctn_md.close()
+                except Exception:
+                    pass
+
+        last_msg = _find_last_ai_message(accumulated_messages)
         raw_content = (
             last_msg.content if last_msg and hasattr(last_msg, "content") else ""
         )
@@ -452,10 +618,39 @@ async def arun(
             {"messages": [("user", user_prompt)]},
             config=config,
         )
+
+        # ── Truncation detection (non‑streaming path) ─
         messages = result.get("messages", [])
-        last_msg = messages[-1]
+        if _is_truncated(messages):
+            logging.warning(
+                "Synthesis output truncated (finish_reason=length). "
+                "Requesting continuation..."
+            )
+            try:
+                continuation_msgs = list(messages)
+                continuation_msgs.append(
+                    HumanMessage(
+                        content=(
+                            "Your previous response was truncated. Continue EXACTLY "
+                            "from where you stopped. Do NOT repeat anything. Output "
+                            "ONLY the remaining content."
+                        )
+                    )
+                )
+                continuation_result = await agent.ainvoke(
+                    {"messages": continuation_msgs}, config=config
+                )
+                messages.extend(continuation_result.get("messages", []))
+                logging.info("Synthesis continuation completed successfully.")
+            except Exception as exc:
+                logging.warning(
+                    f"Synthesis continuation retry failed: {exc}. "
+                    "Returning truncated result."
+                )
+
+        last_msg = _find_last_ai_message(messages)
         raw_content = (
-            last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+            last_msg.content if last_msg and hasattr(last_msg, "content") else ""
         )
 
         parsed = _extract_json_block(raw_content)

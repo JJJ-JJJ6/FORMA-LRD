@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import tool
 
@@ -15,7 +14,7 @@ from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
-from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
+from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb
 
 
@@ -389,7 +388,7 @@ class AnalysisAuditor(BaseAgent):
             else None
         )
 
-        llm = ChatOpenAI(
+        llm = _create_chat_openai(
             model=model,
             api_key=api_key,
             base_url=base_url,
@@ -483,7 +482,7 @@ class AnalysisAuditor(BaseAgent):
             else None
         )
 
-        llm = ChatOpenAI(
+        llm = _create_chat_openai(
             model=model,
             api_key=api_key,
             base_url=base_url,

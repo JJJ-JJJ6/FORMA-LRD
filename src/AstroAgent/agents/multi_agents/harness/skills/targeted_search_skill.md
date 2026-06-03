@@ -18,6 +18,41 @@ This is distinct from NOT_FOUND: MASKED means "no data to evaluate," NOT_FOUND m
 
 Do NOT guess. Use the data in the tables. Trust CWT measurements over preconceptions.
 
+## Token Budget
+
+Your output limit is ~16K tokens. With 25+ predicted lines to evaluate, every line must fit in this budget. The Phase 3 report is the authoritative artifact — Phase 2 inline notes are scratch work and should be terse.
+
+**Compact per-line format**:
+
+- **NOT_FOUND / MASKED** → one short line. No justification needed — the fact of absence is the finding.
+  ```
+  ### CaT1_abs → NOT_FOUND (no trough within 80Å)
+  ### [O II] → MASKED (fully masked)
+  ```
+
+- **MARGINAL / LIKELY** → one line with the best candidate and key metrics. Only add a second line if you must explain a non-obvious rejection.
+  ```
+  ### Ca K_abs → LIKELY, trough@7088.8 offset=2.3Å ridge=8 snr=8.2
+  ### Mg II → MARGINAL, best peak@5052.8 offset=10.1Å but FWHM=752km/s (narrow for broad)
+  ```
+
+- **Do NOT** copy-paste the full CWT feature list into reasoning. Summarize: "N features in window; best is ..." or "all rejected (offset>80Å)".
+
+**Bad example** (verbatim dump — wastes hundreds of tokens):
+```
+### CaT1_abs 8498.0 → λ_pred = 8503.5
+Features: trough@8495.2(z=-0.0003), trough@8550.4(z=0.0062), [... 23 more features ...]
+8495.2: offset = −8.3 Å, FWHM=..., ridge=..., snr=... This is an interesting candidate.
+However, the ridge length is moderate and the signal-to-noise ratio is...
+```
+
+**Good example** (compact — ~8% of the token cost):
+```
+### CaT1_abs → λ_pred 8503.5; 25 troughs in window. Best trough@8495.2 offset=−8.3Å ridge=6 snr=11.2 → LIKELY.
+```
+
+**Priority**: Spend your token budget on the Phase 3 report sections (13a–13g). Phase 2 evaluations should be brief enough that all lines fit before the report begins.
+
 ## Phase 1: Prepare
 
 1. Review the **Spectrum Summary** in the user message for wavelength coverage, median SNR, and any masked wavelength regions (no data — skip lines that fall in them).
@@ -44,10 +79,31 @@ If ``[λ_pred masked]`` or ``[window partially masked]``: note the mask overlap 
 
 If the "Features in z-window" column has actual features (not just `—` and not just a ``[fully masked]`` annotation):
 
-   a. **Evaluate each listed feature** against the predicted line. **Do NOT copy-paste the full feature list into your reasoning** — it wastes tokens and provides zero information. Instead, summarize: "N features in window, best candidate is peak@XXXX(z=...)" or "all features rejected (type mismatch / offset >80Å)". Only quote individual features when they are the selected best candidate or when explaining a specific rejection.
+   a. **Evaluate each listed feature** against the predicted line.
+
+      **⚠️ Do NOT copy-paste the full feature list into your reasoning.** It wastes tokens and provides zero information. Summarize instead. Only quote individual features when they are the selected best candidate or when explaining a specific rejection.
+
+      **Bad example** (verbatim dump — wastes hundreds of tokens):
+      ```
+      ### CaT1_abs 8498.0 → λ_pred = 8503.5
+      Features: trough@8495.2(z=-0.0003), trough@8550.4(z=0.0062), trough@8430.4(z=-0.0080), trough@8590.4(z=0.0109), trough@8651.2(z=0.0180), trough@8354.4(z=-0.0169), trough@8344.0(z=-0.0181), trough@8705.6(z=0.0244), trough@8297.6(z=-0.0236), trough@8761.6(z=0.0310), trough@8768.0(z=0.0318), trough@8777.6(z=0.0329), trough@8826.4(z=0.0386), trough@8884.0(z=0.0454), trough@8920.8(z=0.0498), trough@8084.8(z=-0.0486), trough@8958.4(z=0.0542), trough@9018.4(z=0.0612), trough@7981.6(z=-0.0608), trough@9048.0(z=0.0647), trough@7919.2(z=-0.0681), trough@9101.6(z=0.0710), trough@9204.8(z=0.0832), trough@9314.4(z=0.0961), trough@7663.2(z=-0.0982)
+      ```
+
+      **Good example** (summary — one line, all needed info):
+      ```
+      ### CaT1_abs 8498.0 → λ_pred = 8503.5
+      25 troughs in window. Best: trough@8495.2, offset −8.3 Å, ridge=6, snr=11.2 → LIKELY.
+      ```
+
       - **Type match**: `peak` → emission line; `trough` → absorption line. Mismatch → reject this feature.
       - **Wavelength offset** |λ_feat − λ_pred|: < 20 Å excellent; 20–80 Å acceptable; > 80 Å → reject.
       - **FWHM vs width_class** (see Line Reference table below): broad lines expect FWHM > 2000 km/s; narrow lines < 2000 km/s; `both`: either ok. Flag mismatches but don't reject solely on FWHM.
+
+      - **Blue/red edge risk**: If λ_pred < 4000 Å (blue edge) or λ_pred > 9000 Å (red edge), the spectrum data is degraded. Blue edge: throughput drop + non-Gaussian noise. Red edge: OH skyline residuals. Rules:
+        * Flag status with "edge risk" caveat regardless of outcome.
+        * If SNR < 10 or ridge < 5 in these zones → cap status at MARGINAL (never LIKELY).
+        * If SNR < 5 in these zones → assign NOT_FOUND regardless of offset.
+        * Blue edge: Lines like Lyα, C IV, C III], He II are high-ionization AGN indicators that fall here at moderate redshifts — they are **presumptively unreliable** until the synthesis/auditor stage visually confirms them via read_spectrum_region.
 
    b. **If any feature passes all checks → adopt the best one** (closest in wavelength):
       - Use the feature's pre-computed `z` as the implied redshift (already verified to be in [z_min, z_max])
@@ -89,13 +145,13 @@ If the "Features" column is `—` or all features were rejected in step 4: mark 
 8. Determine the **systemic redshift**. Among all LIKELY (and MARGINAL, if no LIKELY line exists at that priority level) lines, select the one with the **lowest ionization state** per the Ionization Priority table below. Key rules:
 
    - Priority 1 (neutral absorption) is most reliable. Priority 7 ([O III]) is weakest.
-   - He II, C III], C IV, Ne V, Lyα are EXCLUDED (outflow-blueshifted).
+   - He II, C III], C IV, [Ne V], Lyα are EXCLUDED (outflow-blueshifted).
    - ELG exception: if emission-line dominated, anchor on [O II] rather than weak Ca K/H.
    - Fallback: use best available line at lowest-numbered priority level with ≥1 LIKELY or MARGINAL line.
 
 9. Classify the object per the Classification Diagnostics below:
    - **Typical QSO**: broad lines (Lyα, C IV, C III], Mg II) present + high/low ionization lines coexist
-   - **Host Galaxy dominated AGN**: AGN lines present (Ne V, C III], Mg II)
+   - **Host Galaxy dominated AGN**: AGN lines present ([Ne V], C III], Mg II)
    - **Galaxy (ELG)**: narrow lines; no broad lines. Fatal: missing [O II], [O III] doublet spacing wrong.
    - **Galaxy (LRG/BGS)**: Ca H/K absorption, Balmer series. Fatal: Ca K/H missing pair, Dn4000 < 1.3 for claimed LRG.
    - **Unknown**: insufficient confirmed lines for classification
@@ -159,7 +215,7 @@ Do not add extra sections. Write the report only after ALL lines have been evalu
 | C III] | 1909.0 | em | broad |
 | Mg II | 2800.0 | em | broad |
 | Mg II_abs | 2800.0 | abs | absorption |
-| Ne V | 3426.0 | em | narrow |
+| [Ne V] | 3426.0 | em | narrow |
 | [O II] | 3727.0 | em | narrow |
 | Ca K_abs | 3934.8 | abs | absorption |
 | Ca H_abs | 3969.6 | abs | absorption |
@@ -214,7 +270,7 @@ Use lowest-ionization LIKELY line to anchor systemic z:
 | 6 | Mg II 2800 | Mg⁺ | May show outflow blueshift |
 | 7 | [O III]a/b 4960/5008 | O⁺⁺ | Weakest anchor, often blueshifted |
 
-**Excluded** (must NOT anchor systemic z, unless none low-ionization lines): He II, C III], C IV, Ne V, Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
+**Excluded** (must NOT anchor systemic z, unless none low-ionization lines): He II, C III], C IV, [Ne V], Lyα. These high-ionization lines are routinely blueshifted by AGN outflows.
 
 **Outflow Blueshift**: High-ionization lines blueshifted relative to low-ionization by 0–1000 km/s is normal. Δv = (z_high − z_low)/(1+z_low)×c. If a high-ionization line gives a LOWER z than a low-ionization line, suspect misidentification.
 
@@ -226,5 +282,5 @@ Use lowest-ionization LIKELY line to anchor systemic z:
 - **LRG/BGS**: Strong stellar absorption (Ca K/H, G-band, Mg I, Na D). Weak emission. Fatal: Ca K/H missing pair, Dn4000 < 1.3. Dn4000 > 1.6 for old population.
 - **QSO**: Broad emission (Lyα, C IV, C III], Mg II) FWHM > 2000 km/s. Narrow forbidden lines may coexist. Fatal: all broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing.
 - **Star**: Broad absorption, no emission. Distinction from LRG: broader and deeper Balmer absorption.
-- **Ne V as AGN indicator**: Ne V (3426 Å) almost never present in non-AGN objects. If detected, AGN hypothesis must be seriously considered.
+- **[Ne V] as AGN indicator**: [Ne V] (3426 Å) almost never present in non-AGN objects. If detected, AGN hypothesis must be seriously considered.
 - **Cross-type**: LRG vs LRG — absorption lines primary. ELG vs ELG — emission lines primary. Cross-type: judge each hypothesis on internal physical consistency.
