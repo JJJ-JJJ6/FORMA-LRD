@@ -176,9 +176,10 @@ Output a JSON block with the following structure:
             "reason": "<specific physical reason for exclusion>"
         }
     ],
-    "caveats": "<limitations, ambiguities, recommended follow-up>"
 }
 ```
+
+**excluded_hypotheses must be ordered from most to least competitive** — the closest runner-up first, matching the ranking in the Hypotheses Overview Table (more LIKELY lines, tighter σ_z, no fatal flaws → higher rank).
 
 ### Rules for the verdict
 
@@ -269,7 +270,7 @@ Key-value block: wavelength coverage, median SNR, number of hypotheses tested, m
 
 (N(L)=LIKELY, N(M)=MARGINAL, N(N)=NOT_FOUND, N(#)=MASKED)
 
-All tested hypotheses, sorted by verdict then by z. Bold the best hypothesis row.
+All tested hypotheses, sorted by verdict (ACCEPTED first), then by competitiveness within each verdict group (most viable first: more LIKELY lines, tighter σ_z, no fatal flaws). Bold the best hypothesis row.
 
 **## 3. Contradiction Matrix**
 List spectral features claimed by multiple hypotheses as DIFFERENT rest-frame lines. For each conflicting λ_obs:

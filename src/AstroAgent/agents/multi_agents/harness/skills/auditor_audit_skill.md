@@ -26,39 +26,51 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them. The tool acc
 | Ionization priority, excluded lines, outflow | `grep_kb(pattern="priority\|excluded\|outflow\|blueshift", C=2)` |
 | Line rest wavelengths and width classes | `grep_kb(pattern="<line_name>", C=2)` |
 
-## Line Reference (abbreviated)
+## Line Tables
 
 ### Emission Lines
 
-| Line | λ_rest (Å) | Width Class | Notes |
-|------|-----------|-------------|-------|
-| Lyα | 1216.0 | broad | BLR, strongest QSO line |
-| C IV | 1549.0 | broad | BLR |
-| He II | 1640.0 | both | QSO both; galaxy narrow only |
-| C III] | 1909.0 | broad | BLR, semi-forbidden |
-| Mg II | 2800.0 | broad | BLR; can also be absorption |
+| Line Name | λ_rest (Å) | Width Class | Description |
+|-----------|-----------|-------------|-------------|
+| Lyα | 1216.0 | broad | High ionization, strong BLR line |
+| C IV | 1549.0 | broad | High ionization, strong BLR line |
+| He II | 1640.0 | both | QSO: broad+narrow; galaxy: narrow only |
+| C III] | 1909.0 | broad | Semi-forbidden, BLR |
+| Mg II | 2800.0 | broad | BLR broad line; can also be absorption |
 | [Ne V] | 3426.0 | narrow | Strong AGN indicator |
-| [O II] | 3727.0 | narrow | Star-forming, best ELG anchor |
-| Hβ | 4862.7 | both | Balmer |
-| [O III]a | 4960.3 | narrow | NLR doublet (weaker), ratio a:b≈1:3 |
+| [O II] | 3727.0 | narrow | Star-forming region forbidden line |
+| Hε | 3970.1 | both | Balmer series |
+| Hδ | 4102.9 | both | Balmer series |
+| Hγ | 4341.7 | both | Balmer series |
+| Hβ | 4862.7 | both | Balmer series |
+| [O III]a | 4960.3 | narrow | NLR doublet (weaker), ratio a:b ≈ 1:3 |
 | [O III]b | 5008.2 | narrow | NLR doublet (stronger) |
-| Hα | 6564.6 | both | Balmer, often adjacent to [N II] |
+| [N II]a | 6549.8 | narrow | NLR forbidden line |
+| Hα | 6564.6 | both | Balmer series |
+| [N II]b | 6585.3 | narrow | NLR forbidden line |
+| [S II]a | 6718.3 | narrow | NLR forbidden line |
+| [S II]b | 6732.7 | narrow | NLR forbidden line |
 
 ### Absorption Lines
 
-| Line | λ_rest (Å) | Notes |
-|------|-----------|-------|
-| Ca K_abs | 3934.8 | Most characteristic LRG feature |
-| Ca H_abs | 3969.6 | Pairs with Ca K (K deeper, Δ~35 Å rest) |
-| G-band_abs | 4305.6 | CH molecular band |
+| Line Name | λ_rest (Å) | Description |
+|-----------|-----------|-------------|
+| Mg II_abs | 2800.0 | ISM / host galaxy absorption |
+| Ca K_abs | 3934.8 | Early-type galaxy characteristic |
+| Ca H_abs | 3969.6 | Early-type galaxy characteristic |
+| Hε_abs | 3970.1 | Balmer absorption |
+| G-band_abs | 4305.6 | Stellar atmospheric molecular band |
 | Hδ_abs | 4102.9 | Balmer absorption |
 | Hγ_abs | 4341.7 | Balmer absorption |
 | Hβ_abs | 4862.7 | Balmer absorption |
-| Mg I_abs | 5176.7 | Mg b |
-| Na D_abs | 5895.6 | ISM/host galaxy |
+| Mg I_abs | 5176.7 | Host galaxy Mg b absorption |
+| Na D_abs | 5895.6 | ISM / host galaxy absorption |
+| Hα_abs | 6564.6 | Balmer absorption |
+| CaT1_abs | 8498.0 | Calcium triplet |
+| CaT2_abs | 8542.0 | Calcium triplet |
+| CaT3_abs | 8662.0 | Calcium triplet |
 
-Width classification: **broad** > 2000 km/s, **narrow** < 1000 km/s, **intermediate** 1000–2000 km/s.
-
+Width classification: **broad** > 2000 km/s, **narrow** < 1000 km/s, **intermediate** 1000–2000 km/s. "both" = no width verification performed.
 ## Methodology
 
 ### Step 1: Review the Synthesis Verdict
