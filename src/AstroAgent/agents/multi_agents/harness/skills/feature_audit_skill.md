@@ -41,16 +41,15 @@ The user prompt contains a matrix where:
 - **Multi-hypothesis rows** (multiple columns have entries): The same observed feature is being interpreted as different rest-frame lines at different redshifts. These are the most important rows — one physical feature can only have one true identity. If the feature is real, it discriminates between hypotheses. If it's noise, it should be removed from ALL of them.
 - **Consensus rows** (same line name across columns, same/similar redshift): The hypotheses agree — this is likely a real feature.
 
-### Doublet annotations
+### Doublet pairs
 
-When a hypothesis claims both components of a known doublet, the matrix includes a **doublet annotation** below the row:
+When a hypothesis claims both components of a known doublet, a **Doublet Pairs** section below the matrix lists the observed separation and amplitude ratio:
 
 ```
-| 9428.0 | [O III]a LIKELY | [O III]b LIKELY | ...
-|        | ➔ ratio a/b=0.31 (expected 0.33) → ✓ |
+- H1: [O III]a@9428.0 + [O III]b@9520.8 → ratio a/b=0.31 (expected sep 91.5 Å, actual 92.8 Å)
 ```
 
-The Python pre-computes the observed amplitude ratio for known doublets: Ca K/H (K deeper than H), [O III]a/b (b:a ≈ 3:1), [N II]a/b (b:a ≈ 3:1), [S II]a/b (a≈b). A `✓` means the ratio is within tolerance; `✗` means it violates the expected ratio.
+The Python pre-computes these for known doublets: Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b. Use `read_spectrum_region` on both components to verify they are real and the ratio is physically plausible. A ratio deviation may indicate contamination, not a false identification.
 
 ## Methodology
 
@@ -118,14 +117,19 @@ Rules for edge zone features:
 
 ### Step 4: Doublet Verification
 
-For rows with doublet annotations:
+The user prompt lists **Doublet Pairs** — pre-computed observed separations and amplitude ratios for known doublets (Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b). For each pair:
 
-- **Ratio `✓`**: The observed amplitude ratio matches the physical expectation → supports that BOTH components are real. If one component is verified as REAL by Step 3, the other is likely real too.
-- **Ratio `✗`**: The ratio violates the physical expectation. Consider:
+- **Separation check**: Compare the expected separation (rest-frame separation × (1+z)) with the actual observed separation. Close agreement strengthens both identifications.
+- **Ratio check**: Evaluate whether the observed amplitude ratio is physically plausible. Known expectations:
+  - Ca K/H: K must be deeper than H
+  - [O III]a/b: b:a ≈ 3:1 (a/b ≈ 0.33)
+  - [N II]a/b: a:b ≈ 1:3 (b brighter)
+  - [S II]a/b: a ≈ b
+- **Ratio deviations**: A ratio that deviates from expectation does NOT automatically mean the doublet is wrong. Consider:
   - One component may be contaminated (blended with another line, affected by skyline)
   - One component may be noise masquerading as the doublet partner
-  - The weaker component in [O III]a/b (a) may be absorbed by noise if SNR is marginal
-  - **Recommendation**: flag the pair, note the ratio violation, but do NOT auto-remove unless Step 3 independently finds one component is noise
+  - The weaker component (e.g., [O III]a) may be absorbed by noise if SNR is marginal
+- Use `read_spectrum_region` on BOTH components together (wider window) to assess whether both are real features. If the separation is right but the ratio is wrong, flag the pair — do NOT auto-remove unless Step 3 independently finds one component is noise.
 
 ### Step 5: Holistic SNR Assessment
 

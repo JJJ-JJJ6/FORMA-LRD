@@ -576,8 +576,7 @@ async def arun(
         dict with keys:
             wl_range : [float, float]
             n : int
-            wl : list[float]  — wavelengths (Å)
-            fl : list[float]  — flux values
+            data : list[[float, float]]  — [[wl, fl], ...] pairs
         """
         mask = (_wl >= wl_min) & (_wl <= wl_max)
         wl_slice = _wl[mask][::stride]
@@ -585,8 +584,10 @@ async def arun(
         return {
             "wl_range": [wl_min, wl_max],
             "n": len(wl_slice),
-            "wl": [round(float(w), 3) for w in wl_slice],
-            "fl": [round(float(f), 4) for f in fl_slice],
+            "data": [
+                [round(float(w), 3), round(float(f), 4)]
+                for w, f in zip(wl_slice, fl_slice)
+            ],
         }
 
     # ── Build LLM (thinking disabled for multi-turn tool calling) ─

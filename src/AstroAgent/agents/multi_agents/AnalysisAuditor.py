@@ -448,8 +448,8 @@ def _build_feature_audit_user_message(
         "`🔵` = blue edge, `🔴` = red edge. "
         "Type and Amp are properties of the CWT-detected feature itself (identical "
         "across hypotheses — same feature, different name assignments). "
-        "Doublet annotations (➔) show pre-computed amplitude ratios with ✓ (pass) "
-        "or ✗ (fail)."
+        "Doublet pairs (below the matrix) show pre-computed separations and "
+        "amplitude ratios for the LLM to evaluate."
     )
     parts.append("")
 
@@ -487,15 +487,22 @@ def _build_feature_audit_user_message(
 
     # ── Doublet annotations ──
     if doublet_annotations:
-        parts.append("## Doublet Ratio Checks")
+        parts.append("## Doublet Pairs")
+        parts.append("")
+        parts.append(
+            "Pre-computed observed separations and amplitude ratios for known "
+            "doublets. Use `read_spectrum_region` to verify whether both "
+            "components are real and whether the ratio is physically plausible. "
+            "A ratio deviation may indicate contamination (blend, skyline) of "
+            "one component rather than a false identification."
+        )
         parts.append("")
         for da in doublet_annotations:
-            symbol = "✓" if da["is_expected"] else "✗"
             parts.append(
                 f"- **H{da['hypothesis_idx']}**: {da['name_a']}@{da['wl_a']:.1f} + "
                 f"{da['name_b']}@{da['wl_b']:.1f} → "
-                f"ratio {da['note']} (expected {da['sep_expected']:.1f} Å sep, "
-                f"actual {da['sep_actual']:.1f} Å) {symbol}"
+                f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
+                f"actual {da['sep_actual']:.1f} Å)"
             )
         parts.append("")
 
@@ -1056,8 +1063,10 @@ class FeatureAuditor(BaseAgent):
             return {
                 "wl_range": [wl_min, wl_max],
                 "n": len(wl_slice),
-                "wl": [round(float(w), 3) for w in wl_slice],
-                "fl": [round(float(f), 4) for f in fl_slice],
+                "data": [
+                    [round(float(w), 3), round(float(f), 4)]
+                    for w, f in zip(wl_slice, fl_slice)
+                ],
             }
 
         # ── Run LLM ──
@@ -1215,8 +1224,10 @@ class AnalysisAuditor(BaseAgent):
             return {
                 "wl_range": [wl_min, wl_max],
                 "n": len(wl_slice),
-                "wl": [round(float(w), 3) for w in wl_slice],
-                "fl": [round(float(f), 4) for f in fl_slice],
+                "data": [
+                    [round(float(w), 3), round(float(f), 4)]
+                    for w, f in zip(wl_slice, fl_slice)
+                ],
             }
 
         # ── Run LLM ──
