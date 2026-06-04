@@ -350,25 +350,9 @@ def build_contradiction_matrix(
         for f in group:
             cells[f["hypothesis_idx"]] = f
 
-        # Representative type and amplitude for the row
-        types = [f["line_type"] for f in group]
-        n_em = types.count("em")
-        n_abs = types.count("abs")
-        if n_em > n_abs:
-            row_type = "em"
-        elif n_abs > n_em:
-            row_type = "abs"
-        else:
-            row_type = "em/abs"
-        amps = [abs(f["amplitude"]) for f in group if abs(f["amplitude"]) > 0]
-        median_abs_amp = float(np.median(amps)) if amps else None
-        # Apply sign: emission positive, absorption negative
-        if row_type == "em" and median_abs_amp is not None:
-            row_amp = median_abs_amp
-        elif row_type == "abs" and median_abs_amp is not None:
-            row_amp = -median_abs_amp
-        else:
-            row_amp = median_abs_amp  # "em/abs" case — use absolute value
+        # Type and amplitude from the first feature in the group
+        # (all features in a group are the same CWT detection — type & amp are identical)
+        first = group[0]
 
         matrix_rows.append({
             "wl_obs": round(rep_wl, 1),
@@ -376,8 +360,8 @@ def build_contradiction_matrix(
             "n_hypotheses": len(cells),
             "is_edge_blue": rep_wl < 4000.0,
             "is_edge_red": rep_wl > 9000.0,
-            "row_type": row_type,
-            "row_amp": round(row_amp, 4) if row_amp is not None else None,
+            "row_type": first["line_type"],
+            "row_amp": first["amplitude"],
         })
 
     matrix_rows.sort(key=lambda r: r["wl_obs"])
@@ -462,8 +446,8 @@ def _build_feature_audit_user_message(
         "feature (LIKELY or MARGINAL). Cells show the line identification + status. "
         "`—` means no claim at this wavelength. "
         "`🔵` = blue edge, `🔴` = red edge. "
-        "The Type and Amp columns are representative (median amplitude, majority type) "
-        "across all hypotheses claiming this feature. "
+        "Type and Amp are properties of the CWT-detected feature itself (identical "
+        "across hypotheses — same feature, different name assignments). "
         "Doublet annotations (➔) show pre-computed amplitude ratios with ✓ (pass) "
         "or ✗ (fail)."
     )
