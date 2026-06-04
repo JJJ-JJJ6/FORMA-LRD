@@ -61,63 +61,21 @@ Fit-derived measurements have NO ridge_length or cwt_snr. Treat `local_snr > 10`
 
 CWT-derived measurements remain higher trust than fit-derived in general (no model assumptions, no initial-guess dependency), but a high-quality fit with separation verification should not be dismissed simply because it lacks ridge_length.
 
-## Phase 1: Blind Review (No Spectrum Access)
+## Phase 1: Review Verified Features
 
-Start by analysing the harness reports WITHOUT reading the spectrum. Your goal is to determine whether the reports alone provide a decisive answer, or whether you need Phase 2.
+FeatureAuditor has already independently verified every CWT-detected feature by reading the raw spectrum. **Phase 1 blind review is SKIPPED** — you do not need to re-verify features. Instead:
 
-### 1a. Build the contradiction matrix → Phase 2 read plan
+1. **Orient yourself from the Feature Audit Results**: Note the spectrum quality assessment, how many features were REMOVED vs KEPT, and any global issues (edge zone quality, OH/OI contamination).
 
-Identify spectral features that are claimed by MULTIPLE competing hypotheses as DIFFERENT rest-frame lines. For each observed wavelength with conflicting claims, list:
+2. **Scan the Verified Feature Contradiction Matrix**: This matrix contains only KEEP + FLAG features. Each row is a unique observed wavelength where ≥1 hypothesis claims a feature. Cells show line identifications. Identify rows where multiple hypotheses claim DIFFERENT rest-frame lines at the same wavelength — these are your **discriminating windows** for Phase 2.
 
-- The observed wavelength and its CWT properties (FWHM, amplitude, ridge_length)
-- Which hypothesis claims what line
-- The implied redshift from each claim
+3. **Note FLAGGED features** (⚠): These are real but caveated (weak, edge zone, ratio anomaly). A hypothesis whose key anchor line is FLAGGED should be treated with extra caution.
 
-**The contradiction matrix IS your Phase 2 read list.** Each row in the matrix identifies a spectral window you MUST read in Phase 2. If a feature at observed wavelength λ is claimed as line A by H1 and line B by H2, read λ ± 50 Å to determine which identification is correct. If the matrix is sparse, discrimination rests on continuum features (Dn4000) and global consistency, not line-by-line comparison.
-
-### 1b. Check internal consistency per hypothesis
-
-For each SUPPORTED hypothesis (any hypothesis with at least one LIKELY line), verify:
-
-- **Redshift scatter**: Are all LIKELY lines' implied_z values consistent within the verification window? A tight cluster (σ < 0.001) is good; a wide scatter suggests misidentification.
-- **Ionization consistency**: Do the confirmed lines paint a physically coherent picture? Use `grep_kb` to search `kb/classification.md` for type-specific expectations (e.g., an LRG should NOT have strong broad emission lines; an ELG should NOT have Ca H/K absorption dominating).
-- **Line ratio consistency**: For doublets, do the amplitude ratios match physical expectations? Use `grep_kb` to search `kb/lines.md` for doublet-specific rules.
-- **Velocity consistency**: Are high-ionization lines blueshifted relative to low-ionization lines by amounts consistent with outflow physics? Use `grep_kb` to search `kb/ionization.md` for the velocity offset formula and expected blueshift ranges.
-
-### 1c. Decision after Phase 1
-
-After the blind review:
-
-- **If one hypothesis has an overwhelming, physically unique advantage** (e.g., a tight cluster of low-ionization lines at consistent z, with no other hypothesis able to explain the same features with comparable consistency) → skip Phase 2, deliver your verdict with HIGH confidence.
-
-- **If multiple hypotheses remain plausible** (degeneracy cannot be resolved from reports alone) → proceed to Phase 2.
-
-- **If NO hypothesis is credible** (all have internal inconsistencies, or the only LIKELY lines are high-ionization with no low-ionization anchor) → deliver UNSUPPORTED with LOW confidence. Do NOT proceed to Phase 2 — reading spectrum data will not rescue fundamentally broken hypotheses.
-
-### 1d. Analyse the Adopted Feature Catalog
-
-Your user message includes a pre-built **Adopted Feature Catalog** — all LIKELY + MARGINAL features from every hypothesis, pooled together, sorted by |amplitude| descending, with no line identifications. The median amplitude is pre-computed. This catalog is the objective, hypothesis-independent view of what the spectrum actually contains.
-
-**The workflow**:
-
-1. **Read the catalog**: Note the median amplitude. Only features significantly above it (≥ 2× median, or in the top ~25%) are potentially discriminating. Features near or below the median are at the noise floor — they cannot distinguish hypotheses.
-
-2. **Verify the high-amplitude outliers**: For each feature with amplitude well above the baseline, call `read_spectrum_region` on λ_obs ± 150 Å and judge whether it is REAL:
-   - **Real**: A clean, isolated peak or trough clearly standing above the local noise. Width is visually consistent with the CWT measurement.
-   - **Not real (noise)**: The feature sits in a noise-dominated region (±100 Å shows many oscillations of similar amplitude). Or it's a narrow skyline residual (red edge). Or it's noise-blur broadening (CWT FWHM is broad but the raw spectrum shows only a narrow wiggle).
-   - **Edge artifact**: λ_obs < 4000 Å or > 9000 Å, and the feature is indistinguishable from edge noise.
-
-3. **Map verified features to hypotheses**: Once you know which features are real, check which hypotheses can physically explain them (cross-reference the per-hypothesis harness summaries for line identifications):
-   - A hypothesis that self-consistently explains multiple REAL high-amplitude features has genuine physical evidence.
-   - A hypothesis whose "adopted" high-amplitude features all failed verification is fitting noise — its line inventory counts are meaningless regardless of how many LIKELY lines are listed.
-   - If the real high-amplitude features are NOT claimed by any hypothesis, all hypotheses are missing the most prominent spectral features — a red flag that the pipeline is lost.
-
-4. **SNR adequacy**: After completing steps 1–3, you have one of three outcomes:
-   - **Clear signal**: Multiple real high-amplitude features favour one hypothesis. Proceed to Phase 2 for detailed comparison.
-   - **No discriminating features**: Every adopted feature has amplitude near or below the median, OR all high-amplitude features failed verification. The spectrum is noise-dominated — output `classification="Unknown"`, `confidence="LOW"`, primary_evidence="Insufficient SNR — adopted features not distinguishable from the noise floor (median = X, highest adopted = Y)."
-   - **Ambiguous**: Real features exist but don't cleanly favour one hypothesis. Proceed to Phase 2.
-
-5. **Report quantitative details** in your Phase 3 verdict: "Adopted catalog: N features. Baseline (median) = X. Top outliers verified: [λ₀ at amp=Y → real/fake, explained by H?]. SNR adequacy: [clear/ambiguous/insufficient]."
+4. **Check internal consistency per hypothesis** using only verified features:
+   - **Redshift scatter**: Are surviving features' implied_z values consistent?
+   - **Ionization consistency**: Do confirmed lines paint a coherent physical picture? Use `grep_kb` to search `kb/classification.md`.
+   - **Surviving doublet ratios**: Use the "Surviving Doublets" section for pre-verified ratio/sep checks.
+   - **Velocity consistency**: High-ionization vs low-ionization velocity offsets.
 
 ## Phase 2: Targeted Spectrum Investigation
 
@@ -189,6 +147,14 @@ Output a JSON block with the following structure:
 - **Confidence LOW**: degeneracy could not be fully resolved, or the best hypothesis has significant internal inconsistencies.
 - **≤2 LIKELY lines rule**: If the best hypothesis has ≤2 LIKELY lines (regardless of how many MARGINAL lines it has), confidence MUST be at most MEDIUM, and the verdict MUST explicitly note that the line inventory is insufficient for a confident redshift determination. A hypothesis supported by only 1–2 lines cannot be distinguished from a chance alignment of CWT-detected features with predicted positions. **Do not use continuum features (Dn4000, 4000 Å break) to upgrade confidence in this scenario** — continuum features cannot independently confirm a redshift; they can only serve as exclusion criteria for competing hypotheses.
 - **If no hypothesis is credible**: redshift=null, classification="Unknown", confidence="LOW". Do not guess. Do not pick the "least bad" option. It is better to report uncertainty than to commit to a wrong redshift. A false positive classification wastes telescope time on follow-up; an honest null result invites re-observation or complementary data that can resolve the ambiguity.
+
+### FeatureAuditor-backed confidence adjustments
+
+When FeatureAuditor results are present in your user message, apply these additional rules:
+
+- **Upgraded confidence**: If a hypothesis consistently explains KEEP features with correct doublet ratios, and all competing hypotheses rely heavily on FLAGGED features, confidence may be boosted one level (LOW→MEDIUM, MEDIUM→HIGH). Note this upgrade explicitly in your reasoning.
+- **Downgraded confidence**: If the best hypothesis's key anchor line was only FLAGGED (not KEEP), confidence must be LIMITED to MEDIUM regardless of other indicators.
+- **Null result is stronger post-filtering**: If no hypothesis survives cross-comparison of verified features, this is a *stronger* null result than the unfiltered case — FeatureAuditor has already removed noise, so the surviving features are genuinely ambiguous rather than noise-contaminated. Report `redshift=null`, `classification="Unknown"`, `confidence="LOW"` with primary_evidence noting "All verified features are ambiguous — no hypothesis uniquely explains the surviving FeatureAuditor-verified features."
 
 ### Classification rules
 

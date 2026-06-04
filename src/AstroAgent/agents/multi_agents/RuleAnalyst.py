@@ -106,6 +106,28 @@ class RuleAnalyst(BaseAgent):
             }
             return state
 
+        # ── FeatureAuditor found nothing → skip synthesis ──────
+        feature_audit_verdict = state.get("feature_audit_verdict")
+        if feature_audit_verdict and feature_audit_verdict.get("skipped"):
+            reason = feature_audit_verdict.get("reason", "No features to verify.")
+            print(f"[RuleAnalyst] FeatureAuditor skipped ({reason}) — synthesis not needed.")
+            state['rule_analysis'] = {
+                'verdict': 'UNKNOWN',
+                'reason': f'FeatureAuditor skipped: {reason}',
+                'redshift': None,
+                'classification': 'Unknown',
+                'confidence': 'LOW',
+                'best_hypothesis_idx': None,
+                'primary_evidence': (
+                    'No spectral features survived CWT detection + harness verification. '
+                    'The spectrum is likely noise-dominated.'
+                ),
+                'excluded_hypotheses': [],
+                'caveats': reason,
+            }
+            self._writer.write_rule_analysis(state)
+            return state
+
         # ── LLM synthesis ───────────────────────────────────────
         await self._synthesize(state, harness_results, mode=mode)
 
@@ -275,6 +297,11 @@ class RuleAnalyst(BaseAgent):
             base_url=model_cfg['base_url'],
         )
 
+        # ── FeatureAuditor verdict (pass through to synthesis) ──
+        feature_audit_verdict = state.get("feature_audit_verdict")
+        if feature_audit_verdict and feature_audit_verdict.get("skipped"):
+            feature_audit_verdict = None
+
         state['rule_analysis'] = await synthesize_arun(
             harness_results=harness_results,
             wl=wl,
@@ -289,6 +316,7 @@ class RuleAnalyst(BaseAgent):
             report_path=os.path.join(harness_dir, 'synthesis_report.md'),
             csv_path=os.path.join(harness_dir, 'synthesis.csv'),
             summaries=summaries,
+            feature_audit_verdict=feature_audit_verdict,
         )
 
 

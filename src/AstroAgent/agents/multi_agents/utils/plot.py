@@ -523,12 +523,12 @@ def plot_harness_candidate(
             n_abs += 1
             color = 'tomato'
             ax = ax2
-            # 吸收线振幅应为负
+            # 吸收线振幅为负（CWT 已保证），绘图用 -|amp|
             if fwhm > 0:
                 sigma = fwhm / SIGMA_TO_FWHM
                 wave_local = np.linspace(center - 3.5 * sigma, center + 3.5 * sigma, 200)
-                amp_val = abs(amp) if amp and amp < 0 else (abs(amp) if amp else 0.0)
-                gaussian_profile = -abs(amp_val) * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
+                amp_val = abs(amp) if amp else 0.0
+                gaussian_profile = -amp_val * np.exp(-0.5 * ((wave_local - center) / sigma) ** 2)
                 ax.plot(wave_local, gaussian_profile, color='tomato', linewidth=1.8, alpha=0.85)
         else:
             # 无法判断类型，跳过

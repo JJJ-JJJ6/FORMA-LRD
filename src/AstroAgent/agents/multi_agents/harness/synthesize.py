@@ -66,6 +66,7 @@ def _is_truncated(messages: list) -> bool:
 
 
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv
+from AstroAgent.agents.multi_agents.AnalysisAuditor import build_contradiction_matrix
 
 
 # ---------------------------------------------------------------------------
@@ -116,120 +117,6 @@ def _resolve_csv_path(harness_dir: str, idx: int) -> str:
     if os.path.exists(cleaned):
         return cleaned
     return os.path.join(harness_dir, f"{idx}_lines.csv")
-
-
-def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
-    """Build a unified feature catalog from per-hypothesis lines.csv files.
-
-    Collects all LIKELY + MARGINAL features, sorts by |amplitude| descending,
-    and pre-computes the median amplitude baseline.  Features marked REMOVED
-    by FeatureAuditor are excluded.  FLAGGED features are included with a ⚠
-    marker.  The table intentionally omits line names — the LLM first verifies
-    which features are real, then maps them to hypotheses.
-    """
-    import csv as _csv
-
-    n_removed = 0
-    all_features = []
-    for r in harness_results:
-        idx = r["hypothesis_idx"]
-        csv_path = _resolve_csv_path(harness_dir, idx)
-        if not os.path.exists(csv_path):
-            continue
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = _csv.DictReader(f)
-            for row in reader:
-                status = (row.get("status") or "").strip()
-                if status not in ("LIKELY", "MARGINAL"):
-                    continue
-                # Skip features removed by FeatureAuditor
-                fa = (row.get("feature_audit") or "").strip()
-                if fa == "REMOVED":
-                    n_removed += 1
-                    continue
-                try:
-                    wl = float(row.get("fitted_center", 0) or 0)
-                except (ValueError, TypeError):
-                    wl = 0.0
-                try:
-                    amp = float(row.get("amplitude", 0) or 0)
-                except (ValueError, TypeError):
-                    amp = 0.0
-                snr = row.get("cwt_snr") or row.get("local_snr") or "—"
-                ridge = row.get("ridge_length") or "—"
-                all_features.append(
-                    {
-                        "hypothesis_idx": idx,
-                        "wavelength": wl,
-                        "amplitude": abs(amp),
-                        "cwt_snr": snr,
-                        "ridge_length": ridge,
-                        "status": status,
-                        "flagged": fa == "FLAGGED",
-                    }
-                )
-
-    if not all_features:
-        msg = "*No adopted features found across any hypothesis.*\n"
-        if n_removed:
-            msg = (
-                f"*All {n_removed} adopted features were removed by FeatureAuditor "
-                f"(noise/artifact). No features remain for cross-comparison.*\n"
-            )
-        return "\n## Adopted Feature Catalog\n\n" + msg
-
-    # Sort by |amplitude| descending
-    all_features.sort(key=lambda f: f["amplitude"], reverse=True)
-
-    amplitudes = [f["amplitude"] for f in all_features]
-    median_amp = float(np.median(amplitudes))
-
-    note = ""
-    if n_removed:
-        note = (
-            f"\n**FeatureAuditor removed {n_removed} noise/artifact features** "
-            f"from the catalogs below. Features marked ⚠ were flagged with "
-            f"caveats (see per-hypothesis line tables for details).\n"
-        )
-
-    lines = [
-        "## Adopted Feature Catalog\n",
-        "All LIKELY + MARGINAL features from every hypothesis, sorted by "
-        "|amplitude| descending. Features verified as noise/artifact by "
-        "FeatureAuditor have been removed. ⚠ = flagged (real but caveated). "
-        "**No line identifications** — use `read_spectrum_region` to verify "
-        "which (if any) of the high-amplitude outliers are real spectral "
-        "features, then map them to hypotheses.\n",
-        note,
-        f"**Median |amplitude|: {median_amp:.3f}** "
-        f"— features near or below this are at the noise floor.",
-        f"**Top quartile threshold: {amplitudes[max(0, len(amplitudes)//4)]:.3f}**\n",
-        "| Rank | λ_obs (Å) | \\|Amp\\| | SNR | Ridge | Status | H |",
-        "|------|----------|---------|-----|-------|--------|---|",
-    ]
-
-    for i, f in enumerate(all_features, 1):
-        snr_str = (
-            f"{float(f['cwt_snr']):.1f}"
-            if _is_numeric(f["cwt_snr"])
-            else str(f["cwt_snr"])
-        )
-        flag = " ⚠" if f["flagged"] else ""
-        lines.append(
-            f"| {i} | {f['wavelength']:.1f} | {f['amplitude']:.3f} | "
-            f"{snr_str} | {f['ridge_length']} | {f['status']}{flag} | "
-            f"H{f['hypothesis_idx']} |"
-        )
-
-    return "\n".join(lines)
-
-
-def _is_numeric(val) -> bool:
-    try:
-        float(val)
-        return True
-    except (ValueError, TypeError):
-        return False
 
 
 def _build_line_tables(harness_results: list, harness_dir: str) -> str:
@@ -320,6 +207,377 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Feature Audit Results section builder
+# ---------------------------------------------------------------------------
+
+def _build_feature_audit_summary(feature_audit_verdict: dict) -> str:
+    """Build a 'Feature Audit Results' section from the FeatureAuditor verdict.
+
+    Shows spectrum quality, KEEP/REMOVE/FLAG counts, REMOVED list with
+    reasons, FLAGGED list with concerns, and global issues.
+    """
+    if not feature_audit_verdict or not feature_audit_verdict.get("feature_verdicts"):
+        return ""
+
+    quality = feature_audit_verdict.get("spectrum_quality", "unknown")
+    justification = feature_audit_verdict.get("spectrum_quality_justification", "")
+    global_issues = feature_audit_verdict.get("global_issues", [])
+    verdicts = feature_audit_verdict["feature_verdicts"]
+
+    keep = []
+    removed = []
+    flagged = []
+    for v in verdicts:
+        rec = (v.get("recommendation") or "").upper()
+        if rec.startswith("REMOVE"):
+            removed.append(v)
+        elif rec.startswith("FLAG"):
+            flagged.append(v)
+        else:
+            keep.append(v)
+
+    lines = ["## Feature Audit Results", ""]
+    lines.append(f"**Spectrum quality: {quality}** — {justification}")
+    lines.append("")
+    lines.append("| | Count |")
+    lines.append("|---|-------|")
+    lines.append(f"| KEEP | {len(keep)} |")
+    lines.append(f"| FLAG | {len(flagged)} |")
+    lines.append(f"| REMOVE | {len(removed)} |")
+    lines.append("")
+
+    if removed:
+        lines.append("### REMOVED Features (noise/artifact)")
+        lines.append("")
+        lines.append("| λ_obs (Å) | Issues |")
+        lines.append("|-----------|--------|")
+        for v in removed:
+            issues = "; ".join(v.get("issues", [])) or "—"
+            wl = v.get("wl_obs", "?")
+            wl_str = f"{float(wl):.1f}" if isinstance(wl, (int, float)) else str(wl)
+            lines.append(f"| {wl_str} | {issues} |")
+        lines.append("")
+    else:
+        lines.append("*No features were removed.*")
+        lines.append("")
+
+    if flagged:
+        lines.append("### FLAGGED Features (real but caveated)")
+        lines.append("")
+        lines.append("| λ_obs (Å) | Confidence | Issues |")
+        lines.append("|-----------|------------|--------|")
+        for v in flagged:
+            conf = v.get("confidence", "—")
+            issues = "; ".join(v.get("issues", [])) or "—"
+            wl = v.get("wl_obs", "?")
+            wl_str = f"{float(wl):.1f}" if isinstance(wl, (int, float)) else str(wl)
+            lines.append(f"| {wl_str} | {conf} | {issues} |")
+        lines.append("")
+
+    if global_issues:
+        lines.append("### Global Issues")
+        lines.append("")
+        for issue in global_issues:
+            lines.append(f"- {issue}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Contradiction matrix filter (post-FeatureAuditor)
+# ---------------------------------------------------------------------------
+
+def _filter_contradiction_matrix(
+    matrix_rows: list,
+    doublet_annotations: list,
+    stats: dict,
+    feature_audit_verdict: dict,
+) -> tuple:
+    """Filter the contradiction matrix and doublet annotations.
+
+    Keeps only KEEP + FLAG features.  Augments surviving rows with
+    ``confidence``, ``issues``, and ``is_flagged`` from the verdict.
+    Recomputes statistics for the filtered set.
+    """
+    verdicts = feature_audit_verdict.get("feature_verdicts", [])
+    if not verdicts:
+        return matrix_rows, doublet_annotations, stats
+
+    # Build lookup keyed by rounded wl_obs (matching _write_cleaned_csvs convention)
+    verdict_lookup = {}
+    for v in verdicts:
+        wl = v.get("wl_obs")
+        if wl is not None:
+            verdict_lookup[round(float(wl), 1)] = v
+
+    def _is_survivor(wl: float) -> bool:
+        v = verdict_lookup.get(round(wl, 1))
+        if v is None:
+            return True  # not in verdict — keep (shouldn't normally happen)
+        rec = (v.get("recommendation") or "").upper()
+        return rec.startswith("KEEP") or rec.startswith("FLAG")
+
+    # Filter matrix rows
+    filtered_rows = []
+    n_removed = 0
+    for row in matrix_rows:
+        if _is_survivor(row["wl_obs"]):
+            verdict = verdict_lookup.get(round(row["wl_obs"], 1), {})
+            row["confidence"] = verdict.get("confidence", "—")
+            row["issues"] = verdict.get("issues", [])
+            row["is_flagged"] = (
+                (verdict.get("recommendation") or "").upper().startswith("FLAG")
+            )
+            filtered_rows.append(row)
+        else:
+            n_removed += 1
+
+    # Filter doublet annotations
+    filtered_doublets = []
+    for da in doublet_annotations:
+        if da.get("complete"):
+            if _is_survivor(da["wl_a"]) and _is_survivor(da["wl_b"]):
+                filtered_doublets.append(da)
+        else:
+            if _is_survivor(da["wl_claimed"]):
+                filtered_doublets.append(da)
+
+    # Recompute stats
+    n_total = sum(row["n_hypotheses"] for row in filtered_rows)
+    amplitudes = [
+        abs(row["row_amp"]) for row in filtered_rows
+        if abs(row.get("row_amp", 0)) > 0
+    ]
+    median_amp = (
+        round(float(np.median(amplitudes)), 4) if amplitudes else 0.0
+    )
+    top_q = (
+        round(float(sorted(amplitudes, reverse=True)[max(0, len(amplitudes) // 4)]), 4)
+        if amplitudes else 0.0
+    )
+
+    filtered_stats = {
+        **stats,
+        "n_rows": len(filtered_rows),
+        "n_total_features": n_total,
+        "n_edge_blue": sum(1 for r in filtered_rows if r["is_edge_blue"]),
+        "n_edge_red": sum(1 for r in filtered_rows if r["is_edge_red"]),
+        "median_amplitude": median_amp,
+        "top_quartile_amplitude": top_q,
+        "n_removed": n_removed,
+    }
+
+    return filtered_rows, filtered_doublets, filtered_stats
+
+
+# ---------------------------------------------------------------------------
+# Verified matrix section builder
+# ---------------------------------------------------------------------------
+
+def _build_verified_matrix_section(
+    matrix_rows: list,
+    stats: dict,
+    harness_results: list,
+) -> str:
+    """Build a 'Verified Feature Contradiction Matrix' section.
+
+    Uses the same ``|λ_obs|Type|Amp|Width|H1|H2|...|`` format as the
+    FeatureAuditor matrix, with an added Confidence column.
+    """
+    if not matrix_rows:
+        return (
+            "\n## Verified Feature Contradiction Matrix\n\n"
+            "*All features were removed by FeatureAuditor. "
+            "No surviving features for cross-comparison.*\n"
+        )
+
+    hyp_indices = stats.get("hypothesis_indices", [])
+    hyp_info = {}
+    for r in harness_results:
+        idx = r.get("hypothesis_idx")
+        if idx is not None:
+            hyp_info[idx] = {"redshift": r.get("redshift", 0)}
+
+    lines = ["## Verified Feature Contradiction Matrix", ""]
+    lines.append(
+        "Each row is a FeatureAuditor-verified feature (KEEP or FLAG). "
+        "REMOVED features (noise/artifacts) have been excluded. "
+        "Confidence is from FeatureAuditor's visual spectrum verification. "
+        "⚠ = FLAGGED (real but caveated — treat as weakened evidence)."
+    )
+    lines.append("")
+
+    n_removed = stats.get("n_removed", 0)
+    lines.append(
+        f"**{stats['n_rows']} surviving features** across "
+        f"{len(hyp_indices)} hypotheses"
+        + (f" ({n_removed} removed as noise/artifact)." if n_removed else ".")
+    )
+    lines.append("")
+
+    # Header
+    col_header = "| λ_obs (Å) | Type | Amp | Width | Conf |"
+    col_sep = "|-----------|------|------|--------|------|"
+    for hi in hyp_indices:
+        z = hyp_info.get(hi, {}).get("redshift", "?")
+        col_header += f" H{hi} (z={z}) |"
+        col_sep += "-------------|"
+    lines.append(col_header)
+    lines.append(col_sep)
+
+    for row in matrix_rows:
+        wl_obs = row["wl_obs"]
+        edge_prefix = ""
+        if row["is_edge_blue"]:
+            edge_prefix = "🔵 "
+        elif row["is_edge_red"]:
+            edge_prefix = "🔴 "
+
+        conf = row.get("confidence", "—")
+        if row.get("is_flagged"):
+            conf += " ⚠"
+
+        vals = [
+            f"{edge_prefix}{wl_obs:.1f}",
+            row["row_type"],
+            f"{row['row_amp']:+.3f}" if row.get("row_amp") is not None else "—",
+            row.get("row_width", "—"),
+            conf,
+        ]
+        for hi in hyp_indices:
+            cell = row["cells"].get(hi)
+            if cell is None:
+                vals.append("—")
+            else:
+                status_mark = " (MARG)" if cell["status"] == "MARGINAL" else ""
+                vals.append(f"{cell['name']}{status_mark}")
+        lines.append("| " + " | ".join(vals) + " |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Surviving doublets section builder
+# ---------------------------------------------------------------------------
+
+def _build_surviving_doublets_section(doublet_annotations: list) -> str:
+    """Build a 'Surviving Doublets' section.
+
+    Only shows doublets where all relevant components survived FeatureAuditor
+    verification.  These are the most reliable discriminators.
+    """
+    if not doublet_annotations:
+        return ""
+
+    complete = [da for da in doublet_annotations if da.get("complete")]
+    orphans = [da for da in doublet_annotations if not da.get("complete")]
+
+    if not complete and not orphans:
+        return ""
+
+    lines = ["## Surviving Doublets", ""]
+    lines.append(
+        "Doublet pairs and orphans where all relevant components survived "
+        "FeatureAuditor verification. These are the most reliable "
+        "discriminators between hypotheses."
+    )
+    lines.append("")
+
+    if complete:
+        lines.append("### Complete Pairs")
+        lines.append("")
+        for da in complete:
+            lines.append(
+                f"- **H{da['hypothesis_idx']}**: {da['name_a']}@"
+                f"{da['wl_a']:.1f} + {da['name_b']}@{da['wl_b']:.1f} → "
+                f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
+                f"actual {da['sep_actual']:.1f} Å)"
+            )
+        lines.append("")
+
+    if orphans:
+        lines.append("### Orphans (only one component claimed)")
+        lines.append("")
+        for da in orphans:
+            lines.append(
+                f"- **H{da['hypothesis_idx']}**: {da['claimed']}@"
+                f"{da['wl_claimed']:.1f} (amp={da['amp_claimed']:+.3f}) → "
+                f"**missing {da['missing']}** at λ ≈ {da['wl_missing']:.1f} Å"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Task instruction builders
+# ---------------------------------------------------------------------------
+
+def _build_verified_task(surviving: bool = True) -> str:
+    """Task instructions for the post-FeatureAuditor synthesis path.
+
+    Features have already been verified — no blind review needed.
+    The verified matrix IS the Phase 2 read list.
+    """
+    if not surviving:
+        return (
+            "## Task\n\n"
+            "FeatureAuditor has verified all claimed features and found NONE "
+            "to be physically real. All CWT-detected features were classified "
+            "as noise or artifacts. This is a strong signal that the spectrum "
+            "is noise-dominated or that none of the proposed redshift "
+            "hypotheses match real spectral features.\n\n"
+            "**Deliver your verdict now.** Output `redshift=null`, "
+            "`classification=\"Unknown\"`, `confidence=\"LOW\"`. "
+            "Do NOT attempt Phase 2 reads — there are no surviving features "
+            "to discriminate between.\n\n"
+            "Follow Phase 3 (write CSV + report) and Phase 4 (JSON verdict) "
+            "from your system prompt."
+        )
+
+    return (
+        "## Task\n\n"
+        "FeatureAuditor has already independently verified every CWT-detected "
+        "feature by reading the raw spectrum. Your job is now **cross-comparison**, "
+        "not re-verification.\n\n"
+        "### Phase 1: Review Verified Features\n\n"
+        "1. **Orient yourself**: Read the Feature Audit Results above. Note "
+        "spectrum quality, which features were removed/flagged, and any global "
+        "issues (edge zone quality, OH/OI contamination).\n"
+        "2. **Scan the Verified Feature Contradiction Matrix**: Identify rows "
+        "where multiple hypotheses claim different line IDs at the same observed "
+        "wavelength — these are your discriminating windows.\n"
+        "3. **Check internal consistency per hypothesis** using only verified "
+        "(KEEP + FLAG) features: redshift scatter, ionization consistency, "
+        "surviving doublet ratios. Use `grep_kb` for physics rules.\n"
+        "4. **Note FLAGGED features** (⚠): These are real but caveated. "
+        "A hypothesis whose key anchor line is FLAGGED should be treated with "
+        "extra caution.\n\n"
+        "### Decision after Phase 1\n\n"
+        "- If one hypothesis uniquely explains all verified features with tight "
+        "physical consistency → deliver verdict directly (skip Phase 2).\n"
+        "- If multiple hypotheses can explain the verified features → proceed to "
+        "Phase 2 with targeted reads at the discriminating windows in the "
+        "verified matrix.\n"
+        "- If no hypothesis is credible → deliver UNKNOWN with LOW confidence.\n\n"
+        "### Phase 2: Targeted Spectrum Investigation\n\n"
+        "The Verified Feature Contradiction Matrix IS your Phase 2 read list. "
+        "For each row where hypotheses disagree, use `read_spectrum_region` to "
+        "examine the specific wavelength window and determine which line "
+        "identification (if any) is physically correct.\n\n"
+        "**Read as little data as possible** — target each read at a specific "
+        "discriminating question. Batch your reads.\n\n"
+        "### Phase 3 & 4\n\n"
+        "Write the synthesis CSV (`write_synthesis_csv`) and report "
+        "(`write_report`), then output the final JSON verdict block per your "
+        "system prompt specification. REMOVED features must NOT appear in the "
+        "CSV output."
+    )
+
+
+# ---------------------------------------------------------------------------
 # User message builder
 # ---------------------------------------------------------------------------
 
@@ -333,6 +591,7 @@ def _build_user_message(
     mode: str = "nomad",
     report_path: str | None = None,
     csv_path: str | None = None,
+    feature_audit_verdict: dict | None = None,
 ) -> str:
     """Build the user prompt with spectrum metadata, harness reports, and
     pre-computed Dn4000 diagnostics.
@@ -345,6 +604,10 @@ def _build_user_message(
     mode : str
         "nomad" or "redrock". Redrock-mode reports may contain fit-derived
         measurements alongside CWT features.
+    feature_audit_verdict : dict or None
+        FeatureAuditor verdict JSON.  When present, a Feature Audit Results
+        section and a Verified Feature Contradiction Matrix replace the
+        adopted catalog, and task instructions skip blind review.
     """
 
     # ── Build Dn4000 lookup ──
@@ -356,9 +619,9 @@ def _build_user_message(
         idx = r["hypothesis_idx"]
         report_text = r.get("report", "")
         if not report_text:
-            report_path = os.path.join(harness_dir, f"{idx}_report.md")
-            if os.path.exists(report_path):
-                report_text = Path(report_path).read_text(encoding="utf-8")
+            _report_path = os.path.join(harness_dir, f"{idx}_report.md")
+            if os.path.exists(_report_path):
+                report_text = Path(_report_path).read_text(encoding="utf-8")
 
         # Use pre-built summary if available, otherwise fall back
         if summaries and i < len(summaries):
@@ -385,12 +648,6 @@ def _build_user_message(
     # ── Dn4000 diagnostics ──
     diagnostic_slices = prepare_diagnostic_slices(wl, fl, harness_results)
 
-    # ── Adopted feature catalog ──
-    adopted_catalog = _build_adopted_catalog(harness_results, harness_dir)
-
-    # ── Per-hypothesis full line tables (for CSV population) ──
-    line_tables = _build_line_tables(harness_results, harness_dir)
-
     # ── Mode-specific note ──
     _mode_note = ""
     if mode == "redrock":
@@ -412,6 +669,51 @@ def _build_user_message(
     if csv_path:
         _output_paths += f"Output Synthesis CSV: {csv_path}\n"
 
+    # ── FeatureAuditor results (always present in normal flow) ───
+    has_verdict = bool(
+        feature_audit_verdict
+        and feature_audit_verdict.get("feature_verdicts")
+        and not feature_audit_verdict.get("skipped")
+    )
+
+    if has_verdict:
+        wl_left = float(wl[0])
+        wl_right = float(wl[-1])
+        full_matrix, full_doublets, full_stats = build_contradiction_matrix(
+            harness_results, harness_dir, wl_left, wl_right,
+        )
+        filtered_matrix, filtered_doublets, filtered_stats = (
+            _filter_contradiction_matrix(
+                full_matrix, full_doublets, full_stats, feature_audit_verdict,
+            )
+        )
+        audit_section = _build_feature_audit_summary(feature_audit_verdict)
+        verified_matrix_section = _build_verified_matrix_section(
+            filtered_matrix, filtered_stats, harness_results,
+        )
+        surviving_doublets_section = _build_surviving_doublets_section(
+            filtered_doublets,
+        )
+        task_text = _build_verified_task(surviving=len(filtered_matrix) > 0)
+    else:
+        audit_section = (
+            "## Feature Audit Results\n\n"
+            "*FeatureAuditor did not produce valid results — "
+            "all features are unverified.*\n"
+        )
+        verified_matrix_section = ""
+        surviving_doublets_section = ""
+        task_text = (
+            "## Task\n\n"
+            "FeatureAuditor verification is unavailable. Proceed with standard "
+            "Phase 1–4 methodology: blind review, build contradiction matrix, "
+            "targeted reads, final verdict. Treat ALL harness-reported features "
+            "as unverified — verify them yourself with `read_spectrum_region`."
+        )
+
+    # ── Per-hypothesis full line tables (for CSV population) ──
+    line_tables = _build_line_tables(harness_results, harness_dir)
+
     return f"""## Spectrum
 
 - Wavelength range: {spec_wl_range} Å
@@ -431,32 +733,10 @@ deeper look at a specific hypothesis is needed.
 
 {diagnostic_slices}
 
-{adopted_catalog}
-
+{audit_section}{verified_matrix_section}{surviving_doublets_section}
 {line_tables}
 
-## Task
-
-Follow the Phase 1 → Phase 2 → Phase 3 → Phase 4 strategy from your system prompt.
-
-Phase 1: Blind review — analyse the harness summaries WITHOUT calling
-read_spectrum_region. Build the contradiction matrix from the LIKELY/MARGINAL
-line lists, check internal consistency per hypothesis. The contradiction matrix
-IS your Phase 2 read list: each wavelength where two hypotheses claim different
-rest-frame lines identifies a discriminating window to read later.
-
-If one hypothesis has overwhelming unique advantage, skip Phase 2 and deliver
-your verdict.
-
-Phase 2 (only if needed): Use `read_spectrum_region` to examine the specific
-wavelength windows from the contradiction matrix that discriminate between
-remaining plausible hypotheses. Read as little data as possible — target each
-read at a specific question.
-
-Phase 3: Write the synthesis CSV (one row per hypothesis) via `write_synthesis_csv`,
-then write the synthesis report via `write_report`.
-
-Phase 4: Output the final verdict as a JSON block per the specification.
+{task_text}
 """
 
 
@@ -503,6 +783,7 @@ async def arun(
     mode: str = "nomad",
     report_path: str | None = None,
     csv_path: str | None = None,
+    feature_audit_verdict: dict | None = None,
 ) -> dict:
     """Run the LLM synthesis agent over multiple harness reports.
 
@@ -543,7 +824,8 @@ async def arun(
 
     system_prompt = _load_skill()
     user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries,
-                                      mode=mode, report_path=report_path, csv_path=csv_path)
+                                      mode=mode, report_path=report_path, csv_path=csv_path,
+                                      feature_audit_verdict=feature_audit_verdict)
 
     # ── Closure over arrays for zero-copy slicing ────────────────
     _wl = wl

@@ -136,7 +136,13 @@ Lines at higher redshift that naturally fall in this region include: Lyα (1216)
 
 ## Red Edge Noise Zone (λ_obs > 9000 Å for DESI)
 
-The DESI red arm beyond ~9000 Å has elevated skyline contamination from OH airglow:
+## Skyline Contamination (OH + OI Airglow)
+
+The DESI spectrum is contaminated by Earth's atmospheric airglow emission at fixed observed wavelengths:
+
+### OH Airglow (Red edge: > 7000 Å, strongest > 9000 Å)
+
+Hydroxyl (OH) molecular vibration-rotation bands produce dense, bright narrow emission lines in the red-to-near-IR.
 
 1. **Skyline density**: OH emission lines are dense and bright beyond 9000 Å. The CWT detector cannot distinguish astrophysical features from skylines.
 2. **Skyline residuals**: Even after sky subtraction, residual OH lines appear as narrow emission/absorption features at fixed observed wavelengths.
@@ -146,4 +152,16 @@ The DESI red arm beyond ~9000 Å has elevated skyline contamination from OH airg
    - If SNR < 10 or ridge < 5 in the red zone, cap status at MARGINAL
    - **Must read spectrum ±150 Å** before accepting any red-zone line
 
-Lines that may fall in this region at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 9000 Å, their reliability is compromised and this must be noted in the synthesis verdict.
+### OI Airglow (Visible: 5577, 6300, 6364 Å)
+
+Atomic oxygen (OI) forbidden transitions produce three prominent narrow emission lines:
+
+| λ_obs (Å) | Transition | Notes |
+|-----------|-----------|-------|
+| 5577.3 | [OI] green line | Strong, isolated. Often the brightest skyline in the visible band |
+| 6300.3 | [OI] red line | Weaker, but narrow and persistent |
+| 6363.8 | [OI] red line | Companion to 6300.3, ratio 6300/6364 ≈ 3:1 |
+
+Unlike OH which is a red-edge problem, OI lines can contaminate features ANYWHERE in the visible spectrum (4000–7000 Å). A CWT-detected narrow emission feature near 5577, 6300, or 6364 Å should be checked against OI contamination regardless of the claimed redshift.
+
+Lines that may fall in the red edge at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 9000 Å, their reliability is compromised and this must be noted in the synthesis verdict.

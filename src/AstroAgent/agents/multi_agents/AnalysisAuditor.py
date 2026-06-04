@@ -15,6 +15,7 @@ Stage B — SynthesisAudit (post-synthesis):
     confidence assessment: CONFIRM / DOWNGRADE / REJECT / UNCERTAIN.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -145,24 +146,30 @@ def _format_tool_result(msg) -> str:
 # Doublet definitions (shared between matrix builder and skills)
 # ============================================================================
 
-# ratio_check_fn: (amp_a, amp_b) -> (ratio, is_expected, note)
+# ratio_check_fn: (amp_a, amp_b) -> (ratio_ab, is_expected, note)
+# ratio_ab = |amp_a| / |amp_b|  (a = shorter λ, b = longer λ)
+# Expected values per KB:
+#   [O III]: b:a ≈ 3:1 → a/b ≈ 0.33
+#   [N II]:  a:b ≈ 1:3 → a/b ≈ 0.33
+#   [S II]:  a ≈ b     → a/b ≈ 1.0
+#   Ca K/H:  K deeper than H → K/H > 1
 DOUBLET_DEFS = [
     {
         "name_a": "Ca K_abs", "rest_a": 3934.8,
         "name_b": "Ca H_abs", "rest_b": 3969.6,
         "sep_rest": 34.8,
-        "ratio_desc": "K MUST be deeper than H (|amp_K| > |amp_H|)",
+        "ratio_desc": "K/H > 1 (K MUST be deeper than H)",
         "check": lambda a, b: (
-            abs(b) / max(abs(a), 1e-10),
+            abs(a) / max(abs(b), 1e-10),
             abs(a) > abs(b),
-            "K deeper" if abs(a) > abs(b) else "REVERSED: H deeper than K",
+            f"K/H={abs(a)/max(abs(b), 1e-10):.2f}",
         ),
     },
     {
         "name_a": "[O III]a", "rest_a": 4960.3,
         "name_b": "[O III]b", "rest_b": 5008.2,
         "sep_rest": 47.9,
-        "ratio_desc": "b:a ≈ 3:1 (ratio range 0.25–0.40 acceptable)",
+        "ratio_desc": "b:a ≈ 3:1 → a/b ≈ 0.33",
         "check": lambda a, b: (
             abs(a) / max(abs(b), 1e-10),
             0.20 <= abs(a) / max(abs(b), 1e-10) <= 0.45,
@@ -173,7 +180,7 @@ DOUBLET_DEFS = [
         "name_a": "[N II]a", "rest_a": 6549.8,
         "name_b": "[N II]b", "rest_b": 6585.3,
         "sep_rest": 35.5,
-        "ratio_desc": "a:b ≈ 1:3 (ratio range 0.25–0.40 acceptable)",
+        "ratio_desc": "a:b ≈ 1:3 → a/b ≈ 0.33",
         "check": lambda a, b: (
             abs(a) / max(abs(b), 1e-10),
             0.20 <= abs(a) / max(abs(b), 1e-10) <= 0.45,
@@ -184,7 +191,7 @@ DOUBLET_DEFS = [
         "name_a": "[S II]a", "rest_a": 6718.3,
         "name_b": "[S II]b", "rest_b": 6732.7,
         "sep_rest": 14.4,
-        "ratio_desc": "a ≈ b (ratio range 0.7–1.4 acceptable)",
+        "ratio_desc": "a ≈ b → a/b ≈ 1.0",
         "check": lambda a, b: (
             abs(a) / max(abs(b), 1e-10),
             0.7 <= abs(a) / max(abs(b), 1e-10) <= 1.4,
@@ -231,9 +238,14 @@ def _detect_doublets(
     features_by_hyp: Dict[int, List[dict]],
     redshift_by_hyp: Dict[int, float],
 ) -> List[dict]:
-    """Detect known doublet pairs within each hypothesis.
+    """Detect known doublet pairs (and orphans) within each hypothesis.
 
-    Returns a list of doublet annotations.
+    Reports:
+    - Complete pairs: both components claimed.  Separation and ratio are
+      pre-computed; mismatches are strong evidence against the identification.
+    - Orphans: only one component claimed.  The missing component's expected
+      λ_obs is computed; the LLM should check whether a real feature exists
+      there (misidentification) or the claimed component is a false match.
     """
     annotations = []
     for hi, feats in features_by_hyp.items():
@@ -245,26 +257,53 @@ def _detect_doublets(
         for dd in DOUBLET_DEFS:
             candidates_a = by_name.get(dd["name_a"], [])
             candidates_b = by_name.get(dd["name_b"], [])
+
+            # ── Complete pairs ──
             for fa in candidates_a:
                 for fb in candidates_b:
                     sep_expected = dd["sep_rest"] * (1.0 + redshift)
                     sep_actual = abs(fb["wl_obs"] - fa["wl_obs"])
-                    if abs(sep_actual - sep_expected) <= max(10.0, sep_expected * 0.1):
-                        ratio, is_expected, note = dd["check"](fa["amplitude"], fb["amplitude"])
-                        annotations.append({
-                            "hypothesis_idx": hi,
-                            "name_a": dd["name_a"],
-                            "wl_a": fa["wl_obs"],
-                            "amp_a": fa["amplitude"],
-                            "name_b": dd["name_b"],
-                            "wl_b": fb["wl_obs"],
-                            "amp_b": fb["amplitude"],
-                            "ratio": round(ratio, 3),
-                            "is_expected": is_expected,
-                            "note": note,
-                            "sep_expected": round(sep_expected, 1),
-                            "sep_actual": round(sep_actual, 1),
-                        })
+                    ratio, _, note = dd["check"](fa["amplitude"], fb["amplitude"])
+                    annotations.append({
+                        "hypothesis_idx": hi,
+                        "complete": True,
+                        "name_a": dd["name_a"],
+                        "wl_a": fa["wl_obs"],
+                        "amp_a": fa["amplitude"],
+                        "name_b": dd["name_b"],
+                        "wl_b": fb["wl_obs"],
+                        "amp_b": fb["amplitude"],
+                        "ratio": round(ratio, 3),
+                        "note": note,
+                        "sep_expected": round(sep_expected, 1),
+                        "sep_actual": round(sep_actual, 1),
+                    })
+
+            # ── Orphans: only one component claimed ──
+            for fa in candidates_a:
+                if not candidates_b:
+                    wl_missing = dd["rest_b"] * (1.0 + redshift)
+                    annotations.append({
+                        "hypothesis_idx": hi,
+                        "complete": False,
+                        "claimed": dd["name_a"],
+                        "wl_claimed": fa["wl_obs"],
+                        "amp_claimed": fa["amplitude"],
+                        "missing": dd["name_b"],
+                        "wl_missing": round(wl_missing, 1),
+                    })
+            for fb in candidates_b:
+                if not candidates_a:
+                    wl_missing = dd["rest_a"] * (1.0 + redshift)
+                    annotations.append({
+                        "hypothesis_idx": hi,
+                        "complete": False,
+                        "claimed": dd["name_b"],
+                        "wl_claimed": fb["wl_obs"],
+                        "amp_claimed": fb["amplitude"],
+                        "missing": dd["name_a"],
+                        "wl_missing": round(wl_missing, 1),
+                    })
     return annotations
 
 
@@ -314,6 +353,15 @@ def build_contradiction_matrix(
                 name = (row.get("name") or "").strip()
                 line_type = "abs" if name.endswith("_abs") else "em"
 
+                # Width class: broad > 2000 km/s, narrow < 2000 km/s
+                fwhm_str = row.get("fwhm_km_s", "—")
+                try:
+                    fwhm_val = float(fwhm_str)
+                    width_class = "broad" if fwhm_val > 2000 else "narrow"
+                except (ValueError, TypeError):
+                    fwhm_val = None
+                    width_class = "—"
+
                 feat = {
                     "hypothesis_idx": idx,
                     "redshift": r.get("redshift", 0),
@@ -324,7 +372,8 @@ def build_contradiction_matrix(
                     "status": status,
                     "ridge_length": row.get("ridge_length", "—"),
                     "cwt_snr": row.get("cwt_snr", "—"),
-                    "fwhm_km_s": row.get("fwhm_km_s", "—"),
+                    "fwhm_km_s": fwhm_str,
+                    "width_class": width_class,
                 }
                 all_features.append(feat)
                 features_by_hyp[idx].append(feat)
@@ -350,8 +399,8 @@ def build_contradiction_matrix(
         for f in group:
             cells[f["hypothesis_idx"]] = f
 
-        # Type and amplitude from the first feature in the group
-        # (all features in a group are the same CWT detection — type & amp are identical)
+        # Type, amplitude, and width from the first feature in the group
+        # (all features in a group are the same CWT detection — these are identical)
         first = group[0]
 
         matrix_rows.append({
@@ -362,6 +411,7 @@ def build_contradiction_matrix(
             "is_edge_red": rep_wl > 9000.0,
             "row_type": first["line_type"],
             "row_amp": first["amplitude"],
+            "row_width": first["width_class"],
         })
 
     matrix_rows.sort(key=lambda r: r["wl_obs"])
@@ -419,7 +469,7 @@ def _build_feature_audit_user_message(
     parts.append("## Spectrum")
     parts.append(f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å")
     parts.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    parts.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH skyline residuals)")
+    parts.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH + OI skyline residuals)")
     parts.append("")
 
     # ── Statistics ──
@@ -446,15 +496,16 @@ def _build_feature_audit_user_message(
         "feature (LIKELY or MARGINAL). Cells show the line identification + status. "
         "`—` means no claim at this wavelength. "
         "`🔵` = blue edge, `🔴` = red edge. "
-        "Type and Amp are properties of the CWT-detected feature itself (identical "
-        "across hypotheses — same feature, different name assignments). "
+        "Type, Amp, and Width are properties of the CWT-detected feature itself "
+        "(identical across hypotheses — same feature, different name assignments). "
+        "Width: broad > 2000 km/s, narrow < 2000 km/s. "
         "Doublet pairs (below the matrix) show pre-computed separations and "
         "amplitude ratios for the LLM to evaluate."
     )
     parts.append("")
 
-    col_header = "| λ_obs (Å) | Type | Amp |"
-    col_sep = "|-----------|------|------|"
+    col_header = "| λ_obs (Å) | Type | Amp | Width |"
+    col_sep = "|-----------|------|------|--------|"
     for hi in hyp_indices:
         z = hyp_info.get(hi, {}).get("redshift", "?")
         col_header += f" H{hi} (z={z}) |"
@@ -474,6 +525,7 @@ def _build_feature_audit_user_message(
             f"{edge_prefix}{wl_obs:.1f}",
             row["row_type"],
             f"{row['row_amp']:+.3f}" if row["row_amp"] is not None else "—",
+            row.get("row_width", "—"),
         ]
         for hi in hyp_indices:
             cell = row["cells"].get(hi)
@@ -487,24 +539,45 @@ def _build_feature_audit_user_message(
 
     # ── Doublet annotations ──
     if doublet_annotations:
-        parts.append("## Doublet Pairs")
+        parts.append("## Doublet Pairs & Orphans")
         parts.append("")
         parts.append(
-            "Pre-computed observed separations and amplitude ratios for known "
-            "doublets. Use `read_spectrum_region` to verify whether both "
-            "components are real and whether the ratio is physically plausible. "
-            "A ratio deviation may indicate contamination (blend, skyline) of "
-            "one component rather than a false identification."
+            "Known doublets claimed by each hypothesis.  **Complete pairs** show "
+            "pre-computed separation and amplitude ratio — mismatches are strong "
+            "evidence against the identification.  **Orphans** show cases where "
+            "only one component is claimed; the missing line's expected λ_obs is "
+            "given.  The LLM must check whether a real feature exists at the "
+            "missing position (misidentification) or the claimed component is a "
+            "false match.  Use `read_spectrum_region` around the expected region."
         )
         parts.append("")
-        for da in doublet_annotations:
-            parts.append(
-                f"- **H{da['hypothesis_idx']}**: {da['name_a']}@{da['wl_a']:.1f} + "
-                f"{da['name_b']}@{da['wl_b']:.1f} → "
-                f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
-                f"actual {da['sep_actual']:.1f} Å)"
-            )
-        parts.append("")
+
+        # Complete pairs first
+        complete = [da for da in doublet_annotations if da.get("complete")]
+        if complete:
+            parts.append("### Complete Pairs")
+            parts.append("")
+            for da in complete:
+                parts.append(
+                    f"- **H{da['hypothesis_idx']}**: {da['name_a']}@{da['wl_a']:.1f} + "
+                    f"{da['name_b']}@{da['wl_b']:.1f} → "
+                    f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
+                    f"actual {da['sep_actual']:.1f} Å)"
+                )
+            parts.append("")
+
+        # Orphans
+        orphans = [da for da in doublet_annotations if not da.get("complete")]
+        if orphans:
+            parts.append("### Orphans (only one component claimed)")
+            parts.append("")
+            for da in orphans:
+                parts.append(
+                    f"- **H{da['hypothesis_idx']}**: {da['claimed']}@"
+                    f"{da['wl_claimed']:.1f} (amp={da['amp_claimed']:+.3f}) → "
+                    f"**missing {da['missing']}** at λ ≈ {da['wl_missing']:.1f} Å"
+                )
+            parts.append("")
 
     # ── Task ──
     parts.append("## Task")
@@ -555,7 +628,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
             spec_lines.append(f"- Median SNR: {float(snr):.1f}")
 
     spec_lines.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    spec_lines.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH skyline residuals)")
+    spec_lines.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH + OI skyline residuals)")
 
     parts = ["\n".join(spec_lines), ""]
 
@@ -1069,24 +1142,39 @@ class FeatureAuditor(BaseAgent):
                 ],
             }
 
-        # ── Run LLM ──
-        parsed = await _run_llm_agent(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            tools=[read_spectrum_region, grep_kb],
-            harness_dir=harness_dir,
-            stream_filename="feature_audit_stream.md",
-            stream_title="Feature Audit — Cross-Hypothesis Verification",
-            json_keys=["feature_verdicts"],
-            log_prefix="FeatureAuditor",
-        )
+        # ── Run LLM with retry on JSON parse failure ──
+        MAX_RETRIES = 3
+        parsed = None
+        for attempt in range(MAX_RETRIES):
+            parsed = await _run_llm_agent(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                tools=[read_spectrum_region, grep_kb],
+                harness_dir=harness_dir,
+                stream_filename="feature_audit_stream.md",
+                stream_title="Feature Audit — Cross-Hypothesis Verification",
+                json_keys=["feature_verdicts"],
+                log_prefix="FeatureAuditor",
+            )
+            if parsed is not None and parsed.get("feature_verdicts"):
+                break
+            if attempt < MAX_RETRIES - 1:
+                logging.warning(
+                    f"[FeatureAuditor] LLM call {attempt+1}/{MAX_RETRIES} "
+                    f"produced no valid JSON, retrying..."
+                )
+                await asyncio.sleep(1)
 
-        if parsed is None:
-            print("[FeatureAuditor] Could not extract JSON from audit response.")
+        if parsed is None or not parsed.get("feature_verdicts"):
+            print("[FeatureAuditor] All retries exhausted — could not extract valid JSON.")
             parsed = {
                 "spectrum_quality": "unknown",
-                "spectrum_quality_justification": "Failed to parse JSON from LLM response.",
+                "spectrum_quality_justification": (
+                    f"Failed to parse valid JSON from LLM response "
+                    f"after {MAX_RETRIES} attempts."
+                ),
                 "feature_verdicts": [],
+                "global_issues": [],
             }
 
         state["feature_audit_verdict"] = parsed

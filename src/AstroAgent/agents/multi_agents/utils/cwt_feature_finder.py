@@ -202,7 +202,7 @@ def find_features_cwt(wavelength, flux, snr_thresh=5.0, min_ridge_length=2,
         for c in candidates:
             amp = c['amplitude']
             if feature_type == 'absorption':
-                amp = abs(amp)
+                amp = -abs(amp)
             fwhm_a = c['fwhm_pix'] * mean_dwave
             fwhm_km_s = fwhm_a / c['wavelength'] * 3e5 if c['wavelength'] > 0 else 0
             records.append({

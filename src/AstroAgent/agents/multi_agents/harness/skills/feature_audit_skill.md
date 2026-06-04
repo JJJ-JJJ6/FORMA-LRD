@@ -22,7 +22,7 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them.
 | When you need... | Call |
 |------------------|------|
 | Doublet spacing, ratio rules | `grep_kb(pattern="doublet\|ratio\|separation\|Ca K/H\|O III", C=2)` |
-| Known OH skyline positions | `grep_kb(pattern="skyline\|OH")` |
+| Known OH/OI skyline positions | `grep_kb(pattern="skyline\|OH\|OI\|airglow", C=3)` |
 | Line rest wavelengths | `grep_kb(pattern="<line_name>", C=2)` |
 
 ## Understanding the Feature Contradiction Matrix
@@ -34,6 +34,7 @@ The user prompt contains a matrix where:
 - **Each cell** = the line identification at that hypothesis's redshift, or "—" (no claim)
 - **Status markers**: `(MARG)` = MARGINAL, no marker = LIKELY
 - **Edge zone markers**: `🔵` prefix = blue edge (λ < 4000 Å), `🔴` prefix = red edge (λ > 9000 Å)
+- **Type, Amp, Width columns**: properties of the CWT-detected feature itself (same feature, different name assignments across hypotheses). Width: broad > 2000 km/s, narrow < 2000 km/s.
 
 ### What the matrix tells you
 
@@ -41,15 +42,22 @@ The user prompt contains a matrix where:
 - **Multi-hypothesis rows** (multiple columns have entries): The same observed feature is being interpreted as different rest-frame lines at different redshifts. These are the most important rows — one physical feature can only have one true identity. If the feature is real, it discriminates between hypotheses. If it's noise, it should be removed from ALL of them.
 - **Consensus rows** (same line name across columns, same/similar redshift): The hypotheses agree — this is likely a real feature.
 
-### Doublet pairs
+### Doublet pairs & orphans
 
-When a hypothesis claims both components of a known doublet, a **Doublet Pairs** section below the matrix lists the observed separation and amplitude ratio:
+Below the matrix, a **Doublet Pairs & Orphans** section lists:
+
+- **Complete pairs**: Both components claimed. Shows observed separation and amplitude ratio. A large separation mismatch or near-zero/inf ratio is strong evidence against the identification.
+- **Orphans**: Only one component claimed. The missing component's expected λ_obs is computed from the redshift. The LLM must check whether a real feature exists there — if not, the claimed component is likely a false match.
 
 ```
+### Complete Pairs
 - H1: [O III]a@9428.0 + [O III]b@9520.8 → ratio a/b=0.31 (expected sep 91.5 Å, actual 92.8 Å)
+
+### Orphans (only one component claimed)
+- H2: Ca K_abs@7442.4 (amp=-0.100) → missing Ca H_abs at λ ≈ 7510.2 Å
 ```
 
-The Python pre-computes these for known doublets: Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b. Use `read_spectrum_region` on both components to verify they are real and the ratio is physically plausible. A ratio deviation may indicate contamination, not a false identification.
+Known doublets: Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b. Use `read_spectrum_region` on the claimed and expected positions to verify.
 
 ## Methodology
 
@@ -108,12 +116,14 @@ Is this feature notably stronger than adjacent features within ±100 Å?
 If λ_obs < 4000 Å (🔵) or λ_obs > 9000 Å (🔴):
 
 - **Blue edge**: Throughput drops steeply. Noise is non-Gaussian with frequent outlier spikes. Features here need to be **visually dominant** — if they're merely "visible," they're likely noise. High-ionization AGN lines (Lyα, C IV, C III], He II) that fall here are **presumptively unreliable**.
-- **Red edge**: Dense OH skyline residuals contaminate the spectrum. Cross-check observed wavelength against known OH positions via `grep_kb(pattern="skyline|OH")`. Even after sky subtraction, residual OH lines appear as narrow emission/absorption at fixed observed wavelengths.
+- **Red edge** (λ_obs > 9000 Å): Dense OH skyline residuals contaminate the spectrum. Cross-check observed wavelength against known OH/OI positions via `grep_kb(pattern="skyline|OH|OI|airglow", C=3)`. Even after sky subtraction, residual OH lines appear as narrow emission/absorption at fixed observed wavelengths.
+- **Mid-band skyline risk** (4000–7000 Å): OI airglow lines at 5577.3, 6300.3, and 6363.8 Å are narrow, persistent emission features from Earth's atmosphere. **Before judging any narrow emission feature (Width = narrow)**, call `grep_kb(pattern="skyline|OH|OI|airglow", C=3)` to check whether the observed wavelength matches known skyline positions. If λ_obs falls within ±10 Å of 5577, 6300, or 6364 Å, it is likely OI airglow, not astrophysical.
 
 Rules for edge zone features:
-- Feature is visually dominant + no nearby OH match (red edge only) → **REAL**, but flag as edge zone
-- Feature is barely above noise OR matches known OH position → **NOISE**
+- Feature is visually dominant + no nearby OH/OI match → **REAL**, but flag as edge zone
+- Feature is barely above noise OR matches known OH/OI position → **NOISE**
 - Single-pixel spike in edge zone → **ARTIFACT** (bad pixel)
+- **Narrow emission (Width = narrow, Type = em)**: call `grep_kb(pattern="skyline|OH|OI|airglow", C=3)` to screen for OI contamination even if λ_obs is not in the red edge. OI 5577 and 6300/6364 can appear anywhere in the visible band.
 
 ### Step 4: Doublet Verification
 
@@ -201,6 +211,7 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
   ],
   "global_issues": [
     "Red edge (9000–9800 Å) shows dense OH skyline residuals — features at 9739.2 and 9792.0 may be contaminated",
+    "OI airglow at 5577.3, 6300.3, 6363.8 Å may contaminate narrow emission features in the visible band",
     "Blue edge (<4000 Å) is noise-dominated — no feature in this zone is reliable"
   ]
 }
@@ -216,7 +227,7 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
   - `KEEP` — feature is real, synthesis should use it normally
   - `REMOVE` — feature is noise/artifact, should be deleted from all hypotheses that claim it
   - `FLAG` — feature is real but has caveats (weak, edge zone, ratio anomaly); synthesis should treat it as weakened evidence
-- **`global_issues`**: Spectrum-wide observations not tied to a single wavelength (edge zone quality, OH contamination patterns, overall noise characteristics).
+- **`global_issues`**: Spectrum-wide observations not tied to a single wavelength (edge zone quality, OH/OI contamination patterns, overall noise characteristics).
 
 ### Verdict coverage rule
 

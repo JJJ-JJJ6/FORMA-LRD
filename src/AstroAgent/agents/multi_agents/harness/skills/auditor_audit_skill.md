@@ -103,6 +103,7 @@ The DESI spectrum is unreliable at both wavelength extremes. You MUST read BOTH 
 - **Blue edge** (λ_obs < 4000 Å): Throughput falls steeply. Noise is non-Gaussian with frequent outlier spikes that CWT interprets as real peaks. High-ionization AGN lines (Lyα, C IV, He II, C III]) that fall here at moderate-to-high z are **presumptively unreliable**.
 
 - **Red edge** (λ_obs > 9000 Å): Dense OH skyline residuals contaminate the spectrum. Even after sky subtraction, residual OH lines appear as narrow emission/absorption features at fixed observed wavelengths.
+- **Mid-band skyline risk** (4000–7000 Å): OI airglow lines at 5577.3, 6300.3, and 6363.8 Å are narrow, persistent emission features from Earth's atmosphere. Any CWT-detected narrow emission near these wavelengths should be checked against OI contamination regardless of the claimed redshift.
 
 **Procedure**:
 - Read FULL blue edge: `read_spectrum_region(λ_min, 4000)` — stride 2–3 for manageability
@@ -111,7 +112,7 @@ The DESI spectrum is unreliable at both wavelength extremes. You MUST read BOTH 
 For each edge zone, assess:
 - Is the claimed feature visually distinguishable from the noise envelope?
 - Are there multiple features of similar amplitude in the edge zone? If yes → noise-dominated, no single feature is reliable.
-- For the red edge: could any claimed feature be a residual OH skyline? Cross-check observed wavelength against known OH positions via `grep_kb(pattern="skyline|OH")`.
+- For the red edge: could any claimed feature be a residual OH skyline? Cross-check observed wavelength against known OH/OI positions via `grep_kb(pattern="skyline|OH|OI|airglow", C=3)`.
 
 **Decision rule**: If the key discriminating lines for the winning hypothesis ALL fall in edge zones AND the spectrum reads show they are indistinguishable from edge noise → **REJECT** the hypothesis even if its line inventory looks strong on paper.
 
