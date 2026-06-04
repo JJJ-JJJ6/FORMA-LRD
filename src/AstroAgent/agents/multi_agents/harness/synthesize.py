@@ -105,20 +105,35 @@ def _extract_json_block(text: str) -> Optional[Dict[str, Any]]:
 # Adopted feature catalog builder
 # ---------------------------------------------------------------------------
 
+def _resolve_csv_path(harness_dir: str, idx: int) -> str:
+    """Return the best available lines CSV for a hypothesis.
+
+    Prefers ``{idx}_lines_cleaned.csv`` (post-FeatureAuditor) over the
+    original ``{idx}_lines.csv``.  Falls back to the original when the
+    cleaned version doesn't exist.
+    """
+    cleaned = os.path.join(harness_dir, f"{idx}_lines_cleaned.csv")
+    if os.path.exists(cleaned):
+        return cleaned
+    return os.path.join(harness_dir, f"{idx}_lines.csv")
+
+
 def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
     """Build a unified feature catalog from per-hypothesis lines.csv files.
 
     Collects all LIKELY + MARGINAL features, sorts by |amplitude| descending,
-    and pre-computes the median amplitude baseline.  The table intentionally
-    omits line names — the LLM first verifies which features are real, then
-    maps them to hypotheses.
+    and pre-computes the median amplitude baseline.  Features marked REMOVED
+    by FeatureAuditor are excluded.  FLAGGED features are included with a ⚠
+    marker.  The table intentionally omits line names — the LLM first verifies
+    which features are real, then maps them to hypotheses.
     """
     import csv as _csv
 
+    n_removed = 0
     all_features = []
     for r in harness_results:
         idx = r["hypothesis_idx"]
-        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_path = _resolve_csv_path(harness_dir, idx)
         if not os.path.exists(csv_path):
             continue
         with open(csv_path, newline="", encoding="utf-8") as f:
@@ -126,6 +141,11 @@ def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
             for row in reader:
                 status = (row.get("status") or "").strip()
                 if status not in ("LIKELY", "MARGINAL"):
+                    continue
+                # Skip features removed by FeatureAuditor
+                fa = (row.get("feature_audit") or "").strip()
+                if fa == "REMOVED":
+                    n_removed += 1
                     continue
                 try:
                     wl = float(row.get("fitted_center", 0) or 0)
@@ -145,14 +165,18 @@ def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
                         "cwt_snr": snr,
                         "ridge_length": ridge,
                         "status": status,
+                        "flagged": fa == "FLAGGED",
                     }
                 )
 
     if not all_features:
-        return (
-            "\n## Adopted Feature Catalog\n\n"
-            "*No adopted features found across any hypothesis.*\n"
-        )
+        msg = "*No adopted features found across any hypothesis.*\n"
+        if n_removed:
+            msg = (
+                f"*All {n_removed} adopted features were removed by FeatureAuditor "
+                f"(noise/artifact). No features remain for cross-comparison.*\n"
+            )
+        return "\n## Adopted Feature Catalog\n\n" + msg
 
     # Sort by |amplitude| descending
     all_features.sort(key=lambda f: f["amplitude"], reverse=True)
@@ -160,12 +184,23 @@ def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
     amplitudes = [f["amplitude"] for f in all_features]
     median_amp = float(np.median(amplitudes))
 
+    note = ""
+    if n_removed:
+        note = (
+            f"\n**FeatureAuditor removed {n_removed} noise/artifact features** "
+            f"from the catalogs below. Features marked ⚠ were flagged with "
+            f"caveats (see per-hypothesis line tables for details).\n"
+        )
+
     lines = [
         "## Adopted Feature Catalog\n",
         "All LIKELY + MARGINAL features from every hypothesis, sorted by "
-        "|amplitude| descending. **No line identifications** — use "
-        "`read_spectrum_region` to verify which (if any) of the high-amplitude "
-        "outliers are real spectral features, then map them to hypotheses.\n",
+        "|amplitude| descending. Features verified as noise/artifact by "
+        "FeatureAuditor have been removed. ⚠ = flagged (real but caveated). "
+        "**No line identifications** — use `read_spectrum_region` to verify "
+        "which (if any) of the high-amplitude outliers are real spectral "
+        "features, then map them to hypotheses.\n",
+        note,
         f"**Median |amplitude|: {median_amp:.3f}** "
         f"— features near or below this are at the noise floor.",
         f"**Top quartile threshold: {amplitudes[max(0, len(amplitudes)//4)]:.3f}**\n",
@@ -179,9 +214,10 @@ def _build_adopted_catalog(harness_results: list, harness_dir: str) -> str:
             if _is_numeric(f["cwt_snr"])
             else str(f["cwt_snr"])
         )
+        flag = " ⚠" if f["flagged"] else ""
         lines.append(
             f"| {i} | {f['wavelength']:.1f} | {f['amplitude']:.3f} | "
-            f"{snr_str} | {f['ridge_length']} | {f['status']} | "
+            f"{snr_str} | {f['ridge_length']} | {f['status']}{flag} | "
             f"H{f['hypothesis_idx']} |"
         )
 
@@ -197,11 +233,15 @@ def _is_numeric(val) -> bool:
 
 
 def _build_line_tables(harness_results: list, harness_dir: str) -> str:
-    """Build per-hypothesis line tables from lines.csv with ALL columns.
+    """Build per-hypothesis line tables from lines.csv (preferring cleaned).
 
     The synthesis agent needs the raw measurement data (fitted_center_err,
     fitted_sigma, fwhm_km_s, etc.) to populate write_synthesis_csv accurately.
     These tables provide every column that the CSV output requires.
+
+    When ``{idx}_lines_cleaned.csv`` exists (post-FeatureAuditor), it is
+    used instead of the original.  Features removed by FeatureAuditor are
+    shown with a ~~strikethrough~~ note; flagged features show the flag text.
     """
     import csv as _csv
 
@@ -209,7 +249,7 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
 
     for r in harness_results:
         idx = r["hypothesis_idx"]
-        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_path = _resolve_csv_path(harness_dir, idx)
         if not os.path.exists(csv_path):
             sections.append(
                 f"### H{idx}\n\n*No lines.csv found.*\n"
@@ -228,7 +268,10 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
             )
             continue
 
-        # Identify columns present (some may be absent in nomad vs redrock)
+        # Detect whether FeatureAuditor columns are present
+        has_audit = any("feature_audit" in r for r in rows)
+
+        # Identify columns present
         cols = list(rows[0].keys())
 
         header = (
@@ -241,11 +284,22 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
             vals = []
             for c in cols:
                 v = (row.get(c) or "").strip()
+                if c == "feature_audit" and v == "REMOVED":
+                    v = "REMOVED (noise/artifact — do NOT use)"
+                elif c == "feature_audit" and v == "FLAGGED":
+                    v = "FLAGGED (see feature_audit_flag)"
                 vals.append(v if v else "—")
             body_lines.append("| " + " | ".join(vals) + " |")
 
+        note = ""
+        if has_audit:
+            note = (
+                " *(FeatureAuditor-verified: REMOVED features should be "
+                "excluded from synthesis.)*"
+            )
+
         sections.append(
-            f"### H{idx}\n\n"
+            f"### H{idx}{note}\n\n"
             f"{header}\n"
             + "\n".join(body_lines)
             + "\n"
@@ -258,7 +312,9 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
         "\n## Per-Hypothesis Line Data\n\n"
         "Full measurement tables from each harness run.  Reference these when "
         "calling `write_synthesis_csv` — every column the CSV requires is "
-        "present here.\n\n"
+        "present here.  When FeatureAuditor has run, the `feature_audit` and "
+        "`feature_audit_flag` columns indicate which features were verified / "
+        "flagged / removed.\n\n"
         + "\n".join(sections)
     )
 

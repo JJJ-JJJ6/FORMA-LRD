@@ -38,12 +38,19 @@ class RuleAnalyst(BaseAgent):
         self._writer = ResultWriter()
 
     # =====================================================================
-    # Main entry point
+    # Phase 1: targeted search (runs BEFORE FeatureAuditor)
     # =====================================================================
 
     async def run(self, state: SpectroState) -> SpectroState:
+        """Run the per-hypothesis targeted_search batch.
+
+        This is Phase 1 only.  The workflow will then invoke FeatureAuditor
+        to verify the line catalogs, followed by ``run_synthesize()`` to
+        cross-compare the (possibly cleaned) results.
+        """
         params = self.runtime.configs.params
         mode = "redrock" if params.redrock else "nomad"
+        state['_harness_mode'] = mode  # stash for synthesize later
 
         hypotheses = collect_hypotheses_from_bfm(
             state.get('brute_force_matching', {})
@@ -65,10 +72,41 @@ class RuleAnalyst(BaseAgent):
         )
         state['harness_results'] = harness_results
 
+        # ── Set harness_dir in state for downstream stages ─────
+        harness_dir = os.path.join(state['output_dir'], f"{state['file_name']}_harness")
+        state['harness_dir'] = harness_dir
+
         # ── Phase 1b: plot adopted features for each candidate ──
         self._plot_harness_candidates(state, harness_results)
 
-        # ── Phase 2: LLM synthesis ───────────────────────────────
+        return state
+
+    # =====================================================================
+    # Phase 2: LLM synthesis (runs AFTER FeatureAuditor)
+    # =====================================================================
+
+    async def run_synthesize(self, state: SpectroState) -> SpectroState:
+        """Run the LLM synthesis step over (possibly cleaned) harness results.
+
+        Expects ``state['harness_results']`` and ``state['_harness_mode']``
+        to be set by ``run()``.  If FeatureAuditor ran successfully, the
+        harness directory will contain ``{idx}_lines_cleaned.csv`` files
+        which the synthesize step prefers over the original catalogs.
+        """
+        harness_results = state.get('harness_results') or []
+        mode = state.get('_harness_mode', 'nomad')
+
+        if not harness_results:
+            state['rule_analysis'] = {
+                'verdict': 'UNKNOWN',
+                'reason': 'No harness results to synthesize.',
+                'redshift': None,
+                'classification': None,
+                'confidence': None,
+            }
+            return state
+
+        # ── LLM synthesis ───────────────────────────────────────
         await self._synthesize(state, harness_results, mode=mode)
 
         # ── Write outputs ────────────────────────────────────────

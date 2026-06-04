@@ -14,7 +14,7 @@ import copy
 from AstroAgent.agents.multi_agents.VisualInterpreter import VisualInterpreter
 from AstroAgent.agents.multi_agents.RuleAnalyst import RuleAnalyst
 from AstroAgent.agents.multi_agents.SelfEvolve import SelfEvolve
-from AstroAgent.agents.multi_agents.AnalysisAuditor import AnalysisAuditor
+from AstroAgent.agents.multi_agents.AnalysisAuditor import AnalysisAuditor, FeatureAuditor
 from AstroAgent.agents.multi_agents.RefinementAssistant import RefinementAssistant
 from AstroAgent.agents.multi_agents.SynthesisHost import SynthesisHost
 #########################
@@ -32,6 +32,7 @@ class WorkflowOrchestrator:
         'RuleAnalyst': RuleAnalyst,
         'SelfEvolve': SelfEvolve,
         'AnalysisAuditor': AnalysisAuditor,
+        'FeatureAuditor': FeatureAuditor,
         'RefinementAssistant': RefinementAssistant,
         'SynthesisHost': SynthesisHost
     }
@@ -65,6 +66,7 @@ class WorkflowOrchestrator:
             '_Rule_Analyst': self.AGENT_CLASSES['RuleAnalyst'](self.runtime),
             '_Self_Evolve': self.AGENT_CLASSES['SelfEvolve'](self.runtime),
             '_Analysis_Auditor': self.AGENT_CLASSES['AnalysisAuditor'](self.runtime),
+            '_Feature_Auditor': self.AGENT_CLASSES['FeatureAuditor'](self.runtime),
             '_Refinement_Assistant': self.AGENT_CLASSES['RefinementAssistant'](self.runtime),
             '_Synthesis_Host': self.AGENT_CLASSES['SynthesisHost'](self.runtime)
         }
@@ -89,14 +91,28 @@ class WorkflowOrchestrator:
 
     async def _rule_analyst_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
-        print('Stage 2: Rule Analyst')
+        print('Stage 2: Rule Analyst — Targeted Search')
         result = await self.spectro_agents["_Rule_Analyst"].run(state)
+        self._check_cancel()
+        return result
+
+    async def _feature_auditor_node(self, state: SpectroState) -> SpectroState:
+        self._check_cancel()
+        print('Stage 3: Feature Auditor — Cross-Hypothesis Verification')
+        result = await self.spectro_agents["_Feature_Auditor"].run(state)
+        self._check_cancel()
+        return result
+
+    async def _rule_analyst_synthesize_node(self, state: SpectroState) -> SpectroState:
+        self._check_cancel()
+        print('Stage 4: Rule Analyst — Synthesis')
+        result = await self.spectro_agents["_Rule_Analyst"].run_synthesize(state)
         self._check_cancel()
         return result
 
     async def _analysis_auditor_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
-        print('Stage 3: Analysis Auditor — Synthesis Audit')
+        print('Stage 5: Analysis Auditor — Synthesis Audit')
         result = await self.spectro_agents["_Analysis_Auditor"].run(state)
         self._check_cancel()
         return result
@@ -114,12 +130,16 @@ class WorkflowOrchestrator:
 
         workflow.add_node("visual_interpreter", self._visual_interpreter_node)
         workflow.add_node("rule_analyst", self._rule_analyst_node)
+        workflow.add_node("feature_auditor", self._feature_auditor_node)
+        workflow.add_node("rule_analyst_synthesize", self._rule_analyst_synthesize_node)
         workflow.add_node("analysis_auditor", self._analysis_auditor_node)
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
         workflow.add_edge("visual_interpreter", "rule_analyst")
-        workflow.add_edge("rule_analyst", "analysis_auditor")
+        workflow.add_edge("rule_analyst", "feature_auditor")
+        workflow.add_edge("feature_auditor", "rule_analyst_synthesize")
+        workflow.add_edge("rule_analyst_synthesize", "analysis_auditor")
         workflow.add_edge("analysis_auditor", END)
 
         return workflow.compile()

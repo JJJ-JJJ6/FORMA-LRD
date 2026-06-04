@@ -86,7 +86,7 @@ Do NOT spend many tokens here — the synthesis agent already wrote thousands of
 
 For **each of the top 3–5 LIKELY lines** that support the winning hypothesis, call `read_spectrum_region` on **λ_pred ± 80 Å**. Apply the **Three-Question Test** to each:
 
-1. **Peak clarity**: Is there a single, well-defined peak (emission) or trough (absorption), or does the signal oscillate multiple times within ±80 Å? Multiple oscillations of similar amplitude → likely noise. A single dominant feature that is visually obvious → real.
+1. **Peak clarity**: Is there a single, well-defined peak (emission) or trough (absorption), or does the signal oscillate multiple times within ±80 Å? Multiple oscillations of similar amplitude → likely noise. **Single-pixel spikes** (a sharp excursion confined to 1–2 pixels) are bad pixels or cosmic ray hits — NOT real spectral lines, regardless of CWT status. They are only acceptable if multiple other lines at the same redshift independently corroborate the identification. A single dominant feature spanning several pixels that is visually obvious → real.
 
 2. **Width sanity**: Look at the feature by eye. Does the apparent visual width roughly match the CWT-reported FWHM? If CWT reports a broad feature (>2000 km/s) but the raw spectrum shows only a narrow wiggle with no clear wings, the CWT width is a noise-blur artifact. Conversely, if CWT reports a narrow line but the spectrum shows a broad complex, the fitted Gaussian is only capturing one component of a blended feature.
 

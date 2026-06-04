@@ -47,6 +47,7 @@ When using `read_spectrum_region`:
 - You may judge whether a feature is **narrow** (FWHM < 20 Å), **intermediate** (20–50 Å), or **broad** (> 50 Å) in observed Å.
 - **Do NOT estimate FWHM in km/s from raw data.** The conversion FWHM(km/s) = FWHM(Å) / λ_obs × c requires precise FWHM measurement that visual inspection of ~10 data points cannot provide. Use the CWT feature's FWHM_km_s from the harness report instead.
 - You may note whether a continuum break (sharp flux increase) is present or absent at a predicted wavelength. This is a binary yes/no judgment — do not attempt to quantify the break amplitude by eye.
+- **Single-pixel spikes**: Bad pixels and cosmic ray hits can occur anywhere in the spectrum, not just edge zones. When a CWT-reported narrow feature spans only 1–2 pixels in the raw spectrum, it is likely a detector artifact, not a real spectral line. Such features are UNRELIABLE unless multiple other lines at the same redshift independently corroborate the identification.
 
 ### Fit-derived Measurements (Redrock Mode Only)
 
