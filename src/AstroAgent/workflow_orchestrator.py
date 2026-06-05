@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 
 from typing import Dict, Any, List, Optional, Set, Union
 
@@ -197,6 +198,7 @@ class WorkflowOrchestrator:
                     logging.warning("🧹 已清除中间结果字段，将从头重新执行工作流")
                 else:
                     print(f"❌ 分析流程失败: {e}")
+                    traceback.print_exc()
                     return current_state
 
         # 所有重试耗尽

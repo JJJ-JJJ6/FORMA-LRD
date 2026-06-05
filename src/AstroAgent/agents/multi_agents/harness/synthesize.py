@@ -300,7 +300,7 @@ def _filter_contradiction_matrix(
     ``confidence``, ``issues``, and ``is_flagged`` from the verdict.
     Recomputes statistics for the filtered set.
     """
-    verdicts = feature_audit_verdict.get("feature_verdicts", [])
+    verdicts = feature_audit_verdict.get("feature_verdicts", []) if feature_audit_verdict else []
     if not verdicts:
         return matrix_rows, doublet_annotations, stats
 
@@ -683,6 +683,13 @@ def _build_user_message(
 
     # ── FeatureAuditor results (always present; FeatureAuditorFailed
     #    would have terminated the pipeline before reaching here) ───
+    if feature_audit_verdict is None:
+        logging.warning(
+            "[synthesize] feature_audit_verdict is None — "
+            "FeatureAuditor may not have run. Using empty verdict."
+        )
+        feature_audit_verdict = {"feature_verdicts": [], "global_issues": []}
+
     wl_left = float(wl[0])
     wl_right = float(wl[-1])
     full_matrix, full_doublets, full_stats = build_contradiction_matrix(
