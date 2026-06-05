@@ -404,7 +404,7 @@ def build_contradiction_matrix(
             "cells": cells,
             "n_hypotheses": len(cells),
             "is_edge_blue": rep_wl < 4000.0,
-            "is_edge_red": rep_wl > 9000.0,
+            "is_edge_red": rep_wl > 7800.0,
             "row_type": first["line_type"],
             "row_amp": first["amplitude"],
             "row_width": first["width_class"],
@@ -465,7 +465,7 @@ def _build_feature_audit_user_message(
     parts.append("## Spectrum")
     parts.append(f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å")
     parts.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    parts.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH + OI skyline residuals)")
+    parts.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
     parts.append("")
 
     # ── Statistics ──
@@ -624,7 +624,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
             spec_lines.append(f"- Median SNR: {float(snr):.1f}")
 
     spec_lines.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    spec_lines.append(f"- **Red edge**: 9000 – {wl_right:.0f} Å (OH + OI skyline residuals)")
+    spec_lines.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
 
     parts = ["\n".join(spec_lines), ""]
 
@@ -1130,7 +1130,7 @@ class FeatureAuditor(BaseAgent):
 
             Use this to independently verify whether claimed features are real.
             Read ±80 Å around each unique λ_obs in the matrix. Read BOTH edge
-            zones in full (blue: λ_min→4000, red: 9000→λ_max).
+            zones in full (blue: λ_min→4000, red: 7800→λ_max).
             """
             mask = (_wl >= wl_min) & (_wl <= wl_max)
             wl_slice = _wl[mask][::stride]
@@ -1316,7 +1316,7 @@ class AnalysisAuditor(BaseAgent):
 
             Use this to independently verify the winning hypothesis's key
             claims.  Read ±80 Å around each key line, and read BOTH edge
-            zones in full (blue: λ_min→4000, red: 9000→λ_max).
+            zones in full (blue: λ_min→4000, red: 7800→λ_max).
             """
             mask = (_wl >= wl_min) & (_wl <= wl_max)
             wl_slice = _wl[mask][::stride]

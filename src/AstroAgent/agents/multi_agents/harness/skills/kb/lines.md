@@ -134,7 +134,7 @@ The DESI blue arm (3600–4000 Å) has the lowest throughput and highest noise i
 
 Lines at higher redshift that naturally fall in this region include: Lyα (1216), C IV (1549), He II (1640), C III] (1909). These are high-ionization AGN indicators that are routinely claimed in low-SNR blue data — treat them as **presumptively unreliable until visually confirmed**.
 
-## Red Edge Noise Zone (λ_obs > 9000 Å for DESI)
+## OH Airglow Zone (λ_obs > 7800 Å for DESI)
 
 ## Skyline Contamination (OH + OI Airglow)
 
@@ -144,13 +144,13 @@ The DESI spectrum is contaminated by Earth's atmospheric airglow emission at fix
 
 Hydroxyl (OH) molecular vibration-rotation bands produce dense, bright narrow emission lines in the red-to-near-IR.
 
-1. **Skyline density**: OH emission lines are dense and bright beyond 9000 Å. The CWT detector cannot distinguish astrophysical features from skylines.
+1. **Skyline density**: OH emission lines begin around 7000 Å, become significant beyond 7800 Å, and are extremely dense and bright beyond 9000 Å. The CWT detector cannot reliably distinguish astrophysical features from skylines beyond 7800 Å.
 2. **Skyline residuals**: Even after sky subtraction, residual OH lines appear as narrow emission/absorption features at fixed observed wavelengths.
 3. **Evaluation rules**:
-   - Any line with λ_pred > 9000 Å: flag with "red edge risk" in caveats
+   - Any line with λ_pred > 7800 Å: flag with "OH zone" in caveats. The feature may be real but its amplitude could be contaminated by OH residuals, and the line identification may be a confabulation — the harness/Synthesis may have matched an OH skyline to an astrophysical line.
    - If λ_pred falls within 10 Å of a known bright skyline, assign NOT_FOUND
-   - If SNR < 10 or ridge < 5 in the red zone, cap status at MARGINAL
-   - **Must read spectrum ±150 Å** before accepting any red-zone line
+   - If SNR < 10 or ridge < 5 in the OH zone, cap status at MARGINAL
+   - **Must read spectrum ±150 Å** before accepting any OH-zone line
 
 ### OI Airglow (Visible: 5577, 6300, 6364 Å)
 
@@ -181,4 +181,4 @@ Reference of all known atmospheric contamination at fixed observed wavelengths i
 
 When evaluating ANY narrow emission feature (Width = narrow, Type = em), cross-reference λ_obs against this table.  A match within ±10 Å of a known skyline position is strong evidence of contamination.
 
-Lines that may fall in the red edge at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 9000 Å, their reliability is compromised and this must be noted in the synthesis verdict.
+Lines that may fall in the OH zone at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 7800 Å, their reliability is compromised and this must be noted in the synthesis verdict.
