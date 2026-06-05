@@ -26,6 +26,7 @@ from AstroAgent.agents.multi_agents.utils.RA import (
     a_extract_harness_summaries,
 )
 from AstroAgent.agents.multi_agents.utils.plot import plot_harness_candidate
+from AstroAgent.agents.multi_agents.AnalysisAuditor import FeatureAuditorFailed
 
 
 class RuleAnalyst(BaseAgent):
@@ -106,27 +107,33 @@ class RuleAnalyst(BaseAgent):
             }
             return state
 
-        # ── FeatureAuditor found nothing → skip synthesis ──────
+        # ── FeatureAuditor failed or skipped → abort ──────────
         feature_audit_verdict = state.get("feature_audit_verdict")
         if feature_audit_verdict and feature_audit_verdict.get("skipped"):
             reason = feature_audit_verdict.get("reason", "No features to verify.")
-            print(f"[RuleAnalyst] FeatureAuditor skipped ({reason}) — synthesis not needed.")
+            logging.error(
+                f"[RuleAnalyst] FeatureAuditor failed/skipped: {reason}. "
+                f"Terminating this spectrum's analysis."
+            )
+            # Write partial outputs before aborting
             state['rule_analysis'] = {
                 'verdict': 'UNKNOWN',
-                'reason': f'FeatureAuditor skipped: {reason}',
+                'reason': f'FeatureAuditor failed: {reason}',
                 'redshift': None,
                 'classification': 'Unknown',
                 'confidence': 'LOW',
                 'best_hypothesis_idx': None,
                 'primary_evidence': (
-                    'No spectral features survived CWT detection + harness verification. '
-                    'The spectrum is likely noise-dominated.'
+                    'FeatureAuditor could not verify spectral features. '
+                    'The LLM failed to produce a valid verdict after all retries.'
                 ),
                 'excluded_hypotheses': [],
                 'caveats': reason,
             }
             self._writer.write_rule_analysis(state)
-            return state
+            raise FeatureAuditorFailed(
+                f"FeatureAuditor failed after all retries: {reason}"
+            )
 
         # ── LLM synthesis ───────────────────────────────────────
         await self._synthesize(state, harness_results, mode=mode)
@@ -297,10 +304,9 @@ class RuleAnalyst(BaseAgent):
             base_url=model_cfg['base_url'],
         )
 
-        # ── FeatureAuditor verdict (pass through to synthesis) ──
+        # ── FeatureAuditor verdict (guaranteed valid — run_synthesize()
+        #    raises FeatureAuditorFailed before reaching here if skipped) ──
         feature_audit_verdict = state.get("feature_audit_verdict")
-        if feature_audit_verdict and feature_audit_verdict.get("skipped"):
-            feature_audit_verdict = None
 
         state['rule_analysis'] = await synthesize_arun(
             harness_results=harness_results,

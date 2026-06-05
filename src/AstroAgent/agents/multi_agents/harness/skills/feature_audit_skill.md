@@ -157,6 +157,8 @@ For EACH matrix row, output a verdict. Then output a summary.
 
 ## Output Format
 
+**Precision rule**: All wavelengths and wavelength errors in the output must be reported at the **same precision as the input data**, without adding or dropping decimal places. If the matrix gives `7471.2`, output `7471.2`, not `7471.23` or `7471.0`. This applies to `wl_obs` values in `feature_verdicts` and any wavelengths cited in `issues` and `recommendation` fields.
+
 First, output your reasoning following Steps 1–5 in free text. Keep it focused — describe what you saw at each wavelength, not what the matrix already says. Then end with a JSON block:
 
 ```json
@@ -166,6 +168,7 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
   "feature_verdicts": [
     {
       "wl_obs": 7471.2,
+      "feature_type": "absorption",
       "is_real": true,
       "confidence": "HIGH",
       "issues": [],
@@ -173,6 +176,7 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
     },
     {
       "wl_obs": 8136.8,
+      "feature_type": "emission",
       "is_real": false,
       "confidence": "HIGH",
       "issues": [
@@ -183,6 +187,7 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
     },
     {
       "wl_obs": 3647.2,
+      "feature_type": "emission",
       "is_real": false,
       "confidence": "MEDIUM",
       "issues": [
@@ -193,13 +198,27 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
     },
     {
       "wl_obs": 9428.0,
+      "feature_type": "emission",
       "is_real": true,
       "confidence": "HIGH",
       "issues": [],
       "recommendation": "KEEP — clear narrow emission, good [O III] doublet ratio match"
     },
     {
+      "wl_obs": 5580.0,
+      "feature_type": "emission",
+      "is_real": true,
+      "confidence": "HIGH",
+      "issues": [
+        "Narrow emission peak is visually prominent and clearly real",
+        "λ_obs matches OI 5577.3 skyline within 3 Å — atmospheric origin, not astrophysical",
+        "Brightest feature in the visible band — characteristic of OI airglow"
+      ],
+      "recommendation": "REMOVE — real emission peak but OI 5577 skyline contamination, not astrophysical Hε"
+    },
+    {
       "wl_obs": 5252.0,
+      "feature_type": "absorption",
       "is_real": true,
       "confidence": "MEDIUM",
       "issues": [
@@ -220,12 +239,13 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
 ### Field definitions
 
 - **`wl_obs`**: The observed wavelength from the matrix row. Must match exactly.
-- **`is_real`**: `true` if the feature is a genuine spectral feature, `false` if it's noise/artifact.
+- **`feature_type`**: `"emission"` or `"absorption"` — from the Type column in the matrix row. Must match exactly.
+- **`is_real`**: `true` if a peak (emission) or trough (absorption) physically exists in the spectrum at this wavelength, regardless of its origin (astrophysical, atmospheric, or instrumental). `false` only if there is NO discernible signal — the region is flat, noise-dominated, or the "feature" is a pure CWT phantom. **A bright OI skyline IS real (peak exists) — it is just not astrophysical. That goes in `recommendation`, not `is_real`.**
 - **`confidence`**: `HIGH` (visually obvious), `MEDIUM` (visible but ambiguous), `LOW` (barely distinguishable from noise).
 - **`issues`**: 0+ specific observations. Cite what you saw vs what was expected. Be concrete — mention pixel span, amplitude relative to neighborhood, edge zone status.
 - **`recommendation`**: One of `KEEP`, `REMOVE`, or `FLAG`.
   - `KEEP` — feature is real, synthesis should use it normally
-  - `REMOVE` — feature is noise/artifact, should be deleted from all hypotheses that claim it
+  - `REMOVE` — feature should be deleted from all hypotheses that claim it. Two cases: (a) `is_real=false` — pure noise/artifact, no signal exists; (b) `is_real=true` but the signal is atmospheric (OH/OI skyline, telluric absorption) rather than astrophysical.
   - `FLAG` — feature is real but has caveats (weak, edge zone, ratio anomaly); synthesis should treat it as weakened evidence
 - **`global_issues`**: Spectrum-wide observations not tied to a single wavelength (edge zone quality, OH/OI contamination patterns, overall noise characteristics).
 

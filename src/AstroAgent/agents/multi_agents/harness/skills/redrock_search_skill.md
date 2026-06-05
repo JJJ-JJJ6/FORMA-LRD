@@ -125,6 +125,8 @@ If the "Features" column is `—` or ALL features were rejected in Step B:
 
 1. **Write the line catalog CSV** — call `write_lines_csv`. For LIKELY/MARGINAL lines that came from fitting (not CWT), set `ridge_length` and `cwt_snr` to null. Required columns: name, rest_wavelength, predicted_obs, fitted_center, fitted_center_err, amplitude, amplitude_err, fitted_sigma, fwhm_km_s, ridge_length, cwt_snr, status. Write BEFORE the report.
 
+   **Precision rule**: All wavelengths and wavelength errors must be reported at the **same precision as the input data**, without adding or dropping decimal places. If the CWT feature table gives `5008.2`, output `5008.2`, not `5008.23` or `5008.0`. This applies to: λ_rest, λ_pred, λ_fit, λ_err, offset, FWHM (Å), and implied_z.
+
 2. **Write the human-readable report** — call `write_report`. Required sections (in order, exact headings):
 
 ### 3a. Spectrum Summary

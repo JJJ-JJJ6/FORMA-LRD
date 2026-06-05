@@ -164,4 +164,21 @@ Atomic oxygen (OI) forbidden transitions produce three prominent narrow emission
 
 Unlike OH which is a red-edge problem, OI lines can contaminate features ANYWHERE in the visible spectrum (4000–7000 Å). A CWT-detected narrow emission feature near 5577, 6300, or 6364 Å should be checked against OI contamination regardless of the claimed redshift.
 
+### Comprehensive Skyline / Atmospheric Feature Table
+
+Reference of all known atmospheric contamination at fixed observed wavelengths in DESI spectra:
+
+| Type | Name | Wavelength (Å) | Notes |
+|------|------|----------------|-------|
+| Airglow Emission | [O I] | 5577.3 | Most famous skyline; easily produces spurious narrow emission peaks |
+| Airglow Emission | Na D | 5890, 5896 | Upper-atmosphere sodium layer emission doublet |
+| Airglow Emission | [O I] | 6300.3 | Often confused with astrophysical [O I] 6300 in AGN |
+| Airglow Emission | [O I] | 6363.8 | 3:1 doublet companion to 6300.3 |
+| Atmospheric Absorption | O₂ B-band | 6867 | Strong absorption band; affects continuum and weak-line identification |
+| OH Airglow Forest | OH Meinel Bands | 7000–7400 | Dense OH emission lines begin |
+| Atmospheric Absorption | O₂ A-band | 7605 | One of the strongest atmospheric absorption bands |
+| OH Airglow Forest | OH Meinel Bands | 7800–9800 | Extremely dense OH forest |
+
+When evaluating ANY narrow emission feature (Width = narrow, Type = em), cross-reference λ_obs against this table.  A match within ±10 Å of a known skyline position is strong evidence of contamination.
+
 Lines that may fall in the red edge at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 9000 Å, their reliability is compromised and this must be noted in the synthesis verdict.

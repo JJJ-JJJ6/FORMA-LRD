@@ -228,7 +228,7 @@ def _build_feature_audit_summary(feature_audit_verdict: dict) -> str:
     removed = []
     flagged = []
     for v in verdicts:
-        rec = (v.get("recommendation") or "").upper()
+        rec = _clean_rec(v.get("recommendation"))
         if rec.startswith("REMOVE"):
             removed.append(v)
         elif rec.startswith("FLAG"):
@@ -304,43 +304,55 @@ def _filter_contradiction_matrix(
     if not verdicts:
         return matrix_rows, doublet_annotations, stats
 
-    # Build lookup keyed by rounded wl_obs (matching _write_cleaned_csvs convention)
+    # Build verdict lookup keyed by (int_wl, amp_sign) from verdict's feature_type
     verdict_lookup = {}
     for v in verdicts:
         wl = v.get("wl_obs")
-        if wl is not None:
-            verdict_lookup[round(float(wl), 1)] = v
+        if wl is None:
+            continue
+        ft = (v.get("feature_type") or "").lower()
+        amp_sign = -1 if ft.startswith("abs") else 1
+        verdict_lookup[(int(float(wl)), amp_sign)] = v
 
-    def _is_survivor(wl: float) -> bool:
-        v = verdict_lookup.get(round(wl, 1))
+    def _is_survivor_by_key(key: tuple) -> bool:
+        v = verdict_lookup.get(key)
         if v is None:
-            return True  # not in verdict — keep (shouldn't normally happen)
-        rec = (v.get("recommendation") or "").upper()
+            return True  # not in verdict — keep
+        rec = _clean_rec(v.get("recommendation"))
         return rec.startswith("KEEP") or rec.startswith("FLAG")
+
+    def _get_verdict(key: tuple) -> dict:
+        return verdict_lookup.get(key) or {}
 
     # Filter matrix rows
     filtered_rows = []
     n_removed = 0
     for row in matrix_rows:
-        if _is_survivor(row["wl_obs"]):
-            verdict = verdict_lookup.get(round(row["wl_obs"], 1), {})
+        gk = row.get("group_key")
+        if gk is None:
+            gk = (int(row["wl_obs"]), 1 if row.get("row_amp", 0) > 0 else -1)
+        if _is_survivor_by_key(gk):
+            verdict = _get_verdict(gk)
             row["confidence"] = verdict.get("confidence", "—")
             row["issues"] = verdict.get("issues", [])
             row["is_flagged"] = (
-                (verdict.get("recommendation") or "").upper().startswith("FLAG")
+                _clean_rec(verdict.get("recommendation")).startswith("FLAG")
             )
             filtered_rows.append(row)
         else:
             n_removed += 1
 
-    # Filter doublet annotations
+    # Filter doublet annotations (use amp from annotation to build key)
     filtered_doublets = []
     for da in doublet_annotations:
         if da.get("complete"):
-            if _is_survivor(da["wl_a"]) and _is_survivor(da["wl_b"]):
+            key_a = (int(da["wl_a"]), 1 if da.get("amp_a", 0) > 0 else -1)
+            key_b = (int(da["wl_b"]), 1 if da.get("amp_b", 0) > 0 else -1)
+            if _is_survivor_by_key(key_a) and _is_survivor_by_key(key_b):
                 filtered_doublets.append(da)
         else:
-            if _is_survivor(da["wl_claimed"]):
+            key = (int(da["wl_claimed"]), 1 if da.get("amp_claimed", 0) > 0 else -1)
+            if _is_survivor_by_key(key):
                 filtered_doublets.append(da)
 
     # Recompute stats
@@ -525,22 +537,22 @@ def _build_verified_task(surviving: bool = True) -> str:
         return (
             "## Task\n\n"
             "FeatureAuditor has verified all claimed features and found NONE "
-            "to be physically real. All CWT-detected features were classified "
+            "to be physically real. All detected features were classified "
             "as noise or artifacts. This is a strong signal that the spectrum "
             "is noise-dominated or that none of the proposed redshift "
             "hypotheses match real spectral features.\n\n"
-            "**Deliver your verdict now.** Output `redshift=null`, "
-            "`classification=\"Unknown\"`, `confidence=\"LOW\"`. "
+            "**Deliver your verdict now.** Write the CSV and report (Phase 3 "
+            "of your system prompt), then output `redshift=null`, "
+            "`classification=\"Unknown\"`, `confidence=\"LOW\"` as the JSON "
+            "verdict block (Phase 4 of your system prompt).\n\n"
             "Do NOT attempt Phase 2 reads — there are no surviving features "
-            "to discriminate between.\n\n"
-            "Follow Phase 3 (write CSV + report) and Phase 4 (JSON verdict) "
-            "from your system prompt."
+            "to discriminate between."
         )
 
     return (
         "## Task\n\n"
-        "FeatureAuditor has already independently verified every CWT-detected "
-        "feature by reading the raw spectrum. Your job is now **cross-comparison**, "
+        "FeatureAuditor has already independently verified every feature "
+        "by reading the raw spectrum. Your job is now **cross-comparison**, "
         "not re-verification.\n\n"
         "### Phase 1: Review Verified Features\n\n"
         "1. **Orient yourself**: Read the Feature Audit Results above. Note "
@@ -569,11 +581,11 @@ def _build_verified_task(surviving: bool = True) -> str:
         "identification (if any) is physically correct.\n\n"
         "**Read as little data as possible** — target each read at a specific "
         "discriminating question. Batch your reads.\n\n"
-        "### Phase 3 & 4\n\n"
-        "Write the synthesis CSV (`write_synthesis_csv`) and report "
-        "(`write_report`), then output the final JSON verdict block per your "
-        "system prompt specification. REMOVED features must NOT appear in the "
-        "CSV output."
+        "### Phases 3 & 4\n\n"
+        "First write the synthesis CSV (`write_synthesis_csv`) and report "
+        "(`write_report`) per Phase 3 of your system prompt, then output the "
+        "final JSON verdict block per Phase 4. REMOVED features must NOT "
+        "appear in the CSV output."
     )
 
 
@@ -586,12 +598,12 @@ def _build_user_message(
     harness_dir: str,
     wl: np.ndarray,
     fl: np.ndarray,
+    feature_audit_verdict: dict,
     snr: np.ndarray | None = None,
     summaries: list[str] | None = None,
     mode: str = "nomad",
     report_path: str | None = None,
     csv_path: str | None = None,
-    feature_audit_verdict: dict | None = None,
 ) -> str:
     """Build the user prompt with spectrum metadata, harness reports, and
     pre-computed Dn4000 diagnostics.
@@ -669,47 +681,26 @@ def _build_user_message(
     if csv_path:
         _output_paths += f"Output Synthesis CSV: {csv_path}\n"
 
-    # ── FeatureAuditor results (always present in normal flow) ───
-    has_verdict = bool(
-        feature_audit_verdict
-        and feature_audit_verdict.get("feature_verdicts")
-        and not feature_audit_verdict.get("skipped")
+    # ── FeatureAuditor results (always present; FeatureAuditorFailed
+    #    would have terminated the pipeline before reaching here) ───
+    wl_left = float(wl[0])
+    wl_right = float(wl[-1])
+    full_matrix, full_doublets, full_stats = build_contradiction_matrix(
+        harness_results, harness_dir, wl_left, wl_right,
     )
-
-    if has_verdict:
-        wl_left = float(wl[0])
-        wl_right = float(wl[-1])
-        full_matrix, full_doublets, full_stats = build_contradiction_matrix(
-            harness_results, harness_dir, wl_left, wl_right,
+    filtered_matrix, filtered_doublets, filtered_stats = (
+        _filter_contradiction_matrix(
+            full_matrix, full_doublets, full_stats, feature_audit_verdict,
         )
-        filtered_matrix, filtered_doublets, filtered_stats = (
-            _filter_contradiction_matrix(
-                full_matrix, full_doublets, full_stats, feature_audit_verdict,
-            )
-        )
-        audit_section = _build_feature_audit_summary(feature_audit_verdict)
-        verified_matrix_section = _build_verified_matrix_section(
-            filtered_matrix, filtered_stats, harness_results,
-        )
-        surviving_doublets_section = _build_surviving_doublets_section(
-            filtered_doublets,
-        )
-        task_text = _build_verified_task(surviving=len(filtered_matrix) > 0)
-    else:
-        audit_section = (
-            "## Feature Audit Results\n\n"
-            "*FeatureAuditor did not produce valid results — "
-            "all features are unverified.*\n"
-        )
-        verified_matrix_section = ""
-        surviving_doublets_section = ""
-        task_text = (
-            "## Task\n\n"
-            "FeatureAuditor verification is unavailable. Proceed with standard "
-            "Phase 1–4 methodology: blind review, build contradiction matrix, "
-            "targeted reads, final verdict. Treat ALL harness-reported features "
-            "as unverified — verify them yourself with `read_spectrum_region`."
-        )
+    )
+    audit_section = _build_feature_audit_summary(feature_audit_verdict)
+    verified_matrix_section = _build_verified_matrix_section(
+        filtered_matrix, filtered_stats, harness_results,
+    )
+    surviving_doublets_section = _build_surviving_doublets_section(
+        filtered_doublets,
+    )
+    task_text = _build_verified_task(surviving=len(filtered_matrix) > 0)
 
     # ── Per-hypothesis full line tables (for CSV population) ──
     line_tables = _build_line_tables(harness_results, harness_dir)
@@ -752,6 +743,16 @@ def _format_tool_call(tc) -> str:
     return f"**`{name}`**\n```json\n{args_json}\n```"
 
 
+def _clean_rec(rec: str) -> str:
+    """Normalise an LLM-generated recommendation string (see AnalysisAuditor)."""
+    rec = (rec or "").strip()
+    for q in ('"', "'", "`"):
+        if rec.startswith(q) and rec.endswith(q) and len(rec) >= 2:
+            rec = rec[1:-1]
+            break
+    return rec.strip().upper()
+
+
 def _format_tool_result(msg) -> str:
     """Format a tool result message as readable markdown."""
     content = msg.content if hasattr(msg, "content") else str(msg)
@@ -783,7 +784,7 @@ async def arun(
     mode: str = "nomad",
     report_path: str | None = None,
     csv_path: str | None = None,
-    feature_audit_verdict: dict | None = None,
+    feature_audit_verdict: dict,
 ) -> dict:
     """Run the LLM synthesis agent over multiple harness reports.
 
@@ -823,9 +824,10 @@ async def arun(
     base_url = base_url or os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
 
     system_prompt = _load_skill()
-    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl, snr, summaries,
-                                      mode=mode, report_path=report_path, csv_path=csv_path,
-                                      feature_audit_verdict=feature_audit_verdict)
+    user_prompt = _build_user_message(harness_results, harness_dir, wl, fl,
+                                      feature_audit_verdict,
+                                      snr=snr, summaries=summaries,
+                                      mode=mode, report_path=report_path, csv_path=csv_path)
 
     # ── Closure over arrays for zero-copy slicing ────────────────
     _wl = wl

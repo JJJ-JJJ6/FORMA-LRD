@@ -39,6 +39,10 @@ from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _cre
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb
 
 
+class FeatureAuditorFailed(Exception):
+    """Raised when FeatureAuditor fails after all retries are exhausted."""
+
+
 # ---------------------------------------------------------------------------
 # Skill paths
 # ---------------------------------------------------------------------------
@@ -132,6 +136,22 @@ def _format_tool_call(tc) -> str:
     return f"**`{name}`**\n```json\n{args_json}\n```"
 
 
+def _clean_rec(rec: str) -> str:
+    """Normalise an LLM-generated recommendation string.
+
+    Strips stray quotes, whitespace, and normalises to uppercase so that
+    ``startswith("KEEP" / "FLAG" / "REMOVE")`` works robustly even when a
+    model wraps the value in extra quotes or adds leading punctuation.
+    """
+    rec = (rec or "").strip()
+    # Strip matching outer quotes (single, double, or backtick)
+    for q in ('"', "'", "`"):
+        if rec.startswith(q) and rec.endswith(q) and len(rec) >= 2:
+            rec = rec[1:-1]
+            break
+    return rec.strip().upper()
+
+
 def _format_tool_result(msg) -> str:
     """Format a tool result message as readable markdown."""
     content = msg.content if hasattr(msg, "content") else str(msg)
@@ -204,34 +224,6 @@ DOUBLET_DEFS = [
 # ============================================================================
 # Contradiction matrix builder (Stage A — FeatureAuditor)
 # ============================================================================
-
-def _group_features_by_wavelength(
-    all_features: List[dict],
-    tolerance: float = 10.0,
-) -> List[List[dict]]:
-    """Group features by observed wavelength proximity.
-
-    Features within ``tolerance`` Å of each other are merged into the same
-    group.  Each group becomes one row in the contradiction matrix.
-    """
-    if not all_features:
-        return []
-    sorted_feats = sorted(all_features, key=lambda f: f["wl_obs"])
-    groups = []
-    used = set()
-    for i, f in enumerate(sorted_feats):
-        if i in used:
-            continue
-        group = [f]
-        used.add(i)
-        for j in range(i + 1, len(sorted_feats)):
-            if j in used:
-                continue
-            if abs(sorted_feats[j]["wl_obs"] - f["wl_obs"]) <= tolerance:
-                group.append(sorted_feats[j])
-                used.add(j)
-        groups.append(group)
-    return groups
 
 
 def _detect_doublets(
@@ -351,7 +343,7 @@ def build_contradiction_matrix(
                     amp = 0.0
 
                 name = (row.get("name") or "").strip()
-                line_type = "abs" if name.endswith("_abs") else "em"
+                line_type = "absorption" if name.endswith("_abs") else "emission"
 
                 # Width class: broad > 2000 km/s, narrow < 2000 km/s
                 fwhm_str = row.get("fwhm_km_s", "—")
@@ -382,7 +374,12 @@ def build_contradiction_matrix(
         return [], [], {"n_rows": 0, "n_total_features": 0, "n_edge_blue": 0,
                         "n_edge_red": 0, "median_amplitude": 0, "top_quartile_amplitude": 0}
 
-    groups = _group_features_by_wavelength(all_features)
+    # Group by (int(wl_obs), amp_sign).  Features at nearly the same wavelength
+    # with the same amplitude sign are the same CWT-detected peak/trough.
+    groups = defaultdict(list)
+    for f in all_features:
+        key = (int(f["wl_obs"]), 1 if f["amplitude"] > 0 else -1)
+        groups[key].append(f)
 
     hyp_indices = sorted(set(f["hypothesis_idx"] for f in all_features))
     hyp_info = {}
@@ -392,19 +389,18 @@ def build_contradiction_matrix(
             hyp_info[idx] = {"redshift": r.get("redshift", 0)}
 
     matrix_rows = []
-    for group in groups:
-        wls = sorted(f["wl_obs"] for f in group)
-        rep_wl = wls[len(wls) // 2]
+    for (int_wl, amp_sign), group in groups.items():
+        first = group[0]
+        rep_wl = round(first["wl_obs"], 1)
+        group_key = (int_wl, amp_sign)
+
         cells = {}
         for f in group:
             cells[f["hypothesis_idx"]] = f
 
-        # Type, amplitude, and width from the first feature in the group
-        # (all features in a group are the same CWT detection — these are identical)
-        first = group[0]
-
         matrix_rows.append({
-            "wl_obs": round(rep_wl, 1),
+            "wl_obs": rep_wl,
+            "group_key": group_key,
             "cells": cells,
             "n_hypotheses": len(cells),
             "is_edge_blue": rep_wl < 4000.0,
@@ -764,17 +760,18 @@ def _write_cleaned_csvs(
 ) -> None:
     """Write ``{idx}_lines_cleaned.csv`` files with noise features annotated.
 
-    Builds a lookup from (wl_obs) → verdict, then for each hypothesis's CSV:
-    - Features whose wl_obs matches a REMOVE verdict are marked REMOVED
-    - Features whose wl_obs matches a FLAG verdict are marked FLAGGED
-    - KEEP features are written unchanged
-    - All features get ``feature_audit`` and ``feature_audit_flag`` columns.
+    Matches CSV rows to verdicts by ``(int(fitted_center), amp_sign)``
+    where amp_sign is derived from the verdict's ``feature_type`` field.
     """
+    # Build verdict lookup keyed by (int_wl, amp_sign)
     verdict_lookup = {}
     for v in feature_verdicts:
         wl = v.get("wl_obs")
-        if wl is not None:
-            verdict_lookup[round(float(wl), 1)] = v
+        if wl is None:
+            continue
+        ft = (v.get("feature_type") or "").lower()
+        amp_sign = -1 if ft.startswith("abs") else 1  # emission by default
+        verdict_lookup[(int(float(wl)), amp_sign)] = v
 
     for r in harness_results:
         idx = r.get("hypothesis_idx")
@@ -807,21 +804,26 @@ def _write_cleaned_csvs(
                     wl_obs = float(row.get("fitted_center", 0) or 0)
                 except (ValueError, TypeError):
                     wl_obs = 0.0
+                try:
+                    amp = float(row.get("amplitude", 0) or 0)
+                except (ValueError, TypeError):
+                    amp = 0.0
 
                 out_row = dict(row)
                 out_row["feature_audit"] = ""
                 out_row["feature_audit_flag"] = ""
 
                 if status in ("LIKELY", "MARGINAL") and wl_obs > 0:
-                    verdict = verdict_lookup.get(round(wl_obs, 1))
+                    row_key = (int(wl_obs), 1 if amp > 0 else -1)
+                    verdict = verdict_lookup.get(row_key)
                     if verdict:
-                        rec = verdict.get("recommendation", "KEEP")
-                        if rec == "REMOVE":
+                        rec = _clean_rec(verdict.get("recommendation"))
+                        if rec.startswith("REMOVE"):
                             out_row["feature_audit"] = "REMOVED"
                             out_row["feature_audit_flag"] = "; ".join(
                                 verdict.get("issues", [])
                             )
-                        elif rec == "FLAG":
+                        elif rec.startswith("FLAG"):
                             out_row["feature_audit"] = "FLAGGED"
                             out_row["feature_audit_flag"] = "; ".join(
                                 verdict.get("issues", [])
@@ -1168,6 +1170,11 @@ class FeatureAuditor(BaseAgent):
         if parsed is None or not parsed.get("feature_verdicts"):
             print("[FeatureAuditor] All retries exhausted — could not extract valid JSON.")
             parsed = {
+                "skipped": True,
+                "reason": (
+                    f"Failed to parse valid JSON from LLM response "
+                    f"after {MAX_RETRIES} attempts."
+                ),
                 "spectrum_quality": "unknown",
                 "spectrum_quality_justification": (
                     f"Failed to parse valid JSON from LLM response "
@@ -1192,9 +1199,12 @@ class FeatureAuditor(BaseAgent):
                 logging.warning(f"[FeatureAuditor] Failed to write cleaned CSVs: {exc}")
 
         # ── Summary ──
-        n_keep = sum(1 for v in feature_verdicts if v.get("recommendation") == "KEEP")
-        n_remove = sum(1 for v in feature_verdicts if v.get("recommendation") == "REMOVE")
-        n_flag = sum(1 for v in feature_verdicts if v.get("recommendation") == "FLAG")
+        n_keep = sum(1 for v in feature_verdicts
+                     if _clean_rec(v.get("recommendation")).startswith("KEEP"))
+        n_remove = sum(1 for v in feature_verdicts
+                       if _clean_rec(v.get("recommendation")).startswith("REMOVE"))
+        n_flag = sum(1 for v in feature_verdicts
+                     if _clean_rec(v.get("recommendation")).startswith("FLAG"))
         print(
             f"[FeatureAuditor] Verdicts: {n_keep} KEEP, {n_flag} FLAG, "
             f"{n_remove} REMOVE. Quality: {parsed.get('spectrum_quality', '?')}"
