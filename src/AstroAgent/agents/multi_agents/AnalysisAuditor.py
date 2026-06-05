@@ -1182,6 +1182,7 @@ class FeatureAuditor(BaseAgent):
                 ),
                 "feature_verdicts": [],
                 "global_issues": [],
+                "doublet_verdicts": [],
             }
 
         state["feature_audit_verdict"] = parsed
@@ -1207,7 +1208,8 @@ class FeatureAuditor(BaseAgent):
                      if _clean_rec(v.get("recommendation")).startswith("FLAG"))
         print(
             f"[FeatureAuditor] Verdicts: {n_keep} KEEP, {n_flag} FLAG, "
-            f"{n_remove} REMOVE. Quality: {parsed.get('spectrum_quality', '?')}"
+            f"{n_remove} REMOVE. Quality: {parsed.get('spectrum_quality', '?')}. "
+            f"Doublets verified: {len(parsed.get('doublet_verdicts', []))}."
         )
 
         # Save verdict JSON

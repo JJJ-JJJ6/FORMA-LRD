@@ -474,11 +474,15 @@ def _build_verified_matrix_section(
 # Surviving doublets section builder
 # ---------------------------------------------------------------------------
 
-def _build_surviving_doublets_section(doublet_annotations: list) -> str:
+def _build_surviving_doublets_section(
+    doublet_annotations: list,
+    feature_audit_verdict: dict | None = None,
+) -> str:
     """Build a 'Surviving Doublets' section.
 
     Only shows doublets where all relevant components survived FeatureAuditor
-    verification.  These are the most reliable discriminators.
+    verification.  Merges pre-computed separation/ratio data with
+    FeatureAuditor's visual verification from ``doublet_verdicts``.
     """
     if not doublet_annotations:
         return ""
@@ -489,11 +493,23 @@ def _build_surviving_doublets_section(doublet_annotations: list) -> str:
     if not complete and not orphans:
         return ""
 
+    # ── Build lookup from FeatureAuditor doublet verdicts ──
+    dv_lookup = {}  # key: (hypothesis_idx, name_a, name_b) or (hypothesis_idx, claimed)
+    if feature_audit_verdict:
+        for dv in feature_audit_verdict.get("doublet_verdicts", []) or []:
+            hi = dv.get("hypothesis_idx")
+            na = (dv.get("name_a") or "").strip()
+            nb = (dv.get("name_b") or "").strip()
+            if nb:
+                dv_lookup[(hi, na, nb)] = dv
+            else:
+                dv_lookup[(hi, na)] = dv  # orphan keyed by claimed name
+
     lines = ["## Surviving Doublets", ""]
     lines.append(
         "Doublet pairs and orphans where all relevant components survived "
-        "FeatureAuditor verification. These are the most reliable "
-        "discriminators between hypotheses."
+        "FeatureAuditor verification. FeatureAuditor's visual verification "
+        "of separation and ratio is included where available."
     )
     lines.append("")
 
@@ -501,11 +517,33 @@ def _build_surviving_doublets_section(doublet_annotations: list) -> str:
         lines.append("### Complete Pairs")
         lines.append("")
         for da in complete:
+            hi = da["hypothesis_idx"]
+            na = da["name_a"]
+            nb = da["name_b"]
+            dv = dv_lookup.get((hi, na, nb)) or {}
+
+            sep_ok = dv.get("separation_ok")
+            ratio_ok = dv.get("ratio_ok")
+            notes = dv.get("notes", "")
+
+            sep_status = ""
+            if sep_ok is True:
+                sep_status = " ✓ separation"
+            elif sep_ok is False:
+                sep_status = " ✗ separation mismatch"
+
+            ratio_status = ""
+            if ratio_ok is True:
+                ratio_status = " ✓ ratio"
+            elif ratio_ok is False:
+                ratio_status = " ✗ ratio anomaly"
+
+            fa_note = f" — {notes}" if notes else ""
             lines.append(
-                f"- **H{da['hypothesis_idx']}**: {da['name_a']}@"
-                f"{da['wl_a']:.1f} + {da['name_b']}@{da['wl_b']:.1f} → "
+                f"- **H{hi}**: {na}@{da['wl_a']:.1f} + {nb}@{da['wl_b']:.1f} → "
                 f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
                 f"actual {da['sep_actual']:.1f} Å)"
+                f"{sep_status}{ratio_status}{fa_note}"
             )
         lines.append("")
 
@@ -513,10 +551,18 @@ def _build_surviving_doublets_section(doublet_annotations: list) -> str:
         lines.append("### Orphans (only one component claimed)")
         lines.append("")
         for da in orphans:
+            hi = da["hypothesis_idx"]
+            claimed = da["claimed"]
+            dv = dv_lookup.get((hi, claimed)) or {}
+
+            fa_note = dv.get("notes", "")
+            note_str = f" — {fa_note}" if fa_note else ""
+
             lines.append(
-                f"- **H{da['hypothesis_idx']}**: {da['claimed']}@"
+                f"- **H{hi}**: {claimed}@"
                 f"{da['wl_claimed']:.1f} (amp={da['amp_claimed']:+.3f}) → "
                 f"**missing {da['missing']}** at λ ≈ {da['wl_missing']:.1f} Å"
+                f"{note_str}"
             )
         lines.append("")
 
@@ -705,7 +751,7 @@ def _build_user_message(
         filtered_matrix, filtered_stats, harness_results,
     )
     surviving_doublets_section = _build_surviving_doublets_section(
-        filtered_doublets,
+        filtered_doublets, feature_audit_verdict,
     )
     task_text = _build_verified_task(surviving=len(filtered_matrix) > 0)
 

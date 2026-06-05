@@ -232,6 +232,50 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
     "Red edge (9000–9800 Å) shows dense OH skyline residuals — features at 9739.2 and 9792.0 may be contaminated",
     "OI airglow at 5577.3, 6300.3, 6363.8 Å may contaminate narrow emission features in the visible band",
     "Blue edge (<4000 Å) is noise-dominated — no feature in this zone is reliable"
+  ],
+  "doublet_verdicts": [
+    {
+      "hypothesis_idx": 1,
+      "name_a": "[O III]a",
+      "name_b": "[O III]b",
+      "wl_a": 9428.0,
+      "wl_b": 9520.8,
+      "sep_expected": 91.5,
+      "sep_actual": 92.8,
+      "ratio_expected": "b:a ≈ 3:1",
+      "ratio_actual": "a/b ≈ 0.31",
+      "separation_ok": true,
+      "ratio_ok": true,
+      "notes": "Separation matches within tolerance. Ratio consistent with [O III] doublet."
+    },
+    {
+      "hypothesis_idx": 9,
+      "name_a": "[O III]a",
+      "name_b": "[O III]b",
+      "wl_a": 9460.4,
+      "wl_b": 9551.8,
+      "sep_expected": 91.5,
+      "sep_actual": 90.4,
+      "ratio_expected": "b:a ≈ 3:1",
+      "ratio_actual": "a/b ≈ 1.67 (a brighter than b — inverted)",
+      "separation_ok": true,
+      "ratio_ok": false,
+      "notes": "Separation is excellent — confirms the [O III] identification and redshift. But ratio is inverted: [O III]a is brighter than [O III]b, when b should be ~3× brighter. Both are real bright emission lines. The ratio inversion is suspicious — [O III]a may be blended with OH airglow or a second line at a different redshift, boosting its apparent amplitude. Both components should be KEEP (separation confirms identification), but this hypothesis must be weighed against others that show a clean ratio."
+    },
+    {
+      "hypothesis_idx": 2,
+      "name_a": "Ca K_abs",
+      "name_b": "Ca H_abs",
+      "wl_a": 7442.4,
+      "wl_b": null,
+      "sep_expected": 34.8,
+      "sep_actual": null,
+      "ratio_expected": "K deeper than H",
+      "ratio_actual": "orphan — only K claimed",
+      "separation_ok": false,
+      "ratio_ok": false,
+      "notes": "Orphan doublet: Ca K_abs claimed but Ca H_abs missing at expected λ ≈ 7510.2 Å. No absorption detected there — Ca K identification is suspect."
+    }
   ]
 }
 ```
@@ -248,9 +292,22 @@ First, output your reasoning following Steps 1–5 in free text. Keep it focused
   - `REMOVE` — feature should be deleted from all hypotheses that claim it. Two cases: (a) `is_real=false` — pure noise/artifact, no signal exists; (b) `is_real=true` but the signal is atmospheric (OH/OI skyline, telluric absorption) rather than astrophysical.
   - `FLAG` — feature is real but has caveats (weak, edge zone, ratio anomaly); synthesis should treat it as weakened evidence
 - **`global_issues`**: Spectrum-wide observations not tied to a single wavelength (edge zone quality, OH/OI contamination patterns, overall noise characteristics).
+- **`doublet_verdicts`**: Verification results for each doublet pair listed in the "Doublet Pairs & Orphans" section of the user prompt. Each entry must include:
+  - `hypothesis_idx` (int): which hypothesis claims this doublet
+  - `name_a`, `name_b` (str): the two line names (e.g. "[O III]a", "[O III]b")
+  - `wl_a`, `wl_b` (float or null): observed wavelengths of the two components in Å. Set to `null` for an orphan's missing component
+  - `sep_expected` (float or null): expected separation at this redshift in Å. Set to `null` for orphans
+  - `sep_actual` (float or null): actual observed separation in Å. Set to `null` for orphans
+  - `ratio_expected` (str): expected ratio description (e.g. "b:a ≈ 3:1", "K deeper than H")
+  - `ratio_actual` (str): observed ratio description (e.g. "a/b ≈ 0.31"). Set to `"orphan — only ..."` for orphans
+  - `separation_ok` (bool): does the observed separation match expected? Always `false` for orphans
+  - `ratio_ok` (bool): is the amplitude ratio physically plausible? Always `false` for orphans
+  - `notes` (str): 1–2 sentences describing what the spectrum shows. For orphans, explain what was seen (or not seen) at the missing component's expected position. For complete pairs, note whether both components are independently confirmed real per Step 3, and any ratio concerns
 
 ### Verdict coverage rule
 
 You MUST output a verdict for **every row** in the matrix. The `wl_obs` values must match the row wavelengths exactly. Count them before you start writing JSON — if the matrix has 20 rows, your `feature_verdicts` array must have 20 entries.
+
+You MUST also output a `doublet_verdicts` entry for **every doublet pair or orphan** listed in the user prompt's "Doublet Pairs & Orphans" section.
 
 After the JSON block, the output terminates.
