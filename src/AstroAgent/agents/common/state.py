@@ -119,6 +119,11 @@ class SpectroState(MessagesState):
     auditing_history_galaxy: Optional[List] = field(default_factory=list)
     refining_history_galaxy: Optional[List] = field(default_factory=list)
     rule_analysis: Optional[Dict[str, Any]] = None
+    feature_audit_verdict: Optional[Dict[str, Any]] = None    # FeatureAuditor output
+    harness_dir: Optional[str] = None                          # per-spectrum harness output directory
+    _harness_mode: Optional[str] = None                        # "nomad" or "redrock"
+    auditor_verdict: Optional[str] = None                      # AnalysisAuditor (Stage B) verdict string
+    auditor_verdict_json: Optional[Dict[str, Any]] = None      # AnalysisAuditor (Stage B) full verdict
     skip_synthesis: Optional[bool] = None
     debate_rounds: Optional[int] = None
     count: Optional[int] = None
