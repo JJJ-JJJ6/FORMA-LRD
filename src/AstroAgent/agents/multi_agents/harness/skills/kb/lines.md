@@ -1,5 +1,11 @@
 # Spectral Line Reference
 
+## Related Knowledge
+
+- Classification diagnostics (ELG, LRG, QSO, Star rules, fatal problems): see `kb/classification.md`
+- Ionization physics (redshift anchoring priorities, consistency rules, outflow): see `kb/ionization.md`
+- Emission-absorption composite profiles (Mg II, Hα, Hβ): see `kb/composite_profile.md`
+
 ## Rest-Frame Line Table
 
 | Name | λ_rest (Å) | Type | Width Class |
@@ -39,6 +45,10 @@
 
 ## Doublet Rules
 
+**General principle — spacing alone does NOT confirm a doublet.** The targeted search harness pre-selects features whose observed wavelengths are near the predicted line positions. Matching spacing is therefore *expected* for any candidate hypothesis — it is not an independent verification. The real diagnostic question is whether **both components are physically real features**. Specifically:
+- Is the weaker component a genuine peak/trough, or just noise at roughly the right position?
+- In the OH airglow zone (>7800 Å), if the weaker line is unusually bright, suspect OH skyline contamination masquerading as the doublet partner. Flag explicitly.
+
 ### [O III] (4960.3 / 5008.2 Å)
 - Rest separation: 47.9 Å. Observed separation: 47.9 × (1+z) Å.
 - Spacing check: |λ_obs(b) − λ_obs(a) − 47.9×(1+z)| < 5 Å. Wrong spacing → not [O III].
@@ -56,54 +66,27 @@
 - Rest separation: 34.8 Å. Observed: 34.8 × (1+z) Å.
 - Ca K MUST be deeper than Ca H. A single absorption without its partner is likely a misidentification.
 
-### [O II] Unresolved Doublet (3726.0 / 3729.0 Å) and Morphological Verification
+### [O II] Unresolved Doublet (3726.0 / 3729.0 Å)
 
-The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 3729.0 Å, rest separation **2.8–3.0 Å**. At DESI resolution (~2–3 Å at 8000 Å), the doublet is **unresolved** — it appears as a single blended emission peak in the CWT pipeline, which fits it as one "narrow" line. However, the blending leaves a **detectable morphological signature** on the rising edge.
+The [O II] 3727 line is a close doublet (rest separation 2.8–3.0 Å). At DESI resolution, the doublet is **unresolved** — it appears as a single blended emission peak. The key diagnostic is a **rising-edge slope-change** signature that a true single line ([O III]b, Hβ) cannot produce.
 
-**Observed separation**: 2.8 × (1+z) Å ≈ 5–9 pixels at typical DESI sampling (0.8 Å/pixel).
+**Primary diagnostic — rising-edge derivative dip**: On the rising edge of the blended profile, [O II]a contributes flux before [O II]b takes over. The discrete derivative (flux[i] − flux[i−1]) shows a characteristic pattern: large positive → small positive → large positive. This "derivative valley" is the imprint of two unresolved components. A single line shows a smoothly decreasing derivative with no dip. Use the `detect_oii_slope_change` tool for an automated check.
 
-**Physics**: The [O II]b / [O II]a flux ratio is density-dependent and typically 1.0–1.5 in star-forming galaxies. Both components contribute comparable flux, so the blend is symmetric or slightly asymmetric toward the red.
+**Corroborating**: A blended profile is broader than a single narrow line. FWHM > 500 km/s supports the [O II] identification, but is not required — a slope-change without broadened FWHM still warrants a FLAG.
 
-**Visual verification procedure** (MUST read the spectrum ±25 Å around the predicted [O II] position):
+**Discriminating from [O III]b**: When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the slope-change test is decisive. Rely on the morphological test and your visual assessment of the feature's prominence, width, and overall context within the spectrum. Use your perceptual judgment as an astronomer — there is no rigid amplitude-based rule.
 
-1. **Rising-edge slope-change** (the primary diagnostic): On the rising edge of the blended profile, [O II]a contributes flux before [O II]b takes over. This produces a characteristic **slope-change** pattern — the discrete derivative (flux[i] - flux[i-1]) on the rising edge shows a **dip**: large positive → small positive → large positive. The flux rises quickly (steep), then more gently (shallow), then quickly again (steep) before peaking. This "derivative valley" is the imprint of the unresolved doublet — [O II]a's contribution creates an initial steep rise, the crossover between the two components briefly flattens the rise rate, and [O II]b then drives the final ascent to the peak.
+**False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where observed separation is < 4 pixels), the morphological signatures may be undetectable. Report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
 
-   **How to check**: Read the spectrum pixel-by-pixel on the rising edge ~5–15 pixels blueward of the peak. Compute the flux difference between consecutive pixels. Look for a local minimum in the derivative where it drops significantly (typically to <20% of its peak value on the rising edge) and then recovers. The flux never reverses (derivative stays positive) — the signature is in the *rate of change*, not the flux itself.
+### Lyα Forest and DLA
 
-   **Verdict**: Slope-change detected → **FLAG as "unresolved [O II] doublet morphology"**. Clean monotonic derivative (smoothly decreasing to zero at peak, no dip) → the feature is more likely a true single line ([O III]b, Hβ).
+Lyα at z ≳ 1.5 is accompanied by the **Lyα forest** — a dense series of narrow H I absorption lines blueward of the Lyα emission peak. A **DLA** (Damped Lyman-α Absorber) produces a broad, saturated absorption trough immediately blueward of Lyα.
 
-2. **Broadened FWHM** (corroborating): The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature supports the [O II] identification. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data. Note: this is corroborating, not required — a slope-change without broadened FWHM still warrants a FLAG.
-
-**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the slope-change test is decisive. A single Gaussian has a smoothly-decreasing derivative on the rising edge — no dip, no re-acceleration. **CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read.
-
-**Discriminating [O II] from [O III]b**: When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, rely on the slope-change morphological test (above) and your visual assessment of the feature's prominence, width, and overall context within the spectrum. There is no rigid amplitude-based rule — use your perceptual judgment as an astronomer.
-
-**False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where the observed separation is < 3.2 Å < 4 pixels), the morphological signatures may be undetectable. In these cases, report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
-
-### Lyα Forest and DLA (Damped Lyman-α Absorber)
-
-Lyα 1216 Å at moderate-to-high redshift (z ≳ 1.5) is accompanied by the **Lyα forest** — a dense series of narrow H I absorption lines blueward of the Lyα emission peak, produced by intervening neutral hydrogen clouds along the line of sight. At very high column densities, a **DLA** produces a broad, saturated absorption trough immediately blueward of Lyα.
-
-**Visual verification procedure** (when Lyα is claimed at any redshift):
-
-1. **Read the spectrum ±300 Å** around the predicted Lyα position — cover the Lyα emission peak AND at least 100–200 Å blueward to look for forest absorption.
-
-2. **Check for Lyα forest**:
-   - **Forest visible**: A series of narrow absorption lines blueward of Lyα, becoming denser toward shorter wavelengths. Flux is systematically depressed blueward of Lyα compared to redward. This is a **strong positive confirmation** of the Lyα identification — the forest is a unique signature of high-z objects.
-   - **Forest NOT visible but observable**: If the predicted Lyα position minus 100–200 Å still falls within the detector's blue edge (λ_obs > 4000 Å), the forest SHOULD be visible. Its absence is a **negative indicator** — the claimed feature may not be genuine Lyα, or the continuum may be too weak to show forest lines.
-   - **Forest beyond blue edge**: If the forest region (λ_pred(Lyα) − 200 Å) falls below the blue edge of the spectrum (< 4000 Å), the forest is **not observable** regardless of whether the object has one. In this case, forest absence carries **ZERO weight** — you cannot use it as evidence against the hypothesis.
-
-3. **Check for DLA**: A DLA appears as a broad (tens to hundreds of Å), deep absorption trough immediately blueward of the Lyα emission peak. If the Lyα emission profile appears truncated on the blue side or sits in a broad absorption trough, a DLA is likely present. This can explain why the Lyα emission appears narrower or weaker than expected — the DLA is absorbing the blue wing.
-
-4. **Width sanity**: If Lyα is detected but its FWHM is narrower than expected for the claimed object type (QSO Lyα is typically very broad, >2000 km/s), check whether a DLA or forest absorption is cutting into the blue wing, artificially narrowing the apparent profile.
-
-**Asymmetric rule — this check is confirmatory only**:
-
-- Lyα forest visible → **strong positive evidence** for the Lyα identification (and the redshift).
-- Lyα forest NOT visible (but observable) → flag as **"Lyα forest not detected — identification uncertain"**. Do NOT use this to REJECT the hypothesis — only to downgrade confidence.
-- Lyα forest beyond blue edge → **no information**. Do NOT use this to penalise the hypothesis in any way. Flag as **"Lyα forest beyond observable range — cannot confirm or refute Lyα"** and recommend follow-up observation at bluer wavelengths.
-
-This rule applies equally to all three agents: FeatureAuditor verifies the Lyα feature itself; Synthesis uses forest presence/absence in cross-comparison (but only as positive evidence, never as an exclusion criterion); AnalysisAuditor audits whether the synthesis correctly applied the asymmetric rule.
+**Asymmetric rule — confirmatory only**:
+- **Forest visible**: A series of narrow absorption lines blueward of Lyα, with flux systematically depressed blueward compared to redward. This is **strong positive confirmation** of the Lyα identification and redshift.
+- **Forest NOT visible but observable** (λ_pred − 200 Å > 4000 Å): Flag as "Lyα identification uncertain." Downgrade confidence but do NOT exclude the hypothesis.
+- **Forest beyond blue edge** (λ_pred − 200 Å < 4000 Å): **Zero information.** Do NOT use as evidence against the hypothesis.
+- **DLA check**: If Lyα appears narrower/weaker than expected, a DLA trough may be absorbing the blue wing — this explains the width anomaly and should NOT be held against the hypothesis.
 
 ## Line Blend Disentanglement
 
@@ -130,80 +113,28 @@ wavelength_3 → Hε_abs    (longest, ~3970 Å — blended with Ca H)
 
 ### Mg II Emission vs Absorption Coexistence (2800 Å rest)
 
-Mg II 2800 Å can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM, FWHM < 1000 km/s). In AGN host galaxies, broad Mg II emission may be superimposed on narrow Mg II absorption. However, this is easily confused by CWT pipeline artifacts.
-
-**When both Mg II emission AND Mg II_abs are claimed near the same observed wavelength:**
-
-1. **Center coincidence**: The emission and absorption centers must fall within each other's FWHM. If `|λ_em − λ_abs| > max(FWHM_em, FWHM_abs)`, the two features are physically unrelated — one is a misidentification.
-
-2. **Absorption-dominant false emission**: If the CWT feature at the predicted Mg II position is NARROW and in ABSORPTION (FWHM < 1000 km/s, negative amplitude), the nearby broad "Mg II emission" is likely a CWT artifact from:
-   - Overfitting the continuum between absorption troughs
-   - Broad noise on the wings of the absorption feature being fitted as a separate Gaussian
-   - A spurious broad Gaussian from poor baseline subtraction
-
-3. **Default to absorption**: In ambiguous cases, prefer the Mg II absorption interpretation. Mg II ISM absorption is ubiquitous; Mg II BLR emission requires a genuine QSO. The emission claim requires POSITIVE evidence: clearly broad profile (FWHM > 2000 km/s), clearly distinct from the absorption feature, and supported by at least one other AGN indicator ([Ne V], C III], C IV).
-
-4. **CWT broad-line artifact**: CWT may produce spurious narrow peaks from overfitting a genuinely broad profile. Conversely, it may fit a broad Gaussian to noise adjacent to a narrow absorption feature. Both failure modes must be considered.
-Flag ambiguous cases as MARGINAL and note the ambiguity for the synthesis agent.
-
-## CWT Artifacts at Low SNR
-
-When per-pixel SNR is low (< 3), the CWT pipeline becomes increasingly unreliable. The following failure modes are common and MUST be actively guarded against:
-
-### Noise-Blur Broadening
-
-A narrow noise spike, convolved across multiple CWT wavelet scales, can appear as a "broad" emission or absorption feature. The wavelet decomposition detects the same noise structure at adjacent scales, producing a high ridge_length. Key indicators of noise-blur broadening:
-- CWT FWHM is suspiciously large relative to the visual width of any feature in the raw spectrum
-- The feature has moderate-to-high ridge_length but near-zero amplitude
-- The "broad" feature sits in a region where adjacent ±100 Å shows multiple features of similar amplitude
-
-### Phantom Doublets
-
-Two unrelated noise peaks whose observed separation happens to match a known doublet spacing (e.g., [O III] rest separation 47.9 Å → observed ~86 Å at z=0.8). The CWT pipeline may flag them as a confirmed doublet. Counter-check: do the peaks have similar amplitude (expected for [S II]) or a 1:3 ratio (expected for [O III])? If ratio is wrong, the "doublet" is coincidental noise alignment.
-
-### Edge Transients
-
-Wavelet boundary effects at the spectrum edges produce artificial peaks within ~100 Å of the wavelength limits (both blue and red cutoffs). These are NOT real spectral features — they are mathematical artifacts of the wavelet transform encountering a data boundary.
-
-### Single-Scale Fluctuations
-
-A feature with ridge_length=1 or 2 is a single-scale CWT fluctuation — it appears at one wavelet dilation but not at adjacent scales. This is the CWT equivalent of a 1σ noise spike. Treat with maximum skepticism regardless of SNR.
+Mg II 2800 Å can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM). When both are claimed near the same observed wavelength, they may form a single emission–absorption composite profile. **For the full diagnostic criteria (morphological "M" test, center consistency, wing broadness, symmetry, spike–valley–spike detection), see `kb/composite_profile.md`.** Key principle: a genuine composite profile (broad, symmetric, smooth "M" shape) supports both claims as a single physical system; spike–valley–spike patterns do not.
 
 ## Blue Edge Noise Zone (λ_obs < 4000 Å for DESI)
 
-The DESI blue arm (3600–4000 Å) has the lowest throughput and highest noise in the spectrograph. Spectral features detected in this region require additional scrutiny:
+The DESI blue arm (3600–4000 Å) has the lowest throughput and highest noise. Spectral features here require additional scrutiny:
 
-1. **Throughput drop**: DESI blue-arm sensitivity falls steeply below 4000 Å. By 3600 Å, the flux calibration is unreliable.
-2. **Noise characteristics**: The noise in the blue arm is non-Gaussian with frequent outliers that CWT interprets as real peaks.
-3. **Evaluation rules**:
-   - Any line with λ_pred < 4000 Å: flag with "blue edge risk" in caveats
-   - If the feature's SNR < 10 or ridge < 5 in the blue zone, cap status at MARGINAL (never LIKELY)
-   - If SNR < 5 in the blue zone, assign NOT_FOUND regardless of CWT offset
-   - **Must read spectrum ±150 Å** before accepting any blue-zone line as evidence for QSO/AGN
+- **Throughput drop**: DESI blue-arm sensitivity falls steeply below 4000 Å. The noise is non-Gaussian with frequent outliers that CWT interprets as peaks.
+- **Evaluation**: Any line with λ_pred < 4000 Å should be flagged as "blue edge risk." Features barely distinguishable from the elevated blue-edge noise envelope should be capped at MARGINAL — trust your visual assessment over SNR or ridge-length metrics. Features invisible against the blue-edge noise envelope should be assigned NOT_FOUND. Read the spectrum ±150 Å before accepting any blue-zone line as evidence.
+- Lines that naturally fall here at higher redshift: Lyα (1216), C IV (1549), He II (1640), C III] (1909). These are high-ionization AGN indicators routinely claimed in low-SNR blue data — treat them as **presumptively unreliable until visually confirmed**.
 
-Lines at higher redshift that naturally fall in this region include: Lyα (1216), C IV (1549), He II (1640), C III] (1909). These are high-ionization AGN indicators that are routinely claimed in low-SNR blue data — treat them as **presumptively unreliable until visually confirmed**.
-
-## OH Airglow Zone (λ_obs > 7800 Å for DESI)
-
-## Skyline Contamination (OH + OI Airglow)
-
-The DESI spectrum is contaminated by Earth's atmospheric airglow emission at fixed observed wavelengths:
+## OH Airglow Zone and Skyline Contamination
 
 ### OH Airglow (Red edge: > 7000 Å, strongest > 9000 Å)
 
-Hydroxyl (OH) molecular vibration-rotation bands produce dense, bright narrow emission lines in the red-to-near-IR.
+Hydroxyl (OH) molecular bands produce dense, bright narrow emission lines. Even after sky subtraction, residual OH lines appear at fixed observed wavelengths.
 
-1. **Skyline density**: OH emission lines begin around 7000 Å, become significant beyond 7800 Å, and are extremely dense and bright beyond 9000 Å. The CWT detector cannot reliably distinguish astrophysical features from skylines beyond 7800 Å.
-2. **Skyline residuals**: Even after sky subtraction, residual OH lines appear as narrow emission/absorption features at fixed observed wavelengths.
-3. **Evaluation rules**:
-   - Any line with λ_pred > 7800 Å: flag with "OH zone" in caveats. The feature may be real but its amplitude could be contaminated by OH residuals, and the line identification may be a confabulation — the harness/Synthesis may have matched an OH skyline to an astrophysical line.
-   - If λ_pred falls within 10 Å of a known bright skyline, assign NOT_FOUND
-   - If SNR < 10 or ridge < 5 in the OH zone, cap status at MARGINAL
-   - **Must read spectrum ±150 Å** before accepting any OH-zone line
+- **Evaluation**: Any line with λ_pred > 7800 Å should be flagged as "OH zone." Features indistinguishable from the OH residual forest should be capped at MARGINAL — OH skylines can masquerade as astrophysical lines. Visually dominant peaks that do NOT match any known skyline position (see table below) may be real but should still carry an OH contamination caveat. Read the spectrum ±150 Å before accepting any OH-zone line.
+- A match within ±10 Å of a known bright skyline is strong evidence of atmospheric origin — assign NOT_FOUND for the astrophysical line.
 
 ### OI Airglow (Visible: 5577, 6300, 6364 Å)
 
-Atomic oxygen (OI) forbidden transitions produce three prominent narrow emission lines:
+Atomic oxygen forbidden transitions at fixed observed wavelengths:
 
 | λ_obs (Å) | Transition | Notes |
 |-----------|-----------|-------|
@@ -211,11 +142,9 @@ Atomic oxygen (OI) forbidden transitions produce three prominent narrow emission
 | 6300.3 | [OI] red line | Weaker, but narrow and persistent |
 | 6363.8 | [OI] red line | Companion to 6300.3, ratio 6300/6364 ≈ 3:1 |
 
-Unlike OH which is a red-edge problem, OI lines can contaminate features ANYWHERE in the visible spectrum (4000–7000 Å). A CWT-detected narrow emission feature near 5577, 6300, or 6364 Å should be checked against OI contamination regardless of the claimed redshift.
+Unlike OH which is a red-edge problem, OI lines can contaminate features ANYWHERE in the visible spectrum (4000–7000 Å). Any narrow emission feature near these wavelengths should be checked against OI contamination regardless of the claimed redshift.
 
 ### Comprehensive Skyline / Atmospheric Feature Table
-
-Reference of all known atmospheric contamination at fixed observed wavelengths in DESI spectra:
 
 | Type | Name | Wavelength (Å) | Notes |
 |------|------|----------------|-------|
@@ -228,6 +157,6 @@ Reference of all known atmospheric contamination at fixed observed wavelengths i
 | Atmospheric Absorption | O₂ A-band | 7605 | One of the strongest atmospheric absorption bands |
 | OH Airglow Forest | OH Meinel Bands | 7800–9800 | Extremely dense OH forest |
 
-When evaluating ANY narrow emission feature (Width = narrow, Type = em), cross-reference λ_obs against this table.  A match within ±10 Å of a known skyline position is strong evidence of contamination.
+When evaluating ANY narrow emission feature, cross-reference λ_obs against this table.  A match within ±10 Å of a known skyline position is strong evidence of contamination.
 
 Lines that may fall in the OH zone at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 7800 Å, their reliability is compromised and this must be noted in the synthesis verdict.

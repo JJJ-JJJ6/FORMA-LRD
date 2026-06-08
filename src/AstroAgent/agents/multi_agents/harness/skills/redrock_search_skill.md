@@ -104,7 +104,7 @@ If the "Features" column is `—` or ALL features were rejected in Step B:
    | [N II]a/b | 6549.8 / 6585.3 | 35.5 | emission | 25 | a:b ≈ 1:3 (b brighter). Often blended with Hα. |
    | Na D | 5891.6 / 5897.6 | 6.0 | absorption | 25 | Very close. |
 
-   Call `fit_doublet(center_guess_1=λ_pred_a, center_guess_2=λ_pred_b, line_type=..., width_3sigma=..., separation_rest=..., amp_ratio_expected=...)`. The separation check (`match: true/false`) provides **strong independent confirmation** of both the redshift AND the line identification — if the doublet spacing matches the known rest-frame separation, it is highly unlikely to be a coincidence.
+   Call `fit_doublet(center_guess_1=λ_pred_a, center_guess_2=λ_pred_b, line_type=..., width_3sigma=..., separation_rest=..., amp_ratio_expected=...)`. The separation check (`match: true/false`) verifies that the two fitted centers are consistent with the known rest-frame separation — but this is expected since the center_guesses were set at the predicted positions. The REAL confirmation comes from the amplitude ratio matching physics (e.g., b:a ≈ 3:1 for [O III]) AND from both components being independently detected as real features. A large separation mismatch (> tolerance) DOES indicate a problem.
 
 ### Step D: Interpret fit results
 

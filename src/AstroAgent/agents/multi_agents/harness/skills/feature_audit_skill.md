@@ -180,8 +180,10 @@ Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/
 
 The user prompt lists **Doublet Pairs** — pre-computed observed separations and amplitude ratios for known doublets (Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b). For each pair:
 
-- **Separation check**: Compare the expected separation (rest-frame separation × (1+z)) with the actual observed separation. Close agreement strengthens both identifications.
-- **Ratio check**: Evaluate whether the observed amplitude ratio is physically plausible. Known expectations:
+- **Spacing is NOT a positive confirmation.** The targeted search harness already selected features near the predicted observed-frame positions, so matching spacing is expected for any candidate hypothesis. DO NOT cite spacing match as evidence — it is the pipeline's selection criterion, not an independent verification.
+- **The real question is whether both components are real features.** Apply the Three-Question Test (Step 3) to EACH component independently. The weaker line is the critical one — is it a genuine peak/trough, or just noise at roughly the expected position? If the weaker component fails Step 3 (noise forest, single-pixel spike, invisible against local noise), the "doublet" is likely a chance alignment of one real feature with a noise fluctuation.
+- **OH zone extra scrutiny**: If the doublet falls in the OH airglow zone (λ_obs > 7800 Å) and the weaker component is unusually bright, suspect OH skyline contamination masquerading as the doublet partner. Cross-reference against the skyline table in `kb/lines.md`. Flag such cases explicitly — a bright OH line at the right spacing can perfectly mimic a doublet partner.
+- **Ratio check**: Evaluate whether the observed amplitude ratio is physically plausible for the claimed doublet species. Known expectations:
   - Ca K/H: K must be deeper than H
   - [O III]a/b: b:a ≈ 3:1 (a/b ≈ 0.33)
   - [N II]a/b: a:b ≈ 1:3 (b brighter)
@@ -190,7 +192,7 @@ The user prompt lists **Doublet Pairs** — pre-computed observed separations an
   - One component may be contaminated (blended with another line, affected by skyline)
   - One component may be noise masquerading as the doublet partner
   - The weaker component (e.g., [O III]a) may be absorbed by noise if SNR is marginal
-- Use `read_spectrum_region` on BOTH components together (wider window) to assess whether both are real features. If the separation is right but the ratio is wrong, flag the pair — do NOT auto-remove unless Step 3 independently finds one component is noise.
+- Use `read_spectrum_region` on BOTH components together (wider window) to assess whether both are real features. First verify each component independently via Step 3. If the weaker component is not a convincing feature, flag the pair as a likely chance alignment. If both are real but the ratio is wrong, flag the pair — do NOT auto-remove unless Step 3 independently finds one component is noise.
 
 ### Step 5: [O II] Doublet Morphology Check (MANDATORY when [O II] is claimed)
 
@@ -399,7 +401,7 @@ First, output your reasoning following Steps 1–6 in free text. Keep it focused
       "ratio_actual": "a/b ≈ 1.67 (a brighter than b — inverted)",
       "separation_ok": true,
       "ratio_ok": false,
-      "notes": "Separation is excellent — confirms the [O III] identification and redshift. But ratio is inverted: [O III]a is brighter than [O III]b, when b should be ~3× brighter. Both are real bright emission lines. The ratio inversion is suspicious — [O III]a may be blended with OH airglow or a second line at a different redshift, boosting its apparent amplitude. Both components should be KEEP (separation confirms identification), but this hypothesis must be weighed against others that show a clean ratio."
+      "notes": "Both components are real, visually confirmed emission peaks. Separation matches within tolerance — but this is expected from targeted search pre-selection, not independent confirmation. Ratio is inverted: [O III]a is brighter than [O III]b, when b should be ~3× brighter. [O III]a may be blended with OH airglow or a second line at a different redshift, boosting its apparent amplitude. Both components should be KEEP (both are real peaks), but this hypothesis must be weighed against others that show a clean ratio."
     },
     {
       "hypothesis_idx": 2,
