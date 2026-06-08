@@ -66,15 +66,45 @@ The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 372
 
 **Visual verification procedure** (MUST read the spectrum ±25 Å around the predicted [O II] position):
 
-1. **Blue-wing shoulder/excess**: On the rising edge of the main peak, there should be a subtle shoulder, plateau, or change in slope ~2.8×(1+z) Å blueward of the main peak. This is [O II]a contributing flux before [O II]b takes over. In the flux derivative, this appears as a dip in slope (slope increases, then briefly stalls or decreases, then increases again toward the main peak).
+1. **Rising-edge morphology — a continuum of signatures** (the primary diagnostic):
 
-2. **Subtle inter-component valley**: A slight flux dip (only a few percent of peak flux) between the two blended components. This is the most subtle signature — at SNR < 3 it may be invisible, but at moderate SNR it appears as a tiny reversal in the rising trend. Look for any pixel where flux is LOWER than the previous pixel on the rising edge.
+   The rising edge of the blended profile carries the imprint of [O II]a contributing flux before [O II]b dominates. At DESI resolution, this produces a **continuum** of observable patterns, ordered from strongest to weakest [O II] evidence:
 
-3. **Broadened FWHM**: The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature is a **positive indicator** of [O II] blending. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data.
+   | Signature | Flux behavior on rising edge | Derivative behavior | [O II] support |
+   |-----------|------------------------------|---------------------|----------------|
+   | **Valley** | Flux rises, then **decreases** (reverses) for 1–3 pixels, then rises again to peak | Derivative goes **negative** briefly | **STRONG** |
+   | **Plateau / stall** | Flux rises, then **flattens** (constant flux, 2–4 pixels with near-zero increase), then rises again to peak | Derivative drops to **≈0**, stays flat, then increases | **MODERATE** |
+   | **Slope-change** | Flux rises continuously (never reverses, never flattens), but the **rate of rise changes**: steep → shallow → steep | Derivative dips but stays **positive** — a "derivative valley" without a flux valley | **MODERATE** |
+   | **Clean single Gaussian** | Smooth monotonic rise with constant or smoothly-changing curvature | Derivative is smooth and monotonic | **NONE — argues AGAINST [O II]** |
 
-4. **Asymmetry sense**: The blend should be slightly asymmetric — the blue side (rising edge) is more gradual than the red side (falling edge), because [O II]a spreads flux blueward. A perfectly symmetric single Gaussian argues AGAINST [O II].
+   **How to identify each pattern** (read pixel-by-pixel on the rising edge, ~3–10 pixels blueward of the peak):
 
-**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the morphology test is decisive: symmetric single Gaussian → [O III]b; blue-wing asymmetry + subtle valley + broadened FWHM → [O II]. **CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read.
+   - **Valley**: Any pixel where flux[i] < flux[i-1] on the rising edge. The flux briefly backtracks. This is the classic inter-component gap.
+   - **Plateau / stall**: A run of 2–4 pixels where flux[i] ≈ flux[i-1] (change < ~0.003, or within the visible noise envelope). The rise "stalls" — [O II]a is peaking while [O II]b is beginning to rise, and their contributions cancel out.
+   - **Slope-change**: The difference flux[i] - flux[i-1] (the discrete derivative) shows a clear pattern: large positive → small positive → large positive. The flux never stalls or reverses, but the *steepness* of the rise has a local minimum. Look for a "kink" or "bend" in the rising slope — the spectrum rises quickly (steep), then more gently (shallow), then quickly again (steep) before peaking.
+
+   **Why this continuum exists**: At higher redshift, the observed separation 2.8×(1+z) Å increases, making the valley easier to resolve. At lower redshift (z < 0.5), the separation shrinks below ~4.2 Å (~5 pixels), and the valley may merge into a plateau or slope-change. At very low SNR, even the plateau may be invisible. The pattern you CAN detect determines the strength of the [O II] evidence — don't treat "no valley" as "no [O II]."
+
+2. **Broadened FWHM**: The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature is a **positive indicator** of [O II] blending. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data.
+
+3. **Asymmetry sense**: The blend should be slightly asymmetric — the blue side (rising edge) is more gradual than the red side (falling edge), because [O II]a spreads flux blueward. A perfectly symmetric single Gaussian argues AGAINST [O II].
+
+**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the morphology test is decisive:
+
+- **Clean single Gaussian** (smooth monotonic rise, symmetric profile, FWHM 200–400 km/s) → **favors [O III]b** — a true single line.
+- **Valley** on rising edge → **strongly favors [O II]** — a single line cannot produce a flux reversal on the rising edge.
+- **Plateau / stall** on rising edge → **moderately favors [O II]** — a single Gaussian does not have a flat segment; the stall is [O II]a and [O II]b contributions cancelling.
+- **Slope-change** (steep→shallow→steep) on rising edge → **moderately favors [O II]** — a single Gaussian has smoothly-changing curvature, not a kink in the rise rate. The slope-change is [O II]a contributing flux before [O II]b dominates; it is a distinct physical signature, not a noise artifact.
+
+**CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read. The rising-edge morphology continuum is the physical discriminator.
+
+**[O II] vs Balmer amplitude hierarchy**: In typical ELG and star-forming galaxy spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines (Hβ, Hγ, Hδ) at the same redshift, this is a **negative indicator** for the [O II] identification:
+
+- **[O II] amplitude < 0.5× Hβ amplitude** → **strong penalty** — the feature is unlikely to be genuine [O II]. A true [O II] line should not be dwarfed by Balmer emission from the same system.
+- **[O II] amplitude 0.5–1.0× Hβ amplitude** → **moderate penalty** — unusual but not disqualifying. Some low-metallicity or high-ionization systems can show suppressed [O II].
+- **[O II] amplitude > 1.0× Hβ amplitude** → **no penalty** — consistent with typical [O II].
+
+If Hβ is unavailable (outside spectral range), use Hγ or Hδ as a proxy with the same thresholds. This check is MANDATORY when discriminating [O II] from [O III]b: [O III]b can legitimately be weaker than Balmer lines, so a faint claimed-[O II] that is much weaker than Hβ is more likely to actually be [O III]b at a lower redshift.
 
 **False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where the observed separation is < 3.2 Å < 4 pixels), the morphological signatures may be undetectable. In these cases, report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
 

@@ -204,19 +204,48 @@ Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.
 
 1. **Read the spectrum ±25 Å** around the claimed [O II] observed wavelength. If already read as part of Step 2, re-examine the existing data.
 
-2. **Check for the three morphological signatures**:
-   - **Blue-wing shoulder**: A subtle plateau, slope change, or excess flux on the rising edge, ~2.8×(1+z) Å blueward of the peak. Look for a brief slowdown in the flux rise.
-   - **Subtle inter-component valley**: Any pixel on the rising edge where flux is LOWER than the previous pixel (flux decreases, even by <0.01). This is the valley between [O II]a and [O II]b.
-   - **Broadened FWHM**: CWT-fitted FWHM > 500 km/s for a "narrow" feature → consistent with unresolved blending. True single narrow lines at similar SNR typically have FWHM 200–400 km/s.
+2. **Check the rising-edge morphology — a continuum of signatures**:
 
-3. **Compare morphology with single-line expectations**:
-   - Clean symmetric single Gaussian → morphology **does NOT support** [O II]. The feature may be a true single line ([O III]b, Hβ, Hα) misidentified as [O II].
-   - Blue-wing asymmetry + subtle valley + broadened FWHM → morphology **supports** [O II]. All three signatures together constitute strong positive evidence.
-   - One or two signatures present → morphology **weakly supports** [O II]. Note as tentative.
+   The rising edge of the blended [O II] profile carries the imprint of [O II]a contributing flux before [O II]b dominates. At DESI resolution, this produces a **continuum** of observable patterns, ordered from strongest to weakest [O II] evidence. Read pixel-by-pixel on the rising edge, ~3–10 pixels blueward of the peak:
 
-4. **Record the morphological assessment** in the feature's `issues` and `recommendation`:
-   - If morphology supports [O II]: add to `issues` "Morphology consistent with [O II] unresolved doublet: blue-wing shoulder at λ≈X, subtle valley at λ≈Y, broadened FWHM Z km/s" — feature may be KEEP or FLAG (depending on other factors). Do NOT REMOVE a feature solely because it's identified as [O II].
-   - If morphology does NOT support [O II] (clean symmetric single Gaussian): add to `issues` "Morphology inconsistent with [O II] unresolved doublet: symmetric single-Gaussian profile, no blue-wing shoulder, FWHM consistent with single narrow line" — this undermines the [O II] claim. The feature may still be real (just not [O II]), so FLAG rather than REMOVE, and note that the identification is suspect.
+   | Signature | Flux behavior | Derivative | [O II] support |
+   |-----------|--------------|------------|----------------|
+   | **Valley** | Flux rises, then **decreases** (reverses) for 1–3 pixels, then rises again | Derivative goes **negative** | **STRONG** |
+   | **Plateau / stall** | Flux rises, then **flattens** (constant flux, 2–4 pixels), then rises again | Derivative ≈ 0 briefly | **MODERATE** |
+   | **Slope-change** | Flux rises continuously (never reverses), but **rate of rise** changes: steep → shallow → steep | Derivative dips but stays **positive** | **MODERATE** |
+   | **Clean single Gaussian** | Smooth monotonic rise, constant curvature | Derivative smooth and monotonic | **NONE — argues AGAINST** |
+
+   **How to identify each pattern**:
+   - **Valley**: Any pixel where flux[i] < flux[i-1] on the rising edge. The flux briefly backtracks.
+   - **Plateau / stall**: A run of 2–4 pixels where flux[i] ≈ flux[i-1] (change < ~0.003, or within the visible noise envelope). The rise "stalls" — [O II]a peaks while [O II]b begins to rise, their contributions cancelling.
+   - **Slope-change**: The discrete derivative (flux[i] - flux[i-1]) shows large positive → small positive → large positive. Look for a "kink" in the rising slope — the spectrum rises quickly, then more gently, then quickly again before peaking. No single pixel shows a reversal or stall.
+
+3. **Check the FWHM**: CWT-fitted FWHM > 500 km/s for a "narrow" feature → consistent with unresolved blending. True single narrow lines at similar SNR typically have FWHM 200–400 km/s.
+
+4. **Compare morphology with single-line expectations**:
+   - **Clean single Gaussian** (no valley, no plateau, no slope-change, FWHM 200–400 km/s) → morphology **does NOT support** [O II]. The feature may be a true single line ([O III]b, Hβ, Hα) misidentified as [O II].
+   - **Valley** on rising edge → morphology **strongly supports** [O II]. A single Gaussian cannot produce a flux reversal. Combined with broadened FWHM (>500 km/s), this is definitive.
+   - **Plateau / stall** on rising edge → morphology **moderately supports** [O II]. A single Gaussian has smooth curvature, not a flat segment. The stall is the [O II]a+b crossover where their contributions cancel. Combined with broadened FWHM, this is strong positive evidence.
+   - **Slope-change** (steep→shallow→steep) on rising edge → morphology **moderately supports** [O II]. A single Gaussian has smoothly-changing curvature, not a kink in the rise rate. The slope-change is [O II]a contributing flux before [O II]b dominates — a distinct physical signature, not a noise artifact. Combined with broadened FWHM (>500 km/s), this is positive evidence for [O II].
+
+5. **[O II] vs Balmer amplitude hierarchy** (MANDATORY when Balmer lines are available at the same hypothesis redshift):
+
+   In typical ELG spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines at the same redshift, this undermines the [O II] identification.
+
+   **Procedure**:
+   - Identify the Hβ (or Hγ/Hδ if Hβ is unavailable) amplitude from the same hypothesis's feature list.
+   - Compare the claimed [O II] amplitude against it.
+   - **[O II] amp < 0.5× Balmer amp** → **strong penalty**. The feature is unlikely to be genuine [O II]. Add to `issues`: *"[O II] amplitude (X) is << Hβ amplitude (Y) — inconsistent with typical [O II]/Balmer hierarchy. A true [O II] should not be dwarfed by Balmer lines from the same system. This favors the [O III]b interpretation."*
+   - **[O II] amp 0.5–1.0× Balmer amp** → **moderate penalty**. Unusual but not disqualifying. Add to `issues`: *"[O II] amplitude (X) is weaker than Hβ (Y) — unusual for [O II]. Could indicate the feature is actually [O III]b."*
+   - **[O II] amp > 1.0× Balmer amp** → **no penalty**. Consistent with [O II].
+
+   This check is especially powerful for the [O II]-vs-[O III]b degeneracy: [O III]b can legitimately be weaker than Balmer lines in some AGN, so a faint claimed-[O II] that is much weaker than Hβ is more likely to actually be [O III]b at a lower redshift.
+
+6. **Record the morphological assessment** in the feature's `issues` and `recommendation`:
+   - If morphology **strongly supports** [O II] (valley): add to `issues` "Morphology consistent with [O II] unresolved doublet: inter-component valley at λ≈X, broadened FWHM Z km/s" — feature may be KEEP or FLAG (depending on other factors). Do NOT REMOVE a feature solely because it's identified as [O II].
+   - If morphology **moderately supports** [O II] (plateau/stall): add to `issues` "Morphology consistent with [O II] unresolved doublet: rising-edge plateau/stall at λ≈X–Y (2–4 pixels of near-constant flux), broadened FWHM Z km/s" — same treatment as above.
+   - If morphology **moderately supports** [O II] (slope-change): add to `issues` "Morphology consistent with [O II] unresolved doublet: slope-change on rising edge (steep→shallow→steep), broadened FWHM Z km/s. The kink in rise rate is a physical signature of [O II]a+b blending." — feature may be KEEP or FLAG depending on other factors.
+   - If morphology **does NOT support** [O II] (clean symmetric single Gaussian): add to `issues` "Morphology inconsistent with [O II] unresolved doublet: symmetric single-Gaussian profile, smooth monotonic rising edge, FWHM consistent with single narrow line" — this undermines the [O II] claim. The feature may still be real (just not [O II]), so FLAG rather than REMOVE, and note that the identification is suspect.
    - If SNR too low for morphology check: add "SNR insufficient for [O II] doublet morphology check — cannot confirm or refute" — do NOT use morphology to penalize the hypothesis.
 
 **Why this matters**: When the SAME observed emission feature is claimed as [O II] by one hypothesis and [O III]b (a true single line) by another, morphology is the ONLY way to distinguish them at the feature-audit stage. Wavelength matching is inherently ambiguous because both lines have similar rest wavelengths relative to cosmological redshift — a feature at λ_obs can match [O II] at high-z OR [O III]b at low-z. The morphology check breaks this degeneracy.
