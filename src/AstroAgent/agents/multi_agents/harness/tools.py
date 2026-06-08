@@ -964,3 +964,226 @@ def compute_redshift(observed_wavelength: float, rest_wavelength: float) -> dict
         "rest_wavelength": rest_wavelength,
         "observed_wavelength": observed_wavelength,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tool 12: detect_oii_slope_change — unresolved [O II] doublet morphology
+# ---------------------------------------------------------------------------
+
+def _detect_oii_slope_change_core(
+    wavelength: np.ndarray,
+    flux: np.ndarray,
+    target_wl: float,
+    search_window: float = 25.0,
+    rise_search_n: int = 20,
+    dip_threshold: float = 0.20,
+    recovery_threshold: float = 2.0,
+) -> dict:
+    """Core detection logic for the [O II] unresolved doublet slope-change signature.
+
+    Returns a dict with detection result and diagnostic metrics.
+    """
+    # 1. Locate the peak in a window around the target wavelength
+    mask = (wavelength >= target_wl - search_window) & (wavelength <= target_wl + search_window)
+    w = wavelength[mask]
+    f = flux[mask]
+
+    if len(w) < 10:
+        return {
+            "detected": False,
+            "reason": "Too few points in search window",
+            "n_window_points": len(w),
+        }
+
+    peak_idx = int(np.argmax(f))
+    peak_wl = float(w[peak_idx])
+    peak_flux = float(f[peak_idx])
+
+    # 2. Extract the rising edge: ~5 to `rise_search_n` pixels blueward of the peak
+    rise_start = max(0, peak_idx - rise_search_n)
+    rise_end = peak_idx
+    rise_f = f[rise_start:rise_end + 1]
+    rise_w = w[rise_start:rise_end + 1]
+
+    if len(rise_f) < 6:
+        return {
+            "detected": False,
+            "reason": f"Rising edge too short ({len(rise_f)} pixels)",
+            "peak_wl": peak_wl,
+            "peak_flux": peak_flux,
+        }
+
+    # 3. Compute discrete derivative on the rising edge
+    #    Exclude the last 2 pixels (too close to peak, affected by peak curvature)
+    deriv = np.diff(rise_f)[:-2]
+    deriv_wl = rise_w[1:len(deriv) + 1]  # wavelength at each derivative point
+
+    if len(deriv) < 5:
+        return {
+            "detected": False,
+            "reason": f"Derivative array too short ({len(deriv)} pixels)",
+            "peak_wl": peak_wl,
+            "peak_flux": peak_flux,
+        }
+
+    # 4. Find the maximum derivative (the "steep" phase)
+    max_deriv_idx = int(np.argmax(deriv))
+    max_deriv = float(deriv[max_deriv_idx])
+    max_deriv_wl = float(deriv_wl[max_deriv_idx])
+
+    # 5. After the max derivative, find the minimum (the "shallow" phase / dip)
+    post_peak_deriv = deriv[max_deriv_idx + 1:]
+    if len(post_peak_deriv) < 2:
+        return {
+            "detected": False,
+            "reason": "Insufficient pixels after max derivative for dip",
+            "peak_wl": peak_wl,
+            "peak_flux": peak_flux,
+            "max_deriv": max_deriv,
+            "max_deriv_wl": max_deriv_wl,
+        }
+
+    dip_idx = max_deriv_idx + 1 + int(np.argmin(post_peak_deriv))
+    dip_deriv = float(deriv[dip_idx])
+    dip_wl = float(deriv_wl[dip_idx])
+
+    # 6. After the dip, find the maximum derivative (the "recovery" phase)
+    post_dip_deriv = deriv[dip_idx + 1:]
+    recovery_deriv = float(np.max(post_dip_deriv)) if len(post_dip_deriv) > 0 else 0.0
+    if len(post_dip_deriv) > 0:
+        recovery_idx = dip_idx + 1 + int(np.argmax(post_dip_deriv))
+        recovery_wl = float(deriv_wl[recovery_idx])
+    else:
+        recovery_wl = None
+
+    # 7. Apply detection criteria
+    # Two distinct [O II] signatures, both physically meaningful:
+    #
+    #   VALLEY: The flux REVERSES on the rising edge (dip_deriv < 0).
+    #           This is the classic inter-component gap — [O II]a peaks
+    #           and flux briefly drops before [O II]b takes over. This
+    #           is the STRONGEST [O II] signature.
+    #
+    #   SLOPE-CHANGE: The flux never reverses (dip_deriv >= 0), but the
+    #           rise rate has a deep local minimum — the derivative drops
+    #           to a small positive value, then recovers. Detected when
+    #           dip_ratio = dip_deriv / max_deriv < dip_threshold (0.20).
+    #
+    dip_ratio = dip_deriv / max_deriv if max_deriv > 1e-10 else 1.0
+    if dip_deriv < 0:
+        # Valley detected — flux reversal is unambiguous [O II] evidence
+        recovery_ok = True  # negative derivative is its own confirmation
+        detected = True
+        signature_type = "valley"
+    else:
+        # Slope-change — check if the derivative dip is deep enough
+        signature_type = "slope-change"
+        if len(post_dip_deriv) >= 2:
+            recovery_ok = recovery_deriv > dip_deriv * recovery_threshold if dip_deriv > 0 else False
+            detected = dip_ratio < dip_threshold and recovery_ok
+        else:
+            recovery_ok = None  # too close to peak to assess
+            detected = dip_ratio < dip_threshold
+
+    # 8. Compute FWHM estimate from the peak profile
+    #    Half-max on the rising side
+    fwhm_A = None
+    fwhm_km_s = None
+    if peak_flux > 0:
+        # Find continuum from local minimum before the rise
+        pre_rise = f[:rise_start + 1]
+        continuum = float(np.min(pre_rise)) if len(pre_rise) > 0 else float(f[0])
+        half_max = continuum + (peak_flux - continuum) / 2.0
+
+        # Left crossing
+        for i in range(peak_idx - 1, 0, -1):
+            if f[i] <= half_max <= f[i + 1]:
+                left_wl = w[i] + (w[i + 1] - w[i]) * (half_max - f[i]) / (f[i + 1] - f[i])
+                break
+        else:
+            left_wl = None
+
+        # Right crossing
+        for i in range(peak_idx, len(f) - 1):
+            if f[i] >= half_max >= f[i + 1]:
+                right_wl = w[i] + (w[i + 1] - w[i]) * (f[i] - half_max) / (f[i] - f[i + 1])
+                break
+        else:
+            right_wl = None
+
+        if left_wl is not None and right_wl is not None:
+            fwhm_A = round(float(right_wl - left_wl), 2)
+            fwhm_km_s = round(float(fwhm_A / peak_wl * 2.99792458e5), 0)
+
+    return {
+        "detected": detected,
+        "signature_type": signature_type if detected else None,
+        "peak_wl": peak_wl,
+        "peak_flux": round(peak_flux, 4),
+        "dip_ratio": round(dip_ratio, 3),
+        "dip_threshold": dip_threshold,
+        "max_deriv": round(max_deriv, 6),
+        "max_deriv_wl": max_deriv_wl,
+        "dip_deriv": round(dip_deriv, 6),
+        "dip_wl": dip_wl,
+        "recovery_deriv": round(recovery_deriv, 6),
+        "recovery_wl": recovery_wl,
+        "recovery_ok": recovery_ok,
+        "fwhm_A": fwhm_A,
+        "fwhm_km_s": fwhm_km_s,
+        "deriv_profile": [round(float(d), 6) for d in deriv],
+        "deriv_wl": [round(float(dw), 1) for dw in deriv_wl],
+        "n_rise_pixels": len(rise_f),
+        "n_deriv_points": len(deriv),
+        "n_post_dip": len(post_dip_deriv),
+    }
+
+
+@tool
+def detect_oii_slope_change(
+    npz_path: str,
+    target_wl: float,
+    search_window: float = 25.0,
+) -> dict:
+    """Detect the [O II] unresolved doublet slope-change signature at a target wavelength.
+
+    [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å) unresolved
+    at DESI resolution. It appears as a single peak in the CWT catalog, but the
+    raw spectrum carries a characteristic signature on the rising edge: the
+    discrete derivative (flux[i] - flux[i-1]) shows a **dip** — it rises to a
+    peak, drops significantly, then rises again before the flux peaks. A true
+    single line ([O III]b, Hβ) cannot produce this pattern.
+
+    Use this to discriminate [O II] from [O III]b when the SAME observed feature
+    is claimed as [O II] by one hypothesis and [O III]b by another.
+
+    Parameters
+    ----------
+    npz_path : str
+        Path to the cleaned spectrum .npz file.
+    target_wl : float
+        The observed wavelength (Å) where [O II] is claimed.
+    search_window : float
+        Half-width of the search window around target_wl (default 25 Å).
+
+    Returns
+    -------
+    dict with keys:
+        detected : bool            — True if slope-change signature found
+        peak_wl : float            — actual peak wavelength (Å)
+        peak_flux : float          — peak flux
+        dip_ratio : float          — min_deriv / max_deriv (< 0.30 = detected)
+        max_deriv : float          — maximum derivative on rising edge
+        max_deriv_wl : float       — wavelength of max derivative
+        dip_deriv : float          — minimum derivative after the max
+        dip_wl : float             — wavelength of the dip
+        recovery_deriv : float     — max derivative after the dip
+        fwhm_A : float or None     — FWHM estimate (Å)
+        fwhm_km_s : float or None  — FWHM estimate (km/s)
+        deriv_profile : list[float] — full derivative array on rising edge
+        deriv_wl : list[float]     — wavelengths for derivative array
+    """
+    data = np.load(npz_path)
+    return _detect_oii_slope_change_core(
+        data["wavelength"], data["flux"], target_wl, search_window,
+    )

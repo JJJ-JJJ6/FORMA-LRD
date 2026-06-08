@@ -101,14 +101,19 @@ For **each of the top 3–5 LIKELY lines** that support the winning hypothesis, 
 
    **Verdict**: A feature that fails BOTH criteria (5+ similar neighbors AND <1.5× advantage) is almost certainly noise, regardless of CWT status. A feature that passes both (≤1 similar AND >2.5× advantage) is a genuine outlier. Mixed results → flag as ambiguous. This is especially important in the "clean" mid-range (4000–7800 Å) where the noise floor produces dense forests of similar oscillations that can fool narrow-window inspection.
 
-4. **[O II] doublet morphology** (MANDATORY when the winning hypothesis claims [O II] as a key line, OR when the winning and 2nd-best hypotheses disagree on whether the same feature is [O II] vs [O III]b): [O II] 3727 is an unresolved doublet (3726.0/3729.0 Å, rest sep 2.8 Å). At DESI resolution it appears as a single peak in the line catalog, but the raw spectrum carries morphological signatures on the rising edge. **[O III]b 5008.2 is a true single line.** Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.md` for the full criteria. Read the spectrum ±25 Å around the claimed feature and check the rising-edge **morphological continuum** (strongest→weakest [O II] evidence):
-   - **Valley**: Flux rises, then **decreases** (reverses) for 1–3 pixels on the rising edge → **strongly favors [O II]**. A single Gaussian cannot produce a flux reversal.
-   - **Plateau / stall**: Flux rises, then **flattens** (constant flux, 2–4 pixels) on the rising edge → **moderately favors [O II]**. A single Gaussian has smooth curvature, not a flat segment.
-   - **Slope-change**: Flux rises continuously, but the **rate of rise** changes (steep→shallow→steep) → **moderately favors [O II]**. The kink in rise rate is a physical signature of [O II]a+b blending, not a noise artifact. Combined with broadened FWHM, this is positive evidence.
-   - **Clean single Gaussian**: Smooth monotonic rise, no reversal/stall/kink → **favors [O III]b** (single line).
-   - **Broadened FWHM**: CWT FWHM > 500 km/s for a "narrow" line corroborates [O II] blending.
-   - **[O II] vs Balmer amplitude hierarchy**: In typical ELG spectra, [O II] should be comparable to or brighter than Hβ. Check the winning hypothesis's line catalog: if the claimed [O II] amplitude is **< 0.5×** the Hβ (or Hγ/Hδ) amplitude, this **strongly penalizes** the [O II] identification — a true [O II] is not dwarfed by Balmer lines. This is especially powerful for the [O II]-vs-[O III]b degeneracy: [O III]b can legitimately be fainter than Balmer lines, so a dim claimed-[O II] is more likely [O III]b.
-   - **Assessment**: If the winning hypothesis claims [O III]b but the rising edge shows a valley, plateau, or slope-change, this is grounds for DOWNGRADE or REJECT. If the amplitude hierarchy also penalizes [O II] (claimed [O II] << Balmer), this further strengthens the case against the [O II] identification.
+4. **[O II] doublet morphology** (MANDATORY when the winning hypothesis claims [O II] as a key line, OR when the winning and 2nd-best hypotheses disagree on whether the same feature is [O II] vs [O III]b): [O II] 3727 is an unresolved doublet (3726.0/3729.0 Å, rest sep 2.8 Å). At DESI resolution it appears as a single peak in the line catalog, but the raw spectrum carries a **rising-edge slope-change** signature. **[O III]b 5008.2 is a true single line.** Call `detect_oii_slope_change(target_wl=<claimed λ_obs>)` for each disputed feature:
+   - `detected=true` → **O II candidate** — slope-change (valley or derivative dip) confirms the doublet nature. FLAG as unresolved [O II].
+   - `detected=false` BUT the feature is **among the top 2 brightest emission peaks** in the spectrum → **probable O II** — peak dominance favours [O II] even without morphological confirmation. The doublet may be unresolved due to low SNR or redshift. **If the auditor finds that competing hypotheses cannot explain this dominant peak with overwhelming physical advantage, the [O II] hypothesis should be favoured despite the negative tool result.**
+   - `detected=false` AND not among the brightest → morphology more consistent with a single narrow line than an unresolved doublet — the [O II] identification is suspect. Consider what the competing hypotheses claim for this feature.
+   - `fwhm_km_s` > 500 km/s corroborates [O II] blending (not required).
+   - **[O II] vs Balmer amplitude hierarchy**: If the claimed [O II] amplitude is **< 0.5×** the Hβ (or Hγ/Hδ) amplitude, this **strongly penalizes** the [O II] identification — a true [O II] is not dwarfed by Balmer lines.
+   - **Assessment**: If the winning hypothesis identifies this feature as a single line (not [O II]) but `detect_oii_slope_change` returns `detected=true` (or `detected=false` with a dominant peak that competitors cannot explain), this is grounds for DOWNGRADE or REJECT — the morphology or peak dominance favours the [O II] interpretation. If the amplitude hierarchy also penalizes [O II], this weakens the counter-argument.
+
+5. **Lyα forest / DLA check** (MANDATORY when the winning hypothesis claims Lyα as a key line): Lyα at z ≳ 1.5 is accompanied by the Lyα forest — dense H I absorption blueward of Lyα. Use `grep_kb(pattern="Lyα.*forest|DLA|damped", C=5)` and `read_spectrum_region` ±300 Å. **Asymmetric rule — confirmatory only:**
+   - **Forest visible** → strong positive evidence. Note in `key_issues` as a strength.
+   - **Forest NOT visible but observable** (λ_pred − 200 Å > 4000 Å) → the synthesis should have flagged this. If it didn't, add to `key_issues`: *"Lyα claimed but no forest detected in observable range — Lyα identification uncertain."* This is grounds for DOWNGRADE.
+   - **Forest beyond blue edge** → zero weight. If the synthesis used forest absence to exclude or downgrade the hypothesis, this is an **error** — add to `key_issues` and consider UPGRADE (reversing an incorrect penalty).
+   - **DLA check**: If Lyα width is anomalous, check whether a DLA absorption trough is present. If yes, the width anomaly is explained — do NOT penalise the hypothesis for Lyα width.
 
 **Decision rule**: If ≥2 checks fail for a key line, flag it as **UNRELIABLE**. If ≥2 of the top 3–5 key lines are UNRELIABLE, the winning hypothesis is built on sand — strongly consider DOWNGRADE or REJECT.
 
@@ -156,7 +161,9 @@ After examining the spectrum at key wavelengths AND both edge zones, step back a
 
 **Report**: "Spectrum quality: [high-quality / marginal / noise-dominated]. [1–2 sentence justification citing specific reads.]"
 
-### Step 6: Confidence Calibration
+**`has_real_peak` check**: After reading the full spectrum, answer this question: is there at least ONE real emission or absorption peak that spans multiple pixels and rises clearly above the local noise envelope? This is independent of whether the peak matches any line name — it's a binary check for "does this spectrum contain astrophysical signal at all?" A single clear peak is enough for `true`. If even the brightest feature is indistinguishable from surrounding noise fluctuations, set `false`. Record your answer in the JSON output.
+
+**`confirmed_lines`**: List the specific line names (e.g. `"[O II]"`, `"Hβ"`, `"Ca K_abs"`) that you can independently confirm as real based on your own spectrum reads. Only include lines where you saw a clear peak/trough at the predicted wavelength. If no line can be confidently confirmed, use an empty list `[]`.
 
 Synthesize Steps 2–5 into a final judgment:
 
@@ -182,6 +189,8 @@ First, output your reasoning following Steps 1–6 in free text. Keep it focused
   "verdict": "<CONFIRM | DOWNGRADE | REJECT | UNCERTAIN>",
   "calibrated_confidence": "<HIGH | MEDIUM | LOW>",
   "spectrum_quality": "<high-quality | marginal | noise-dominated>",
+  "has_real_peak": true,
+  "confirmed_lines": ["[O II]", "Hβ"],
   "key_issues": [
     "<one-sentence description of each notable issue>"
   ],
@@ -192,6 +201,8 @@ First, output your reasoning following Steps 1–6 in free text. Keep it focused
 - `verdict`: your judgment on the synthesis conclusion
 - `calibrated_confidence`: your independent assessment of the correct confidence level
 - `spectrum_quality`: your holistic SNR assessment from Step 5
+- `has_real_peak` (bool): after reading both edge zones and all key wavelengths, is there at least **one** real emission or absorption peak in this spectrum? A real peak must span multiple pixels, rise clearly above the local noise envelope, and not be a single-pixel spike. This is a spectrum-level sanity check — it asks "does this spectrum contain ANY astrophysical signal?" regardless of whether the peak can be matched to a specific line name. A noise-dominated spectrum where even the brightest feature is indistinguishable from surrounding fluctuations should have `has_real_peak: false`.
+- `confirmed_lines` (list[str]): line names that you can **independently confirm** as real features in the spectrum, based on your own spectrum reads. These are lines where you saw a clear peak/trough at the predicted wavelength, regardless of which hypothesis claims them. May be empty if no line can be confirmed with confidence. Only include lines you are genuinely confident about — do NOT list lines you merely assume are present because a hypothesis claims them. Examples: `["[O II]", "Hβ", "Ca K_abs"]` or `[]`.
 - `key_issues`: 0–4 items. Be specific — cite wavelengths, feature names, and what you observed vs what was claimed. If none, use empty array `[]`.
 - `recommendation`: actionable summary. For DOWNGRADE, explain what specifically caused the downgrade. For REJECT, note whether the 2nd-best hypothesis is a viable alternative. For UNCERTAIN, note "spectrum is noise-dominated — recommend higher SNR re-observation."
 

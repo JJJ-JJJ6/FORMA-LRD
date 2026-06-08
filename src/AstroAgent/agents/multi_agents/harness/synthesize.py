@@ -65,7 +65,7 @@ def _is_truncated(messages: list) -> bool:
     return last_ai.response_metadata.get("finish_reason") == "length"
 
 
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core
 from AstroAgent.agents.multi_agents.AnalysisAuditor import build_contradiction_matrix
 
 
@@ -944,9 +944,19 @@ async def arun(
         extra_body=extra_body,
     )
 
+    @tool
+    def detect_oii_slope_change(target_wl: float, search_window: float = 25.0) -> dict:
+        """Detect the [O II] unresolved doublet slope-change signature.
+
+        Call this when competing hypotheses disagree on whether the same
+        observed feature is [O II] vs [O III]b (Phase 2a tiebreaker #6).
+        """
+        return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
+
     agent = create_agent(
         model=llm,
-        tools=[read_spectrum_region, grep_kb, write_report, write_synthesis_csv],
+        tools=[read_spectrum_region, grep_kb, write_report, write_synthesis_csv,
+               detect_oii_slope_change],
         system_prompt=system_prompt,
     )
 

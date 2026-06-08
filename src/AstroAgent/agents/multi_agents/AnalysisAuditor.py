@@ -36,7 +36,8 @@ from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
+from AstroAgent.agents.multi_agents.harness.synthesize import _resolve_csv_path, _build_line_tables
 
 
 class FeatureAuditorFailed(Exception):
@@ -636,104 +637,38 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
     parts.append("```")
     parts.append("")
 
-    # ── Winning hypothesis line data ──
+    # ── Per-hypothesis cleaned line tables ──
+    # Use the same function as the synthesizer: prefers {idx}_lines_cleaned.csv
+    # (post-FeatureAuditor) over raw {idx}_lines.csv.  Show full tables for
+    # the winning hypothesis and the top 1–2 rejected alternatives so the
+    # auditor can cross-check line identifications.
     best_idx = rule_analysis.get("best_hypothesis_idx")
-    if best_idx is not None and harness_results:
-        winner = None
-        for r in harness_results:
-            if r.get("hypothesis_idx") == best_idx:
-                winner = r
-                break
-
-        if winner:
-            parts.append("## Winning Hypothesis (H{}) — z={}".format(
-                best_idx,
-                winner.get("redshift", "?"),
-            ))
-            parts.append("")
-
-            csv_path = os.path.join(harness_dir, f"{best_idx}_lines.csv")
-            if os.path.exists(csv_path):
-                rows = []
-                with open(csv_path, newline="", encoding="utf-8") as f:
-                    for row in _csv.DictReader(f):
-                        rows.append(row)
-
-                if rows:
-                    likely = [r for r in rows if r.get("status", "").strip() == "LIKELY"]
-                    marginal = [r for r in rows if r.get("status", "").strip() == "MARGINAL"]
-                    other = [r for r in rows if r.get("status", "").strip() not in ("LIKELY", "MARGINAL")]
-
-                    cols = list(rows[0].keys())
-                    header = "| " + " | ".join(cols) + " |\n|" + "|".join(["------"] * len(cols)) + "|"
-
-                    def _fmt_rows(rlist):
-                        lines = []
-                        for row in rlist:
-                            vals = [(row.get(c) or "").strip() or "—" for c in cols]
-                            lines.append("| " + " | ".join(vals) + " |")
-                        return "\n".join(lines)
-
-                    parts.append(f"### LIKELY ({len(likely)} lines)")
-                    parts.append("")
-                    parts.append(header)
-                    parts.append(_fmt_rows(likely))
-                    parts.append("")
-
-                    if marginal:
-                        parts.append(f"### MARGINAL ({len(marginal)} lines)")
-                        parts.append("")
-                        parts.append(header)
-                        parts.append(_fmt_rows(marginal))
-                        parts.append("")
-
-                    if other:
-                        parts.append(f"### Other ({len(other)} lines)")
-                        parts.append("")
-                        parts.append(header)
-                        parts.append(_fmt_rows(other))
-                        parts.append("")
-                else:
-                    parts.append("*(no line data found)*")
-                    parts.append("")
-            else:
-                report = winner.get("report", "")
-                if report:
-                    parts.append("<details>")
-                    parts.append("<summary>Full harness report</summary>")
-                    parts.append("")
-                    parts.append(report)
-                    parts.append("</details>")
-                    parts.append("")
-
-    # ── 2nd-best hypothesis ──
     excluded = rule_analysis.get("excluded_hypotheses") or []
-    if excluded:
-        parts.append("## Rejected Alternative (2nd-best)")
-        parts.append("")
-        first_excluded = excluded[0] if isinstance(excluded, list) else excluded
-        if isinstance(first_excluded, dict):
-            idx2 = first_excluded.get("idx")
-            z2 = first_excluded.get("z")
-            reason2 = first_excluded.get("reason", "no reason given")
-            parts.append(f"- H{idx2} at z={z2}: {reason2}")
-            parts.append("")
 
-            if idx2 is not None:
-                csv_path2 = os.path.join(harness_dir, f"{idx2}_lines.csv")
-                if os.path.exists(csv_path2):
-                    likely2 = []
-                    with open(csv_path2, newline="", encoding="utf-8") as f:
-                        for row in _csv.DictReader(f):
-                            if row.get("status", "").strip() == "LIKELY":
-                                likely2.append(row)
-                    if likely2:
-                        parts.append(f"Its LIKELY lines ({len(likely2)}):")
-                        for r in likely2:
-                            name = r.get("name", "?")
-                            wl_pred = r.get("predicted_obs", "?")
-                            parts.append(f"  - {name} at λ_pred={wl_pred} Å")
-                        parts.append("")
+    # Collect indices to show: winner + up to 2 most competitive alternatives
+    audit_indices = []
+    if best_idx is not None:
+        audit_indices.append(best_idx)
+    for exc in excluded[:2]:
+        if isinstance(exc, dict) and exc.get("idx") is not None:
+            idx_e = exc["idx"]
+            if idx_e not in audit_indices:
+                audit_indices.append(idx_e)
+
+    # Filter harness_results to only the indices we need
+    audit_results = [r for r in harness_results if r.get("hypothesis_idx") in audit_indices]
+
+    if audit_results:
+        parts.append("## Per-Hypothesis Line Tables (post-FeatureAuditor)")
+        parts.append("")
+        parts.append(
+            "These tables use the **cleaned** line catalogs after FeatureAuditor "
+            "verification. Features marked REMOVED have been judged as noise/artifact "
+            "and should NOT be used. Features marked FLAGGED are real but caveated. "
+            "Only KEEP features are fully reliable."
+        )
+        parts.append("")
+        parts.append(_build_line_tables(audit_results, harness_dir))
 
     # ── Task ──
     parts.append("## Task")
@@ -1144,6 +1079,19 @@ class FeatureAuditor(BaseAgent):
                 ],
             }
 
+        @tool
+        def detect_oii_slope_change(target_wl: float, search_window: float = 25.0) -> dict:
+            """Detect the [O II] unresolved doublet slope-change signature.
+
+            [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å)
+            unresolved at DESI resolution. A true single line ([O III]b, Hβ)
+            cannot produce a derivative dip on the rising edge.
+
+            Use this MANDATORY check when any hypothesis claims [O II] at an
+            observed wavelength. Pass the claimed λ_obs as target_wl.
+            """
+            return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
+
         # ── Run LLM with retry on JSON parse failure ──
         MAX_RETRIES = 3
         parsed = None
@@ -1151,7 +1099,7 @@ class FeatureAuditor(BaseAgent):
             parsed = await _run_llm_agent(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                tools=[read_spectrum_region, grep_kb],
+                tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
                 harness_dir=harness_dir,
                 stream_filename="feature_audit_stream.md",
                 stream_title="Feature Audit — Cross-Hypothesis Verification",
@@ -1330,11 +1278,24 @@ class AnalysisAuditor(BaseAgent):
                 ],
             }
 
+        @tool
+        def detect_oii_slope_change(target_wl: float, search_window: float = 25.0) -> dict:
+            """Detect the [O II] unresolved doublet slope-change signature.
+
+            [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å)
+            unresolved at DESI resolution. A true single line ([O III]b, Hβ)
+            cannot produce a derivative dip on the rising edge.
+
+            Use this when the winning and 2nd-best hypotheses disagree on
+            whether the same feature is [O II] vs [O III]b.
+            """
+            return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
+
         # ── Run LLM ──
         parsed = await _run_llm_agent(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            tools=[read_spectrum_region, grep_kb],
+            tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
             harness_dir=harness_dir,
             stream_filename="auditor_stream.md",
             stream_title="Auditor — Synthesis Audit",

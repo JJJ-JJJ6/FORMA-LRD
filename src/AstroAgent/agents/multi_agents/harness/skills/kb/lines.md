@@ -58,7 +58,7 @@
 
 ### [O II] Unresolved Doublet (3726.0 / 3729.0 Å) and Morphological Verification
 
-The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 3729.0 Å, rest separation **2.8–3.0 Å**. At DESI resolution (~2–3 Å at 8000 Å), the doublet is **unresolved** — it appears as a single blended emission peak in the CWT pipeline, which fits it as one "narrow" line. However, the blending leaves **detectable morphological signatures** that can be used to positively identify [O II] by reading the raw spectrum.
+The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 3729.0 Å, rest separation **2.8–3.0 Å**. At DESI resolution (~2–3 Å at 8000 Å), the doublet is **unresolved** — it appears as a single blended emission peak in the CWT pipeline, which fits it as one "narrow" line. However, the blending leaves a **detectable morphological signature** on the rising edge.
 
 **Observed separation**: 2.8 × (1+z) Å ≈ 5–9 pixels at typical DESI sampling (0.8 Å/pixel).
 
@@ -66,37 +66,15 @@ The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 372
 
 **Visual verification procedure** (MUST read the spectrum ±25 Å around the predicted [O II] position):
 
-1. **Rising-edge morphology — a continuum of signatures** (the primary diagnostic):
+1. **Rising-edge slope-change** (the primary diagnostic): On the rising edge of the blended profile, [O II]a contributes flux before [O II]b takes over. This produces a characteristic **slope-change** pattern — the discrete derivative (flux[i] - flux[i-1]) on the rising edge shows a **dip**: large positive → small positive → large positive. The flux rises quickly (steep), then more gently (shallow), then quickly again (steep) before peaking. This "derivative valley" is the imprint of the unresolved doublet — [O II]a's contribution creates an initial steep rise, the crossover between the two components briefly flattens the rise rate, and [O II]b then drives the final ascent to the peak.
 
-   The rising edge of the blended profile carries the imprint of [O II]a contributing flux before [O II]b dominates. At DESI resolution, this produces a **continuum** of observable patterns, ordered from strongest to weakest [O II] evidence:
+   **How to check**: Read the spectrum pixel-by-pixel on the rising edge ~5–15 pixels blueward of the peak. Compute the flux difference between consecutive pixels. Look for a local minimum in the derivative where it drops significantly (typically to <20% of its peak value on the rising edge) and then recovers. The flux never reverses (derivative stays positive) — the signature is in the *rate of change*, not the flux itself.
 
-   | Signature | Flux behavior on rising edge | Derivative behavior | [O II] support |
-   |-----------|------------------------------|---------------------|----------------|
-   | **Valley** | Flux rises, then **decreases** (reverses) for 1–3 pixels, then rises again to peak | Derivative goes **negative** briefly | **STRONG** |
-   | **Plateau / stall** | Flux rises, then **flattens** (constant flux, 2–4 pixels with near-zero increase), then rises again to peak | Derivative drops to **≈0**, stays flat, then increases | **MODERATE** |
-   | **Slope-change** | Flux rises continuously (never reverses, never flattens), but the **rate of rise changes**: steep → shallow → steep | Derivative dips but stays **positive** — a "derivative valley" without a flux valley | **MODERATE** |
-   | **Clean single Gaussian** | Smooth monotonic rise with constant or smoothly-changing curvature | Derivative is smooth and monotonic | **NONE — argues AGAINST [O II]** |
+   **Verdict**: Slope-change detected → **FLAG as "unresolved [O II] doublet morphology"**. Clean monotonic derivative (smoothly decreasing to zero at peak, no dip) → the feature is more likely a true single line ([O III]b, Hβ).
 
-   **How to identify each pattern** (read pixel-by-pixel on the rising edge, ~3–10 pixels blueward of the peak):
+2. **Broadened FWHM** (corroborating): The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature supports the [O II] identification. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data. Note: this is corroborating, not required — a slope-change without broadened FWHM still warrants a FLAG.
 
-   - **Valley**: Any pixel where flux[i] < flux[i-1] on the rising edge. The flux briefly backtracks. This is the classic inter-component gap.
-   - **Plateau / stall**: A run of 2–4 pixels where flux[i] ≈ flux[i-1] (change < ~0.003, or within the visible noise envelope). The rise "stalls" — [O II]a is peaking while [O II]b is beginning to rise, and their contributions cancel out.
-   - **Slope-change**: The difference flux[i] - flux[i-1] (the discrete derivative) shows a clear pattern: large positive → small positive → large positive. The flux never stalls or reverses, but the *steepness* of the rise has a local minimum. Look for a "kink" or "bend" in the rising slope — the spectrum rises quickly (steep), then more gently (shallow), then quickly again (steep) before peaking.
-
-   **Why this continuum exists**: At higher redshift, the observed separation 2.8×(1+z) Å increases, making the valley easier to resolve. At lower redshift (z < 0.5), the separation shrinks below ~4.2 Å (~5 pixels), and the valley may merge into a plateau or slope-change. At very low SNR, even the plateau may be invisible. The pattern you CAN detect determines the strength of the [O II] evidence — don't treat "no valley" as "no [O II]."
-
-2. **Broadened FWHM**: The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature is a **positive indicator** of [O II] blending. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data.
-
-3. **Asymmetry sense**: The blend should be slightly asymmetric — the blue side (rising edge) is more gradual than the red side (falling edge), because [O II]a spreads flux blueward. A perfectly symmetric single Gaussian argues AGAINST [O II].
-
-**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the morphology test is decisive:
-
-- **Clean single Gaussian** (smooth monotonic rise, symmetric profile, FWHM 200–400 km/s) → **favors [O III]b** — a true single line.
-- **Valley** on rising edge → **strongly favors [O II]** — a single line cannot produce a flux reversal on the rising edge.
-- **Plateau / stall** on rising edge → **moderately favors [O II]** — a single Gaussian does not have a flat segment; the stall is [O II]a and [O II]b contributions cancelling.
-- **Slope-change** (steep→shallow→steep) on rising edge → **moderately favors [O II]** — a single Gaussian has smoothly-changing curvature, not a kink in the rise rate. The slope-change is [O II]a contributing flux before [O II]b dominates; it is a distinct physical signature, not a noise artifact.
-
-**CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read. The rising-edge morphology continuum is the physical discriminator.
+**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the slope-change test is decisive. A single Gaussian has a smoothly-decreasing derivative on the rising edge — no dip, no re-acceleration. **CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read.
 
 **[O II] vs Balmer amplitude hierarchy**: In typical ELG and star-forming galaxy spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines (Hβ, Hγ, Hδ) at the same redshift, this is a **negative indicator** for the [O II] identification:
 
@@ -107,6 +85,31 @@ The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 372
 If Hβ is unavailable (outside spectral range), use Hγ or Hδ as a proxy with the same thresholds. This check is MANDATORY when discriminating [O II] from [O III]b: [O III]b can legitimately be weaker than Balmer lines, so a faint claimed-[O II] that is much weaker than Hβ is more likely to actually be [O III]b at a lower redshift.
 
 **False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where the observed separation is < 3.2 Å < 4 pixels), the morphological signatures may be undetectable. In these cases, report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
+
+### Lyα Forest and DLA (Damped Lyman-α Absorber)
+
+Lyα 1216 Å at moderate-to-high redshift (z ≳ 1.5) is accompanied by the **Lyα forest** — a dense series of narrow H I absorption lines blueward of the Lyα emission peak, produced by intervening neutral hydrogen clouds along the line of sight. At very high column densities, a **DLA** produces a broad, saturated absorption trough immediately blueward of Lyα.
+
+**Visual verification procedure** (when Lyα is claimed at any redshift):
+
+1. **Read the spectrum ±300 Å** around the predicted Lyα position — cover the Lyα emission peak AND at least 100–200 Å blueward to look for forest absorption.
+
+2. **Check for Lyα forest**:
+   - **Forest visible**: A series of narrow absorption lines blueward of Lyα, becoming denser toward shorter wavelengths. Flux is systematically depressed blueward of Lyα compared to redward. This is a **strong positive confirmation** of the Lyα identification — the forest is a unique signature of high-z objects.
+   - **Forest NOT visible but observable**: If the predicted Lyα position minus 100–200 Å still falls within the detector's blue edge (λ_obs > 4000 Å), the forest SHOULD be visible. Its absence is a **negative indicator** — the claimed feature may not be genuine Lyα, or the continuum may be too weak to show forest lines.
+   - **Forest beyond blue edge**: If the forest region (λ_pred(Lyα) − 200 Å) falls below the blue edge of the spectrum (< 4000 Å), the forest is **not observable** regardless of whether the object has one. In this case, forest absence carries **ZERO weight** — you cannot use it as evidence against the hypothesis.
+
+3. **Check for DLA**: A DLA appears as a broad (tens to hundreds of Å), deep absorption trough immediately blueward of the Lyα emission peak. If the Lyα emission profile appears truncated on the blue side or sits in a broad absorption trough, a DLA is likely present. This can explain why the Lyα emission appears narrower or weaker than expected — the DLA is absorbing the blue wing.
+
+4. **Width sanity**: If Lyα is detected but its FWHM is narrower than expected for the claimed object type (QSO Lyα is typically very broad, >2000 km/s), check whether a DLA or forest absorption is cutting into the blue wing, artificially narrowing the apparent profile.
+
+**Asymmetric rule — this check is confirmatory only**:
+
+- Lyα forest visible → **strong positive evidence** for the Lyα identification (and the redshift).
+- Lyα forest NOT visible (but observable) → flag as **"Lyα forest not detected — identification uncertain"**. Do NOT use this to REJECT the hypothesis — only to downgrade confidence.
+- Lyα forest beyond blue edge → **no information**. Do NOT use this to penalise the hypothesis in any way. Flag as **"Lyα forest beyond observable range — cannot confirm or refute Lyα"** and recommend follow-up observation at bluer wavelengths.
+
+This rule applies equally to all three agents: FeatureAuditor verifies the Lyα feature itself; Synthesis uses forest presence/absence in cross-comparison (but only as positive evidence, never as an exclusion criterion); AnalysisAuditor audits whether the synthesis correctly applied the asymmetric rule.
 
 ## Line Blend Disentanglement
 

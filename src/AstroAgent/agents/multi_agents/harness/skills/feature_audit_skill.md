@@ -194,7 +194,7 @@ The user prompt lists **Doublet Pairs** — pre-computed observed separations an
 
 ### Step 5: [O II] Doublet Morphology Check (MANDATORY when [O II] is claimed)
 
-[O II] 3727 is NOT a single line — it is a close doublet (3726.0/3729.0 Å, rest separation 2.8 Å) that is unresolved at DESI resolution. The CWT pipeline detects it as one "narrow" feature, but the raw spectrum contains morphological signatures that can positively confirm or refute the [O II] identification.
+[O II] 3727 is NOT a single line — it is a close doublet (3726.0/3729.0 Å, rest separation 2.8 Å) that is unresolved at DESI resolution. The CWT pipeline detects it as one "narrow" feature, but the raw spectrum carries a **detectable morphological signature on the rising edge**: a slope-change (derivative dip) caused by [O II]a contributing flux before [O II]b dominates.
 
 Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.md` for the full criteria.
 
@@ -202,55 +202,61 @@ Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.
 
 **Procedure** (for each [O II] claim in the matrix):
 
-1. **Read the spectrum ±25 Å** around the claimed [O II] observed wavelength. If already read as part of Step 2, re-examine the existing data.
+1. **Call `detect_oii_slope_change(target_wl=<claimed λ_obs>)`** for each unique [O II] claim. This tool computes the rising-edge derivative, finds the dip, estimates FWHM, and returns a structured verdict. Batch all calls together in a single turn — do NOT call one, think about it, then call the next.
 
-2. **Check the rising-edge morphology — a continuum of signatures**:
+2. **Assess peak prominence**: Before interpreting the tool result, check whether this [O II] candidate is among the **brightest features in the spectrum**. Scan the peak amplitudes across all features you've read (from Step 2). If this feature is **among the top 2 brightest emission peaks** in the entire spectrum, it is a **dominant peak** — even a negative tool result does not rule out [O II].
 
-   The rising edge of the blended [O II] profile carries the imprint of [O II]a contributing flux before [O II]b dominates. At DESI resolution, this produces a **continuum** of observable patterns, ordered from strongest to weakest [O II] evidence. Read pixel-by-pixel on the rising edge, ~3–10 pixels blueward of the peak:
+3. **Interpret the tool result** (combined with peak prominence):
 
-   | Signature | Flux behavior | Derivative | [O II] support |
-   |-----------|--------------|------------|----------------|
-   | **Valley** | Flux rises, then **decreases** (reverses) for 1–3 pixels, then rises again | Derivative goes **negative** | **STRONG** |
-   | **Plateau / stall** | Flux rises, then **flattens** (constant flux, 2–4 pixels), then rises again | Derivative ≈ 0 briefly | **MODERATE** |
-   | **Slope-change** | Flux rises continuously (never reverses), but **rate of rise** changes: steep → shallow → steep | Derivative dips but stays **positive** | **MODERATE** |
-   | **Clean single Gaussian** | Smooth monotonic rise, constant curvature | Derivative smooth and monotonic | **NONE — argues AGAINST** |
+   | Tool result | Peak prominence | Verdict |
+   |-------------|-----------------|---------|
+   | `detected=true` | Any | **FLAG as "O II candidate"** — slope-change confirms doublet nature |
+   | `detected=false` | Top 1–2 brightest | **FLAG as "probable O II"** — peak dominance favors [O II] despite negative morphology check |
+   | `detected=false` | NOT top 1–2 | Feature more likely a single narrow line rather than an unresolved doublet — FLAG but note the [O II] identification is suspect |
 
-   **How to identify each pattern**:
-   - **Valley**: Any pixel where flux[i] < flux[i-1] on the rising edge. The flux briefly backtracks.
-   - **Plateau / stall**: A run of 2–4 pixels where flux[i] ≈ flux[i-1] (change < ~0.003, or within the visible noise envelope). The rise "stalls" — [O II]a peaks while [O II]b begins to rise, their contributions cancelling.
-   - **Slope-change**: The discrete derivative (flux[i] - flux[i-1]) shows large positive → small positive → large positive. Look for a "kink" in the rising slope — the spectrum rises quickly, then more gently, then quickly again before peaking. No single pixel shows a reversal or stall.
+   Rationale for the "probable O II" case: a very bright emission peak that dominates the spectrum is more likely to be a genuine [O II] line than a noise artifact or misidentification. The slope-change check can fail due to low SNR, low redshift (separation < pixel scale), or unfavourable [O II]a/b ratio. A dominant peak that fails the tool check should NOT be dismissed — it needs further observation to confirm.
 
-3. **Check the FWHM**: CWT-fitted FWHM > 500 km/s for a "narrow" feature → consistent with unresolved blending. True single narrow lines at similar SNR typically have FWHM 200–400 km/s.
+   Check `fwhm_km_s`: >500 km/s corroborates [O II] blending (not required for FLAG).
 
-4. **Compare morphology with single-line expectations**:
-   - **Clean single Gaussian** (no valley, no plateau, no slope-change, FWHM 200–400 km/s) → morphology **does NOT support** [O II]. The feature may be a true single line ([O III]b, Hβ, Hα) misidentified as [O II].
-   - **Valley** on rising edge → morphology **strongly supports** [O II]. A single Gaussian cannot produce a flux reversal. Combined with broadened FWHM (>500 km/s), this is definitive.
-   - **Plateau / stall** on rising edge → morphology **moderately supports** [O II]. A single Gaussian has smooth curvature, not a flat segment. The stall is the [O II]a+b crossover where their contributions cancel. Combined with broadened FWHM, this is strong positive evidence.
-   - **Slope-change** (steep→shallow→steep) on rising edge → morphology **moderately supports** [O II]. A single Gaussian has smoothly-changing curvature, not a kink in the rise rate. The slope-change is [O II]a contributing flux before [O II]b dominates — a distinct physical signature, not a noise artifact. Combined with broadened FWHM (>500 km/s), this is positive evidence for [O II].
-
-5. **[O II] vs Balmer amplitude hierarchy** (MANDATORY when Balmer lines are available at the same hypothesis redshift):
+4. **[O II] vs Balmer amplitude hierarchy** (MANDATORY when Balmer lines are available at the same hypothesis redshift):
 
    In typical ELG spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines at the same redshift, this undermines the [O II] identification.
 
-   **Procedure**:
    - Identify the Hβ (or Hγ/Hδ if Hβ is unavailable) amplitude from the same hypothesis's feature list.
-   - Compare the claimed [O II] amplitude against it.
-   - **[O II] amp < 0.5× Balmer amp** → **strong penalty**. The feature is unlikely to be genuine [O II]. Add to `issues`: *"[O II] amplitude (X) is << Hβ amplitude (Y) — inconsistent with typical [O II]/Balmer hierarchy. A true [O II] should not be dwarfed by Balmer lines from the same system. This favors the [O III]b interpretation."*
-   - **[O II] amp 0.5–1.0× Balmer amp** → **moderate penalty**. Unusual but not disqualifying. Add to `issues`: *"[O II] amplitude (X) is weaker than Hβ (Y) — unusual for [O II]. Could indicate the feature is actually [O III]b."*
-   - **[O II] amp > 1.0× Balmer amp** → **no penalty**. Consistent with [O II].
+   - **[O II] amp < 0.5× Balmer amp** → **strong penalty**. Add to `issues`: *"[O II] amplitude (X) << Hβ amplitude (Y) — inconsistent with typical [O II]/Balmer hierarchy."*
+   - **[O II] amp 0.5–1.0× Balmer amp** → **moderate penalty**. Add to `issues`: *"[O II] amplitude (X) weaker than Hβ (Y) — unusual, could indicate the feature is actually [O III]b."*
+   - **[O II] amp > 1.0× Balmer amp** → **no penalty**.
 
-   This check is especially powerful for the [O II]-vs-[O III]b degeneracy: [O III]b can legitimately be weaker than Balmer lines in some AGN, so a faint claimed-[O II] that is much weaker than Hβ is more likely to actually be [O III]b at a lower redshift.
+5. **Record the assessment** in the feature's `issues` and `recommendation`:
+   - **O II candidate** (`detected=true`): add to `issues`: *"O II candidate — slope-change detected (signature_type='valley'|'slope-change', dip_ratio=X.XXX). FWHM=W km/s."* → Recommendation: **FLAG**. May be KEEP if FWHM > 500 km/s and no other issues.
+   - **Probable O II** (`detected=false` but dominant peak): add to `issues`: *"Probable O II — feature is among the top 2 brightest peaks in this spectrum (amplitude=X, rank=N). Slope-change check negative (dip_ratio=X.XXX) but peak dominance favours [O II] identification. Further observation recommended to confirm."* → Recommendation: **FLAG**. Do NOT remove — this feature is likely real and its identification as [O II] should be given weight in cross-comparison.
+   - **Not O II** (`detected=false`, not dominant): add to `issues`: *"No [O II] slope-change detected — derivative is smooth. Feature not among the brightest peaks. Morphology more consistent with a single narrow line than an unresolved doublet."* → The feature may still be real (just not [O II]), so FLAG rather than REMOVE. Identify the most likely alternative line based on the competing hypotheses.
+   - Tool returns `reason` with no detection → add: *"[O II] slope-change check inconclusive: <reason>."* — do NOT use morphology to penalize the hypothesis.
 
-6. **Record the morphological assessment** in the feature's `issues` and `recommendation`:
-   - If morphology **strongly supports** [O II] (valley): add to `issues` "Morphology consistent with [O II] unresolved doublet: inter-component valley at λ≈X, broadened FWHM Z km/s" — feature may be KEEP or FLAG (depending on other factors). Do NOT REMOVE a feature solely because it's identified as [O II].
-   - If morphology **moderately supports** [O II] (plateau/stall): add to `issues` "Morphology consistent with [O II] unresolved doublet: rising-edge plateau/stall at λ≈X–Y (2–4 pixels of near-constant flux), broadened FWHM Z km/s" — same treatment as above.
-   - If morphology **moderately supports** [O II] (slope-change): add to `issues` "Morphology consistent with [O II] unresolved doublet: slope-change on rising edge (steep→shallow→steep), broadened FWHM Z km/s. The kink in rise rate is a physical signature of [O II]a+b blending." — feature may be KEEP or FLAG depending on other factors.
-   - If morphology **does NOT support** [O II] (clean symmetric single Gaussian): add to `issues` "Morphology inconsistent with [O II] unresolved doublet: symmetric single-Gaussian profile, smooth monotonic rising edge, FWHM consistent with single narrow line" — this undermines the [O II] claim. The feature may still be real (just not [O II]), so FLAG rather than REMOVE, and note that the identification is suspect.
-   - If SNR too low for morphology check: add "SNR insufficient for [O II] doublet morphology check — cannot confirm or refute" — do NOT use morphology to penalize the hypothesis.
+**Why this matters**: When the SAME observed emission feature is claimed as [O II] by one hypothesis and [O III]b (a true single line) by another, the slope-change test is the ONLY way to distinguish them at the feature-audit stage. Wavelength matching is inherently ambiguous — a feature at λ_obs can match [O II] at high-z OR [O III]b at low-z. A single Gaussian cannot produce a derivative dip on the rising edge; the slope-change is the physical discriminator.
 
-**Why this matters**: When the SAME observed emission feature is claimed as [O II] by one hypothesis and [O III]b (a true single line) by another, morphology is the ONLY way to distinguish them at the feature-audit stage. Wavelength matching is inherently ambiguous because both lines have similar rest wavelengths relative to cosmological redshift — a feature at λ_obs can match [O II] at high-z OR [O III]b at low-z. The morphology check breaks this degeneracy.
+### Step 6: Lyα Forest Check (MANDATORY when Lyα is claimed)
 
-### Step 6: Holistic SNR Assessment
+Lyα 1216 Å at z ≳ 1.5 is accompanied by the **Lyα forest** — a dense series of narrow H I absorption lines blueward of the Lyα emission peak. This is a unique signature of high-redshift objects and can positively confirm a Lyα identification.
+
+Use `grep_kb(pattern="Lyα.*forest|DLA|damped", C=5)` to search `kb/lines.md` for the full criteria.
+
+**When to apply**: If ANY hypothesis claims Lyα at any observed wavelength, you MUST perform this check.
+
+**Procedure** (for each Lyα claim):
+
+1. **Read the spectrum** ±300 Å around the predicted Lyα position (cover the emission peak + 100–200 Å blueward). Merge with Step 2 reads if overlap exists.
+
+2. **Assess forest visibility**:
+   - **Forest visible**: Dense forest of narrow absorption lines blueward of Lyα → add to `issues`: *"Lyα forest detected blueward of λ_pred — confirms high-z identification."* This is strong positive evidence. Recommendation: KEEP or FLAG depending on the Lyα peak quality.
+   - **Forest NOT visible, but observable** (λ_pred(Lyα) − 200 Å > 4000 Å): The forest SHOULD be visible if the object is genuinely at high z. Add to `issues`: *"Lyα forest not detected in observable range — Lyα identification uncertain. Feature may not be genuine Lyα."* Recommendation: FLAG. Do NOT REMOVE — forest absence cannot rule out Lyα.
+   - **Forest beyond blue edge** (λ_pred(Lyα) − 200 Å < 4000 Å): The forest is outside the observable range. Add to `issues`: *"Lyα forest beyond observable blue edge — cannot confirm or refute Lyα identification. Follow-up observation at bluer wavelengths recommended."* Recommendation: FLAG. Do NOT use forest absence to penalise the hypothesis.
+
+3. **Check for DLA**: Look for a broad, deep absorption trough immediately blueward of the Lyα peak. If present, the Lyα emission may appear narrower or weaker than expected — the DLA is absorbing the blue wing. Note this in `issues` if Lyα width is anomalous.
+
+**Asymmetric rule**: Forest detection can only **positively confirm** Lyα — it can NEVER exclude a Lyα identification. If forest is beyond observable range, this check yields zero information either way. The correct response to "forest not seen" is FLAG and recommend follow-up, not REMOVE.
+
+### Step 7: Holistic SNR Assessment
 
 After examining the spectrum at all claimed wavelengths AND both edge zones:
 
@@ -260,7 +266,7 @@ After examining the spectrum at all claimed wavelengths AND both edge zones:
 
 Report: "Spectrum quality: [high-quality / marginal / noise-dominated]. [1–2 sentence justification.]"
 
-### Step 7: Output Verdicts
+### Step 8: Output Verdicts
 
 For EACH matrix row, output a verdict. Then output a summary.
 
@@ -268,7 +274,7 @@ For EACH matrix row, output a verdict. Then output a summary.
 
 **Precision rule**: All wavelengths and wavelength errors in the output must be reported at the **same precision as the input data**, without adding or dropping decimal places. If the matrix gives `7471.2`, output `7471.2`, not `7471.23` or `7471.0`. This applies to `wl_obs` values in `feature_verdicts` and any wavelengths cited in `issues` and `recommendation` fields.
 
-First, output your reasoning following Steps 1–5 in free text. Keep it focused — describe what you saw at each wavelength, not what the matrix already says. Then end with a JSON block:
+First, output your reasoning following Steps 1–6 in free text. Keep it focused — describe what you saw at each wavelength, not what the matrix already says. Then end with a JSON block:
 
 ```json
 {
