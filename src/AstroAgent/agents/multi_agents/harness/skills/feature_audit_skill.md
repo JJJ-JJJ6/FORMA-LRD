@@ -218,16 +218,7 @@ Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.
 
    Check `fwhm_km_s`: >500 km/s corroborates [O II] blending (not required for FLAG).
 
-4. **[O II] vs Balmer amplitude hierarchy** (MANDATORY when Balmer lines are available at the same hypothesis redshift):
-
-   In typical ELG spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines at the same redshift, this undermines the [O II] identification.
-
-   - Identify the Hβ (or Hγ/Hδ if Hβ is unavailable) amplitude from the same hypothesis's feature list.
-   - **[O II] amp < 0.5× Balmer amp** → **strong penalty**. Add to `issues`: *"[O II] amplitude (X) << Hβ amplitude (Y) — inconsistent with typical [O II]/Balmer hierarchy."*
-   - **[O II] amp 0.5–1.0× Balmer amp** → **moderate penalty**. Add to `issues`: *"[O II] amplitude (X) weaker than Hβ (Y) — unusual, could indicate the feature is actually [O III]b."*
-   - **[O II] amp > 1.0× Balmer amp** → **no penalty**.
-
-5. **Record the assessment** in the feature's `issues` and `recommendation`:
+4. **Record the assessment** in the feature's `issues` and `recommendation`:
    - **O II candidate** (`detected=true`): add to `issues`: *"O II candidate — slope-change detected (signature_type='valley'|'slope-change', dip_ratio=X.XXX). FWHM=W km/s."* → Recommendation: **FLAG**. May be KEEP if FWHM > 500 km/s and no other issues.
    - **Probable O II** (`detected=false` but dominant peak): add to `issues`: *"Probable O II — feature is among the top 2 brightest peaks in this spectrum (amplitude=X, rank=N). Slope-change check negative (dip_ratio=X.XXX) but peak dominance favours [O II] identification. Further observation recommended to confirm."* → Recommendation: **FLAG**. Do NOT remove — this feature is likely real and its identification as [O II] should be given weight in cross-comparison.
    - **Not O II** (`detected=false`, not dominant): add to `issues`: *"No [O II] slope-change detected — derivative is smooth. Feature not among the brightest peaks. Morphology more consistent with a single narrow line than an unresolved doublet."* → The feature may still be real (just not [O II]), so FLAG rather than REMOVE. Identify the most likely alternative line based on the competing hypotheses.
@@ -343,6 +334,39 @@ First, output your reasoning following Steps 1–6 in free text. Keep it focused
       "recommendation": "FLAG — real but weak; synthesis should treat as marginal evidence"
     }
   ],
+  "oii_morphology_verdicts": [
+    {
+      "hypothesis_idx": 1,
+      "wl_obs": 6626.0,
+      "detected": true,
+      "signature_type": "valley",
+      "dip_ratio": 0.15,
+      "fwhm_km_s": 520,
+      "peak_prominence": "top_2",
+      "notes": "Clear slope-change detected. FWHM > 500 km/s corroborates unresolved doublet."
+    }
+  ],
+  "lyalpha_forest_verdicts": [
+    {
+      "hypothesis_idx": 3,
+      "wl_obs": 4256.0,
+      "forest_visible": false,
+      "forest_observable": false,
+      "dla_detected": false,
+      "notes": "Lyα claimed at 4256 Å. Forest region falls below 4000 Å blue edge — beyond observable range. No information either way."
+    }
+  ],
+  "composite_profile_verdicts": [
+    {
+      "hypothesis_idx": 2,
+      "species": "Mg II",
+      "wl_em": 5300.0,
+      "wl_abs": 5298.0,
+      "is_composite": false,
+      "morphology": "spike_valley_spike",
+      "notes": "Two narrow spikes flanking a trough — not a genuine broad 'M' shape. Treat as independent detections with low confidence."
+    }
+  ],
   "global_issues": [
     "OH airglow zone (>7800 Å) shows dense skyline residuals — features at 7920.5 and 9739.2 may be contaminated. OH forest is especially dense beyond 9000 Å",
     "OI airglow at 5577.3, 6300.3, 6363.8 Å may contaminate narrow emission features in the visible band",
@@ -418,6 +442,30 @@ First, output your reasoning following Steps 1–6 in free text. Keep it focused
   - `separation_ok` (bool): does the observed separation match expected? Always `false` for orphans
   - `ratio_ok` (bool): is the amplitude ratio physically plausible? Always `false` for orphans
   - `notes` (str): 1–2 sentences describing what the spectrum shows. For orphans, explain what was seen (or not seen) at the missing component's expected position. For complete pairs, note whether both components are independently confirmed real per Step 3, and any ratio concerns
+- **`oii_morphology_verdicts`**: Results of the [O II] slope-change test (Step 5) for each [O II] claim. These are forwarded to the Synthesis agent so it does not need to re-run the test. Each entry must include:
+  - `hypothesis_idx` (int): which hypothesis claims [O II]
+  - `wl_obs` (float): the observed wavelength where [O II] is claimed
+  - `detected` (bool): whether the slope-change signature was detected
+  - `signature_type` (str or null): `"valley"`, `"slope-change"`, or null if not detected
+  - `dip_ratio` (float or null): min_deriv / max_deriv on the rising edge
+  - `fwhm_km_s` (float or null): FWHM of the blended feature in km/s (corroborating)
+  - `peak_prominence` (str): `"top_2"` if among the brightest 2 emission peaks, `"not_top_2"` otherwise
+  - `notes` (str): 1–2 sentence summary of the morphology assessment
+- **`lyalpha_forest_verdicts`**: Results of the Lyα forest check (Step 6) for each Lyα claim. Forwarded to Synthesis. Each entry must include:
+  - `hypothesis_idx` (int): which hypothesis claims Lyα
+  - `wl_obs` (float): observed wavelength of the Lyα claim
+  - `forest_visible` (bool): whether a dense series of narrow absorption lines was seen blueward of Lyα
+  - `forest_observable` (bool): whether the forest region (λ_pred − 200 Å) falls within the detector range (> 4000 Å)
+  - `dla_detected` (bool): whether a broad DLA absorption trough was detected
+  - `notes` (str): 1–2 sentence assessment
+- **`composite_profile_verdicts`**: Results of emission–absorption composite checks (Step 3e). Forwarded to Synthesis. Each entry must include:
+  - `hypothesis_idx` (int)
+  - `species` (str): e.g. "Mg II", "Hα", "Hβ"
+  - `wl_em` (float): observed wavelength of the emission claim
+  - `wl_abs` (float): observed wavelength of the absorption claim
+  - `is_composite` (bool): whether a genuine composite "M" profile was confirmed
+  - `morphology` (str): `"genuine_M"`, `"spike_valley_spike"`, `"asymmetric"`, or `"noise"`
+  - `notes` (str): 1–2 sentence description
 
 ### Verdict coverage rule
 

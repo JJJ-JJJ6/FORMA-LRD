@@ -466,6 +466,108 @@ def _build_surviving_doublets_section(
 
 
 # ---------------------------------------------------------------------------
+# FA morphology result forwarders (from FeatureAuditor to Synthesis)
+# ---------------------------------------------------------------------------
+
+def _build_oii_morphology_section(feature_audit_verdict: dict) -> str:
+    """Build an 'O II Morphology Results (from FeatureAuditor)' section.
+
+    Forwards FA's slope-change test results so Synthesis can reference them
+    instead of re-calling ``detect_oii_slope_change``.
+    """
+    verdicts = (feature_audit_verdict or {}).get("oii_morphology_verdicts") or []
+    if not verdicts:
+        return ""
+
+    lines = ["## O II Morphology Results (from FeatureAuditor)", ""]
+    lines.append(
+        "FeatureAuditor has already performed the `detect_oii_slope_change` test "
+        "and assessed peak prominence for every [O II] claim. Use these pre-computed "
+        "verdicts directly — do NOT re-call the tool."
+    )
+    lines.append("")
+    lines.append("| H | λ_obs (Å) | Detected | Signature | dip_ratio | FWHM (km/s) | Prominence | Notes |")
+    lines.append("|---|-----------|----------|-----------|-----------|-------------|------------|-------|")
+    for v in verdicts:
+        hi = v.get("hypothesis_idx", "?")
+        wl = v.get("wl_obs", "?")
+        wl_str = f"{float(wl):.1f}" if isinstance(wl, (int, float)) else str(wl)
+        detected = "✓" if v.get("detected") else "✗"
+        sig = v.get("signature_type") or "—"
+        dip = f"{v['dip_ratio']:.3f}" if v.get("dip_ratio") is not None else "—"
+        fwhm = f"{v['fwhm_km_s']:.0f}" if v.get("fwhm_km_s") is not None else "—"
+        prom = v.get("peak_prominence", "—")
+        notes = v.get("notes", "—")
+        lines.append(f"| H{hi} | {wl_str} | {detected} | {sig} | {dip} | {fwhm} | {prom} | {notes} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _build_lyalpha_forest_section(feature_audit_verdict: dict) -> str:
+    """Build a 'Lyα Forest Results (from FeatureAuditor)' section.
+
+    Forwards FA's Lyα forest assessment so Synthesis does not need to re-read
+    ±300 Å around every Lyα claim.
+    """
+    verdicts = (feature_audit_verdict or {}).get("lyalpha_forest_verdicts") or []
+    if not verdicts:
+        return ""
+
+    lines = ["## Lyα Forest Results (from FeatureAuditor)", ""]
+    lines.append(
+        "FeatureAuditor has already read the spectrum ±300 Å around every Lyα "
+        "claim and assessed forest visibility. Use these pre-computed verdicts."
+    )
+    lines.append("")
+    lines.append("| H | λ_obs (Å) | Forest Visible | Observable | DLA | Notes |")
+    lines.append("|---|-----------|----------------|------------|-----|-------|")
+    for v in verdicts:
+        hi = v.get("hypothesis_idx", "?")
+        wl = v.get("wl_obs", "?")
+        wl_str = f"{float(wl):.1f}" if isinstance(wl, (int, float)) else str(wl)
+        vis = "✓" if v.get("forest_visible") else "✗"
+        obs = "✓" if v.get("forest_observable") else "✗"
+        dla = "✓" if v.get("dla_detected") else "✗"
+        notes = v.get("notes", "—")
+        lines.append(f"| H{hi} | {wl_str} | {vis} | {obs} | {dla} | {notes} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _build_composite_profile_section(feature_audit_verdict: dict) -> str:
+    """Build a 'Composite Profile Results (from FeatureAuditor)' section.
+
+    Forwards FA's emission–absorption composite profile verdicts.
+    """
+    verdicts = (feature_audit_verdict or {}).get("composite_profile_verdicts") or []
+    if not verdicts:
+        return ""
+
+    lines = ["## Composite Profile Results (from FeatureAuditor)", ""]
+    lines.append(
+        "FeatureAuditor has already assessed whether co-located emission and "
+        "absorption claims of the same species form a genuine composite profile. "
+        "Use these pre-computed verdicts."
+    )
+    lines.append("")
+    lines.append("| H | Species | λ_em (Å) | λ_abs (Å) | Composite | Morphology | Notes |")
+    lines.append("|---|---------|----------|-----------|-----------|------------|-------|")
+    for v in verdicts:
+        hi = v.get("hypothesis_idx", "?")
+        sp = v.get("species", "?")
+        wl_em = v.get("wl_em", "?")
+        wl_em_str = f"{float(wl_em):.1f}" if isinstance(wl_em, (int, float)) else str(wl_em)
+        wl_abs = v.get("wl_abs", "?")
+        wl_abs_str = f"{float(wl_abs):.1f}" if isinstance(wl_abs, (int, float)) else str(wl_abs)
+        comp = "✓" if v.get("is_composite") else "✗"
+        morph = v.get("morphology", "—")
+        notes = v.get("notes", "—")
+        lines.append(f"| H{hi} | {sp} | {wl_em_str} | {wl_abs_str} | {comp} | {morph} | {notes} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Task instruction builders
 # ---------------------------------------------------------------------------
 
@@ -649,6 +751,9 @@ def _build_user_message(
     surviving_doublets_section = _build_surviving_doublets_section(
         filtered_doublets, feature_audit_verdict,
     )
+    oii_morphology_section = _build_oii_morphology_section(feature_audit_verdict)
+    lyalpha_forest_section = _build_lyalpha_forest_section(feature_audit_verdict)
+    composite_profile_section = _build_composite_profile_section(feature_audit_verdict)
     task_text = _build_verified_task(surviving=len(filtered_matrix) > 0)
 
     # ── Per-hypothesis full line tables (for CSV population) ──
@@ -674,6 +779,7 @@ deeper look at a specific hypothesis is needed.
 {diagnostic_slices}
 
 {audit_section}{verified_matrix_section}{surviving_doublets_section}
+{oii_morphology_section}{lyalpha_forest_section}{composite_profile_section}
 {line_tables}
 
 {task_text}

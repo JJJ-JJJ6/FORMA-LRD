@@ -53,10 +53,6 @@ When using `read_spectrum_region`:
 - You may note whether a continuum break (sharp flux increase) is present or absent at a predicted wavelength. This is a binary yes/no judgment — do not attempt to quantify the break amplitude by eye.
 - **Single-pixel spikes**: Bad pixels and cosmic ray hits can occur anywhere in the spectrum, not just edge zones. When a reported feature spans only 1–2 pixels in the raw spectrum, it is likely a detector artifact, not a real spectral line. Such features are UNRELIABLE unless multiple other lines at the same redshift independently corroborate the identification.
 
-- **Local contrast verification**: When reading a discriminating window (Phase 2b), do NOT judge a feature in isolation — a narrow ±25 Å view can make a noise fluctuation look convincing. The "clean" mid-range (4000–7800 Å) is particularly susceptible: the noise floor is low but not flat, producing a dense forest of similar-amplitude oscillations where the CWT's tallest pick may not be astrophysical. Expand your read (or verify you already have) ±100–200 Å around the target wavelength and apply two checks:
-  1. **Pattern similarity**: How many features of comparable profile (width, shape, amplitude within ~30%) exist within ±100 Å? A noise forest (5+ similar oscillations) means the target is just one of many.
-  2. **Amplitude advantage**: Compare the target's amplitude against the mean of the top 5–10 local extrema (same type: emission or absorption) in the ±100 Å window. Target/mean < 1.5× → the feature does not stand out; it blends in. A genuine emission line should look more like a dominant outlier (>2.5× local mean, few or no similar neighbors) than the tallest blade of grass in a lawn.
-
 ## Phase 1: Review Verified Features
 
 FeatureAuditor has already independently verified every feature by reading the raw spectrum. Features are pre-verified — you do not need to re-verify them. Focus on cross-comparison between hypotheses:
@@ -91,19 +87,17 @@ Physics-based tiebreakers (ordered by reliability, all independent of the harnes
 
 5. **[O III] doublet** — Use `grep_kb` to search `kb/lines.md` for spacing and ratio rules. Spacing is the stronger test (direct z measurement independent of CWT). Ratio is weaker but a reversed ratio disqualifies. **An orphan [O III] doublet (only one component detected, the other NOT_FOUND) IS disqualifying** — a bright [O III]b demands a detectable [O III]a; its absence means the feature is likely not [O III] at all.
 
-6. **[O II] unresolved doublet morphology** — [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å). It appears as a single blended peak in the line catalog, but the raw spectrum carries a **rising-edge slope-change** signature. **[O III]b 5008.2 is a TRUE single line** — it cannot produce this derivative dip. When the SAME observed feature is claimed as [O II] by one hypothesis and [O III]b by another, call `detect_oii_slope_change(target_wl=<claimed λ_obs>)`:
+6. **[O II] unresolved doublet morphology** — [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å) unresolved at DESI resolution. **[O III]b 5008.2 is a TRUE single line** — it cannot produce a slope-change signature on the rising edge. FeatureAuditor has already performed the `detect_oii_slope_change` test and assessed peak prominence for every [O II] claim. **See the "O II Morphology Results (from FeatureAuditor)" section in your user message** for the pre-computed verdicts. Use FA's slope-change detection and peak prominence assessment directly — do NOT re-call `detect_oii_slope_change`. When interpreting FA's results:
+   - `detected=true` → strong evidence for [O II] identification
+   - `detected=false` but `peak_prominence="top_2"` → probable [O II] despite negative morphology; peak dominance favours [O II]
+   - `detected=false` and `peak_prominence="not_top_2"` → morphology more consistent with a single narrow line; the [O II] identification is suspect
+   - FWHM > 500 km/s corroborates [O II] blending (not required).
 
-   - `detected=true` → **O II candidate**. The slope-change (valley or derivative dip) confirms the doublet nature. FLAG as unresolved [O II].
-   - `detected=false` BUT the feature is **among the top 2 brightest emission peaks** in the spectrum → **probable O II**. The peak dominance favours [O II] even without morphological confirmation — the doublet may be unresolved due to low SNR or low redshift. FLAG as probable O II, note that further observation is needed. **If competing hypotheses cannot explain this dominant peak with overwhelming physical and morphological advantage, the [O II] hypothesis should be favoured.**
-   - `detected=false` AND not among the brightest peaks → morphology more consistent with a single narrow line than an unresolved doublet. The [O II] identification is suspect — consider what competing hypotheses claim for this feature.
-
-   FWHM > 500 km/s corroborates [O II] blending (not required). **Also check the [O II] vs Balmer amplitude hierarchy**: if [O II] amp < 0.5× Hβ (or Hγ/Hδ) amplitude at the same redshift, this strongly penalizes the [O II] identification. This combined morphology+amplitude+prominence test is the most powerful physical discriminator for the common [O II]-vs-[O III]b degeneracy.
-
-7. **Lyα forest check** (MANDATORY when any hypothesis claims Lyα): Lyα at z ≳ 1.5 is accompanied by the Lyα forest — a dense series of narrow H I absorption lines blueward of Lyα. This is a **unique** high-z signature that no other line can produce. Use `grep_kb(pattern="Lyα.*forest|DLA|damped", C=5)` and `read_spectrum_region` ±300 Å around the predicted Lyα position. **Asymmetric rule — this is confirmatory only:**
-   - **Forest visible** → strong positive evidence for the Lyα identification (and the redshift). This hypothesis gains a significant advantage over competitors that cannot explain the forest.
-   - **Forest NOT visible but observable** (λ_pred − 200 Å > 4000 Å) → FLAG as "Lyα identification uncertain." Downgrade confidence in the Lyα claim but do NOT exclude the hypothesis based on forest absence.
-   - **Forest beyond blue edge** (λ_pred − 200 Å < 4000 Å) → **zero weight.** Do NOT use forest absence as evidence against the hypothesis. Note "Lyα forest beyond observable range" and recommend follow-up observation.
-   - **DLA check**: If Lyα appears narrower/weaker than expected, check for a broad DLA absorption trough blueward of Lyα — this can explain the anomalous width. If a DLA is present, the width anomaly should NOT be used against the hypothesis.
+7. **Lyα forest check** — Lyα at z ≳ 1.5 is accompanied by the Lyα forest. FeatureAuditor has already read the spectrum ±300 Å around every Lyα claim and assessed forest visibility. **See the "Lyα Forest Results (from FeatureAuditor)" section in your user message** for the pre-computed verdicts. Apply the same asymmetric rule using FA's findings:
+   - `forest_visible=true` → strong positive evidence for the Lyα identification
+   - `forest_visible=false` AND `forest_observable=true` → Lyα identification uncertain; downgrade confidence
+   - `forest_observable=false` (beyond blue edge) → **zero weight** — cannot confirm or refute Lyα
+   - `dla_detected=true` → Lyα width anomaly explained by DLA absorption — do NOT penalise
 
 ### 2b. Read ONLY the discriminating windows
 
@@ -279,11 +273,7 @@ Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN i
    - If **AGN features are genuinely prominent** (clear broad emission distinct from noise and absorption, correct relative amplitudes, consistent redshift) and **Galaxy absorption is weak or absent** → classify as **`QSO`**
    - Both [Ne V] and Mg II CAN independently support QSO — the question is whether the feature is **REAL**, not whether it has a companion line
 
-4. **Emission–absorption composite profiles**: When an emission line and an absorption line of the same species (e.g., Mg II + Mg II_abs, Hα + Hα_abs, Hβ + Hβ_abs) are claimed at nearly the same observed wavelength, they may form a single composite profile — a broad emission line split by a central absorption trough. Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/composite_profile.md` for the full diagnostic criteria. Key checks:
-   - **Read both together**: use `read_spectrum_region` on ±200 Å covering both claims.
-   - **Apply the morphological "M" test**: center consistency, wing broadness/smoothness, symmetry, continuum connectivity.
-   - **A genuine composite** (broad, symmetric, smooth "M" shape) supports both the emission AND absorption claims. Treat them as linked.
-   - **Spike–valley–spike or asymmetric noise** does NOT support either claim. Default to Galaxy classification if the only AGN evidence is a dubious Mg II composite.
+4. **Emission–absorption composite profiles**: When an emission and absorption line of the same species are claimed near the same wavelength, FeatureAuditor has already assessed whether they form a genuine composite "M" profile. **See the "Composite Profile Results (from FeatureAuditor)" section in your user message.** If FA confirmed a genuine composite, treat the two claims as a single linked physical system. If FA found spike–valley–spike or noise, treat them as independent (low-confidence) detections.
 
 5. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
 

@@ -76,13 +76,7 @@ The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 372
 
 **Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the slope-change test is decisive. A single Gaussian has a smoothly-decreasing derivative on the rising edge — no dip, no re-acceleration. **CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read.
 
-**[O II] vs Balmer amplitude hierarchy**: In typical ELG and star-forming galaxy spectra, [O II] 3727 is among the **brightest** emission lines — it should be comparable to or exceed Hβ in flux. If the claimed [O II] feature has significantly lower amplitude than Balmer lines (Hβ, Hγ, Hδ) at the same redshift, this is a **negative indicator** for the [O II] identification:
-
-- **[O II] amplitude < 0.5× Hβ amplitude** → **strong penalty** — the feature is unlikely to be genuine [O II]. A true [O II] line should not be dwarfed by Balmer emission from the same system.
-- **[O II] amplitude 0.5–1.0× Hβ amplitude** → **moderate penalty** — unusual but not disqualifying. Some low-metallicity or high-ionization systems can show suppressed [O II].
-- **[O II] amplitude > 1.0× Hβ amplitude** → **no penalty** — consistent with typical [O II].
-
-If Hβ is unavailable (outside spectral range), use Hγ or Hδ as a proxy with the same thresholds. This check is MANDATORY when discriminating [O II] from [O III]b: [O III]b can legitimately be weaker than Balmer lines, so a faint claimed-[O II] that is much weaker than Hβ is more likely to actually be [O III]b at a lower redshift.
+**Discriminating [O II] from [O III]b**: When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, rely on the slope-change morphological test (above) and your visual assessment of the feature's prominence, width, and overall context within the spectrum. There is no rigid amplitude-based rule — use your perceptual judgment as an astronomer.
 
 **False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where the observed separation is < 3.2 Å < 4 pixels), the morphological signatures may be undetectable. In these cases, report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
 
