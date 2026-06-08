@@ -65,7 +65,7 @@ def _is_truncated(messages: list) -> bool:
     return last_ai.response_metadata.get("finish_reason") == "length"
 
 
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables
 from AstroAgent.agents.multi_agents.AnalysisAuditor import build_contradiction_matrix
 
 
@@ -100,110 +100,6 @@ def _extract_json_block(text: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             pass
     return None
-
-
-# ---------------------------------------------------------------------------
-# Adopted feature catalog builder
-# ---------------------------------------------------------------------------
-
-def _resolve_csv_path(harness_dir: str, idx: int) -> str:
-    """Return the best available lines CSV for a hypothesis.
-
-    Prefers ``{idx}_lines_cleaned.csv`` (post-FeatureAuditor) over the
-    original ``{idx}_lines.csv``.  Falls back to the original when the
-    cleaned version doesn't exist.
-    """
-    cleaned = os.path.join(harness_dir, f"{idx}_lines_cleaned.csv")
-    if os.path.exists(cleaned):
-        return cleaned
-    return os.path.join(harness_dir, f"{idx}_lines.csv")
-
-
-def _build_line_tables(harness_results: list, harness_dir: str) -> str:
-    """Build per-hypothesis line tables from lines.csv (preferring cleaned).
-
-    The synthesis agent needs the raw measurement data (fitted_center_err,
-    fitted_sigma, fwhm_km_s, etc.) to populate write_synthesis_csv accurately.
-    These tables provide every column that the CSV output requires.
-
-    When ``{idx}_lines_cleaned.csv`` exists (post-FeatureAuditor), it is
-    used instead of the original.  Features removed by FeatureAuditor are
-    shown with a ~~strikethrough~~ note; flagged features show the flag text.
-    """
-    import csv as _csv
-
-    sections = []
-
-    for r in harness_results:
-        idx = r["hypothesis_idx"]
-        csv_path = _resolve_csv_path(harness_dir, idx)
-        if not os.path.exists(csv_path):
-            sections.append(
-                f"### H{idx}\n\n*No lines.csv found.*\n"
-            )
-            continue
-
-        rows = []
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = _csv.DictReader(f)
-            for row in reader:
-                rows.append(row)
-
-        if not rows:
-            sections.append(
-                f"### H{idx}\n\n*No lines evaluated.*\n"
-            )
-            continue
-
-        # Detect whether FeatureAuditor columns are present
-        has_audit = any("feature_audit" in r for r in rows)
-
-        # Identify columns present
-        cols = list(rows[0].keys())
-
-        header = (
-            "| " + " | ".join(cols) + " |\n"
-            "|" + "|".join(["------"] * len(cols)) + "|"
-        )
-
-        body_lines = []
-        for row in rows:
-            vals = []
-            for c in cols:
-                v = (row.get(c) or "").strip()
-                if c == "feature_audit" and v == "REMOVED":
-                    v = "REMOVED (noise/artifact — do NOT use)"
-                elif c == "feature_audit" and v == "FLAGGED":
-                    v = "FLAGGED (see feature_audit_flag)"
-                vals.append(v if v else "—")
-            body_lines.append("| " + " | ".join(vals) + " |")
-
-        note = ""
-        if has_audit:
-            note = (
-                " *(FeatureAuditor-verified: REMOVED features should be "
-                "excluded from synthesis.)*"
-            )
-
-        sections.append(
-            f"### H{idx}{note}\n\n"
-            f"{header}\n"
-            + "\n".join(body_lines)
-            + "\n"
-        )
-
-    if not sections:
-        return "\n## Per-Hypothesis Line Data\n\n*No line catalogs available.*\n"
-
-    return (
-        "\n## Per-Hypothesis Line Data\n\n"
-        "Full measurement tables from each harness run.  Reference these when "
-        "calling `write_synthesis_csv` — every column the CSV requires is "
-        "present here.  When FeatureAuditor has run, the `feature_audit` and "
-        "`feature_audit_flag` columns indicate which features were verified / "
-        "flagged / removed.\n\n"
-        + "\n".join(sections)
-    )
 
 
 # ---------------------------------------------------------------------------

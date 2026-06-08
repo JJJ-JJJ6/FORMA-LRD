@@ -813,6 +813,112 @@ def write_synthesis_csv(file_path: str, rows: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Shared CSV utilities (used by both synthesize.py and AnalysisAuditor.py)
+# ---------------------------------------------------------------------------
+
+def _resolve_csv_path(harness_dir: str, idx: int) -> str:
+    """Return the best available lines CSV for a hypothesis.
+
+    Prefers ``{idx}_lines_cleaned.csv`` (post-FeatureAuditor) over the
+    original ``{idx}_lines.csv``.  Falls back to the original when the
+    cleaned version doesn't exist.
+    """
+    import os as _os
+    cleaned = _os.path.join(harness_dir, f"{idx}_lines_cleaned.csv")
+    if _os.path.exists(cleaned):
+        return cleaned
+    return _os.path.join(harness_dir, f"{idx}_lines.csv")
+
+
+def _build_line_tables(harness_results: list, harness_dir: str) -> str:
+    """Build per-hypothesis line tables from lines.csv (preferring cleaned).
+
+    The synthesis agent needs the raw measurement data (fitted_center_err,
+    fitted_sigma, fwhm_km_s, etc.) to populate write_synthesis_csv accurately.
+    These tables provide every column that the CSV output requires.
+
+    When ``{idx}_lines_cleaned.csv`` exists (post-FeatureAuditor), it is
+    used instead of the original.  Features removed by FeatureAuditor are
+    shown with a ~~strikethrough~~ note; flagged features show the flag text.
+    """
+    import csv as _csv
+    import os as _os
+
+    sections = []
+
+    for r in harness_results:
+        idx = r["hypothesis_idx"]
+        csv_path = _resolve_csv_path(harness_dir, idx)
+        if not _os.path.exists(csv_path):
+            sections.append(
+                f"### H{idx}\n\n*No lines.csv found.*\n"
+            )
+            continue
+
+        rows = []
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+
+        if not rows:
+            sections.append(
+                f"### H{idx}\n\n*No lines evaluated.*\n"
+            )
+            continue
+
+        # Detect whether FeatureAuditor columns are present
+        has_audit = any("feature_audit" in r for r in rows)
+
+        # Identify columns present
+        cols = list(rows[0].keys())
+
+        header = (
+            "| " + " | ".join(cols) + " |\n"
+            "|" + "|".join(["------"] * len(cols)) + "|"
+        )
+
+        body_lines = []
+        for row in rows:
+            vals = []
+            for c in cols:
+                v = (row.get(c) or "").strip()
+                if c == "feature_audit" and v == "REMOVED":
+                    v = "REMOVED (noise/artifact — do NOT use)"
+                elif c == "feature_audit" and v == "FLAGGED":
+                    v = "FLAGGED (see feature_audit_flag)"
+                vals.append(v if v else "—")
+            body_lines.append("| " + " | ".join(vals) + " |")
+
+        note = ""
+        if has_audit:
+            note = (
+                " *(FeatureAuditor-verified: REMOVED features should be "
+                "excluded from synthesis.)*"
+            )
+
+        sections.append(
+            f"### H{idx}{note}\n\n"
+            f"{header}\n"
+            + "\n".join(body_lines)
+            + "\n"
+        )
+
+    if not sections:
+        return "\n## Per-Hypothesis Line Data\n\n*No line catalogs available.*\n"
+
+    return (
+        "\n## Per-Hypothesis Line Data\n\n"
+        "Full measurement tables from each harness run.  Reference these when "
+        "calling `write_synthesis_csv` — every column the CSV requires is "
+        "present here.  When FeatureAuditor has run, the `feature_audit` and "
+        "`feature_audit_flag` columns indicate which features were verified / "
+        "flagged / removed.\n\n"
+        + "\n".join(sections)
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tool 10: grep_kb — search knowledge base and skill files
 # ---------------------------------------------------------------------------
 

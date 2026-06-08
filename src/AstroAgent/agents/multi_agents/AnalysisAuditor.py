@@ -36,8 +36,7 @@ from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
-from AstroAgent.agents.multi_agents.harness.synthesize import _resolve_csv_path, _build_line_tables
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables
 
 
 class FeatureAuditorFailed(Exception):
