@@ -22,6 +22,7 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them.
 | When you need... | Call |
 |------------------|------|
 | Doublet spacing, ratio rules | `grep_kb(pattern="doublet\|ratio\|separation\|Ca K/H\|O III", C=2)` |
+| Emission–absorption coexistence (composite profiles) | `grep_kb(pattern="composite\|coexistence\|split profile", C=3)` |
 | Known OH/OI skyline positions | `grep_kb(pattern="skyline\|OH\|OI\|airglow", C=3)` |
 | Line rest wavelengths | `grep_kb(pattern="<line_name>", C=2)` |
 
@@ -103,13 +104,40 @@ Look at the feature by eye. Does the apparent visual width roughly match what yo
 - Absorption lines should appear as **clear dips** below the continuum, not symmetric around zero
 - If CWT reports a broad feature but the raw spectrum shows only a narrow wiggle → CWT width is a noise-blur artifact
 
-#### 3c. Neighborhood comparison
+#### 3c. Neighborhood comparison (MANDATORY — local contrast significance)
 
-Is this feature notably stronger than adjacent features within ±100 Å?
+A feature can look convincing in a narrow ±25 Å window yet be indistinguishable from noise when viewed in broader context. This is especially common in the **"clean" mid-range** (roughly 4000–7800 Å, away from blue-edge throughput collapse and red OH forest), where the noise floor is low but **not flat** — it manifests as a dense forest of low-amplitude oscillations. Dozens of similar peaks/troughs pack together, and the CWT pipeline picks out the tallest ones. But "tallest in a noise forest" does not make a feature astrophysical.
 
-- If the ±100 Å region is densely populated with features of **similar amplitude** → this is a **noise-dominated zone** — ALL features in such a zone are suspect
-- If this feature **stands out** from the local noise envelope → supports **REAL**
-- Check the median |amplitude| and top-quartile thresholds provided in the user prompt — features near or below the median are at the noise floor
+**Procedure** (apply to EVERY feature, regardless of zone):
+
+1. **Use the data you already have.** Step 2 reads each λ_obs ±80 Å, giving at least 160 Å of context. Scan that full window — do NOT zoom into ±25 Å around the target.
+
+2. **Apply the Two-Criterion Noise Test:**
+
+   **Criterion A — Pattern similarity**: Within ±100 Å of λ_obs, how many **other peaks/troughs of the same type** (emission/absorption) have a comparable profile (width, shape, amplitude within ~30%)? Count them.
+
+   - 0–1 → the target is **unique** in its neighborhood
+   - 2–4 → the target is **one of several** similar oscillations
+   - 5+ → **noise forest** — the target is just one of many indistinguishable fluctuations
+
+   **Criterion B — Amplitude advantage**: Compare the target's amplitude against the **mean amplitude of the top 5–10 local extrema** (same type: emission peaks or absorption troughs) in the ±100 Å window.
+
+   - Target/mean > **~2.5×** → **strong advantage** — the feature dominates its neighborhood
+   - Target/mean **~1.5–2.5×** → **moderate advantage** — better than average but not decisively dominant
+   - Target/mean < **~1.5×** → **no effective advantage** — the feature blends in with the crowd. A "peak" that is only 6–10% brighter than the next-brightest peak (like 0.420 vs 0.416) is NOT a distinct feature — it's just the tallest blade of grass in a lawn.
+
+3. **Verdict integration:**
+
+   - **Noise forest** (Criterion A: 5+ similar, AND Criterion B: <1.5× advantage) → the feature is almost certainly noise. `is_real=false`, confidence HIGH. In `issues`: *"Noise forest — N peaks of comparable amplitude within ±100 Å; target/mean = X.xx×. Feature indistinguishable from surrounding oscillations."*
+   - **Ambiguous** (mixed signals): one of several similar features BUT moderate amplitude advantage (1.5–2.5×) → `is_real=false`, confidence MEDIUM. *"Multiple similar features in neighborhood; target has moderate amplitude advantage (X.xx× local mean) but insufficient contrast to confidently distinguish from fluctuations."*
+   - **Stands out** (both criteria pass: ≤1 similar + >2.5× advantage) → supports REAL. The feature is a genuine outlier in its neighborhood.
+
+**Calibration reference**: In spectrum 28, the real [O II] line at 6626 Å has target/mean ≈ 3.3× with no similar features nearby — it unmistakably dominates. A noise feature at 6133 Å has target/mean ≈ 1.4× with 5+ similar peaks within ±100 Å — it's just the tallest in a noise forest. Use this mental benchmark: a real emission line should look more like 6626 than 6133.
+
+**Caveats**:
+- **Low-SNR spectra** (median SNR < ~2): even real features may have modest amplitude advantage. Prioritize Criterion A (pattern similarity) over Criterion B in this regime.
+- **Isolated bright skylines** (OI 5577, 6300, 6364) will pass both criteria but are atmospheric — the OH/OI cross-check in Step 3d handles their origin.
+- **Broad lines** (Mg II, C IV, C III]): compare against other BROAD undulations in the neighborhood, not narrow peaks. A genuine broad line at FWHM > 2000 km/s should span tens of pixels — narrow noise spikes are not comparators.
 
 #### 3d. Edge zone extra scrutiny (🔵/🔴 rows)
 
@@ -135,6 +163,19 @@ Rules for blue edge features (🔵, λ_obs < 4000 Å):
 OH/OI screening rule (applies everywhere, not just edge zones):
 - **Narrow emission (Width = narrow, Type = em)**: call `grep_kb(pattern="skyline|OH|OI|airglow", C=3)` to screen for OI/OH contamination. OI 5577 and 6300/6364 can appear anywhere in the visible band.
 
+#### 3e. Emission–Absorption coexistence check
+
+When the matrix shows an **emission feature and an absorption feature of the same line species** (e.g., Mg II + Mg II_abs, Hα + Hα_abs, Hβ + Hβ_abs) at nearly the same observed wavelength, they may form a single composite profile — a broad emission line split by a central absorption trough. Do NOT treat them as independent detections.
+
+Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/composite_profile.md` for the full diagnostic criteria. Key checks:
+
+1. **Read both features together**: `read_spectrum_region` on a wide window (±200 Å) covering both the emission and absorption claims.
+2. **Apply the morphological tests** (center consistency, wing broadness/smoothness, symmetry, continuum connectivity).
+3. **Verdict logic**:
+   - Clear composite profile (broad "M" shape, symmetric, smooth wings) → both components are **real and physically linked**. KEEP or FLAG both, note "composite profile confirmed" in issues.
+   - Spike–valley–spike pattern (narrow peaks, sharp transitions) → likely **noise**. REMOVE both or FLAG with low confidence.
+   - Asymmetric (only one broad wing) → flag the absorption as possibly real, REMOVE or FLAG the emission as suspect.
+
 ### Step 4: Doublet Verification
 
 The user prompt lists **Doublet Pairs** — pre-computed observed separations and amplitude ratios for known doublets (Ca K/H, [O III]a/b, [N II]a/b, [S II]a/b). For each pair:
@@ -151,7 +192,36 @@ The user prompt lists **Doublet Pairs** — pre-computed observed separations an
   - The weaker component (e.g., [O III]a) may be absorbed by noise if SNR is marginal
 - Use `read_spectrum_region` on BOTH components together (wider window) to assess whether both are real features. If the separation is right but the ratio is wrong, flag the pair — do NOT auto-remove unless Step 3 independently finds one component is noise.
 
-### Step 5: Holistic SNR Assessment
+### Step 5: [O II] Doublet Morphology Check (MANDATORY when [O II] is claimed)
+
+[O II] 3727 is NOT a single line — it is a close doublet (3726.0/3729.0 Å, rest separation 2.8 Å) that is unresolved at DESI resolution. The CWT pipeline detects it as one "narrow" feature, but the raw spectrum contains morphological signatures that can positively confirm or refute the [O II] identification.
+
+Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.md` for the full criteria.
+
+**When to apply**: Scan the entire contradiction matrix before beginning. If ANY hypothesis claims [O II] at any observed wavelength, you MUST perform this check for each such claim.
+
+**Procedure** (for each [O II] claim in the matrix):
+
+1. **Read the spectrum ±25 Å** around the claimed [O II] observed wavelength. If already read as part of Step 2, re-examine the existing data.
+
+2. **Check for the three morphological signatures**:
+   - **Blue-wing shoulder**: A subtle plateau, slope change, or excess flux on the rising edge, ~2.8×(1+z) Å blueward of the peak. Look for a brief slowdown in the flux rise.
+   - **Subtle inter-component valley**: Any pixel on the rising edge where flux is LOWER than the previous pixel (flux decreases, even by <0.01). This is the valley between [O II]a and [O II]b.
+   - **Broadened FWHM**: CWT-fitted FWHM > 500 km/s for a "narrow" feature → consistent with unresolved blending. True single narrow lines at similar SNR typically have FWHM 200–400 km/s.
+
+3. **Compare morphology with single-line expectations**:
+   - Clean symmetric single Gaussian → morphology **does NOT support** [O II]. The feature may be a true single line ([O III]b, Hβ, Hα) misidentified as [O II].
+   - Blue-wing asymmetry + subtle valley + broadened FWHM → morphology **supports** [O II]. All three signatures together constitute strong positive evidence.
+   - One or two signatures present → morphology **weakly supports** [O II]. Note as tentative.
+
+4. **Record the morphological assessment** in the feature's `issues` and `recommendation`:
+   - If morphology supports [O II]: add to `issues` "Morphology consistent with [O II] unresolved doublet: blue-wing shoulder at λ≈X, subtle valley at λ≈Y, broadened FWHM Z km/s" — feature may be KEEP or FLAG (depending on other factors). Do NOT REMOVE a feature solely because it's identified as [O II].
+   - If morphology does NOT support [O II] (clean symmetric single Gaussian): add to `issues` "Morphology inconsistent with [O II] unresolved doublet: symmetric single-Gaussian profile, no blue-wing shoulder, FWHM consistent with single narrow line" — this undermines the [O II] claim. The feature may still be real (just not [O II]), so FLAG rather than REMOVE, and note that the identification is suspect.
+   - If SNR too low for morphology check: add "SNR insufficient for [O II] doublet morphology check — cannot confirm or refute" — do NOT use morphology to penalize the hypothesis.
+
+**Why this matters**: When the SAME observed emission feature is claimed as [O II] by one hypothesis and [O III]b (a true single line) by another, morphology is the ONLY way to distinguish them at the feature-audit stage. Wavelength matching is inherently ambiguous because both lines have similar rest wavelengths relative to cosmological redshift — a feature at λ_obs can match [O II] at high-z OR [O III]b at low-z. The morphology check breaks this degeneracy.
+
+### Step 6: Holistic SNR Assessment
 
 After examining the spectrum at all claimed wavelengths AND both edge zones:
 
@@ -161,7 +231,7 @@ After examining the spectrum at all claimed wavelengths AND both edge zones:
 
 Report: "Spectrum quality: [high-quality / marginal / noise-dominated]. [1–2 sentence justification.]"
 
-### Step 6: Output Verdicts
+### Step 7: Output Verdicts
 
 For EACH matrix row, output a verdict. Then output a summary.
 

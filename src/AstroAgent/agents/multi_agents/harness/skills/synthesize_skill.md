@@ -29,6 +29,7 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them — do not me
 | Ionization priority, excluded lines, outflow, width mismatch | `grep_kb(pattern="priority\|excluded\|outflow\|width mismatch", C=2)` |
 | Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG\|LRG\|QSO\|fatal", C=3)` |
 | Cross-type evidence weighting | `grep_kb(pattern="cross-type", C=2)` |
+| Emission–absorption composite profiles | `grep_kb(pattern="composite\|coexistence\|split profile", C=3)` |
 
 ## Feature Verification
 
@@ -51,6 +52,10 @@ When using `read_spectrum_region`:
 - **Do NOT estimate FWHM in km/s from raw data.** The conversion FWHM(km/s) = FWHM(Å) / λ_obs × c requires precise FWHM measurement that visual inspection of ~10 data points cannot provide. Use the feature's FWHM_km_s from the harness report instead.
 - You may note whether a continuum break (sharp flux increase) is present or absent at a predicted wavelength. This is a binary yes/no judgment — do not attempt to quantify the break amplitude by eye.
 - **Single-pixel spikes**: Bad pixels and cosmic ray hits can occur anywhere in the spectrum, not just edge zones. When a reported feature spans only 1–2 pixels in the raw spectrum, it is likely a detector artifact, not a real spectral line. Such features are UNRELIABLE unless multiple other lines at the same redshift independently corroborate the identification.
+
+- **Local contrast verification**: When reading a discriminating window (Phase 2b), do NOT judge a feature in isolation — a narrow ±25 Å view can make a noise fluctuation look convincing. The "clean" mid-range (4000–7800 Å) is particularly susceptible: the noise floor is low but not flat, producing a dense forest of similar-amplitude oscillations where the CWT's tallest pick may not be astrophysical. Expand your read (or verify you already have) ±100–200 Å around the target wavelength and apply two checks:
+  1. **Pattern similarity**: How many features of comparable profile (width, shape, amplitude within ~30%) exist within ±100 Å? A noise forest (5+ similar oscillations) means the target is just one of many.
+  2. **Amplitude advantage**: Compare the target's amplitude against the mean of the top 5–10 local extrema (same type: emission or absorption) in the ±100 Å window. Target/mean < 1.5× → the feature does not stand out; it blends in. A genuine emission line should look more like a dominant outlier (>2.5× local mean, few or no similar neighbors) than the tallest blade of grass in a lawn.
 
 ## Phase 1: Review Verified Features
 
@@ -84,7 +89,9 @@ Physics-based tiebreakers (ordered by reliability, all independent of the harnes
 
 4. **Balmer decrement** — Hα/Hβ flux ratio ≈ 2.86 (Case B recombination). **(Emission-line objects only — not applicable to LRG/BGS absorption spectra. Do NOT reject a galaxy hypothesis solely because its Balmer absorption lines do not follow Case B ratios.)**
 
-5. **[O III] doublet** — Use `grep_kb` to search `kb/lines.md` for spacing and ratio rules. Spacing is the stronger test (direct z measurement independent of CWT). Ratio is weaker but a reversed ratio disqualifies.
+5. **[O III] doublet** — Use `grep_kb` to search `kb/lines.md` for spacing and ratio rules. Spacing is the stronger test (direct z measurement independent of CWT). Ratio is weaker but a reversed ratio disqualifies. **An orphan [O III] doublet (only one component detected, the other NOT_FOUND) IS disqualifying** — a bright [O III]b demands a detectable [O III]a; its absence means the feature is likely not [O III] at all.
+
+6. **[O II] unresolved doublet morphology** — [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å). It appears as a single blended peak in the line catalog, but the raw spectrum carries morphological signatures of the blend: blue-wing shoulder, subtle inter-component valley, and broadened FWHM (>500 km/s). **[O III]b 5008.2 is a TRUE single line.** When the SAME observed feature is claimed as [O II] by one hypothesis and [O III]b by another, use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` and `read_spectrum_region` ±25 Å. Symmetric single Gaussian → favors [O III]b. Blue-wing asymmetry + subtle valley + broad FWHM → favors [O II]. This is the most powerful physical discriminator for the common [O II]-vs-[O III]b degeneracy.
 
 ### 2b. Read ONLY the discriminating windows
 
@@ -96,13 +103,19 @@ Use the `read_spectrum_region` tool to examine specific wavelength windows. For 
 
 For each competing hypothesis, try to DISPROVE it with a specific negative observation:
 - "z=X predicts a 4000 Å break at Y Å — no break observed"
-- "z=X predicts Ca K at Y1 and Ca H at Y2 — only one absorption present, spacing wrong"
+- "z=X predicts Ca K at Y1 and Ca H at Y2 — only one absorption present, spacing wrong" (LRG/BGS only — do NOT use this for ELG)
 - "z=X requires [O III]b to be 3× brighter than [O III]a — observed ratio is reversed"
+- "z=X identifies the brightest feature as [O III]b, but [O III]a is NOT_FOUND in a clean region — orphan doublet, feature is likely not [O III]"
+- "z=X identifies the feature as [O III]b, but spectrum read shows blue-wing shoulder + subtle valley + broadened FWHM — morphology matches [O II] unresolved doublet, not a single line"
 
 A hypothesis is only accepted when ALL viable competitors have been excluded by specific observations.
 
 **Classification-aware exclusion**: Not all physical diagnostics apply uniformly to all object types. Use `grep_kb` to search `kb/classification.md` for the specific fatal problems and expected features for each type. Key principles:
-- **ELG**: Weak Ca K/H is EXPECTED — do NOT exclude an ELG hypothesis for missing Ca K/H. Missing [O II] or weak Hβ IS serious.
+- **ELG**: Emission lines drive the classification; absorption lines carry little to no weight. Specifically:
+  - **Ca K/H absorption**: Weak, absent, wrong separation, or inverted K/H ratio is EXPECTED — do NOT use ANY Ca K/H issue to exclude an ELG hypothesis. Ca K/H is a primary diagnostic for LRG/BGS ONLY. An ELG hypothesis with perfect emission-line consistency (good [O II], Balmer series, [O III] doublet) should NOT be penalized for failed Ca K/H.
+  - **[O II] missing when [O III] is claimed**: FATAL — ionization inconsistency (see `kb/classification.md`).
+  - **[O III] doublet orphan** (one component bright, the other NOT_FOUND in a clean region): FATAL — same weight as wrong doublet spacing. A bright [O III]b without detectable [O III]a means the feature is likely NOT [O III]. Do NOT invoke "extreme [O III] ratio" to rescue the identification.
+  - **Balmer lines (Hβ, Hγ, Hδ)**: Missing or weak is NOT fatal — note as caveat only.
 - **LRG/BGS**: Ca K/H doublet and 4000 Å break are primary diagnostics.
 - **QSO**: Broad emission lines (Mg II, C III], C IV, Lyα) are expected; missing narrow absorption lines is expected. False QSO classification is worse than a conservative Galaxy classification — verify AGN indicators with `read_spectrum_region` before classifying as QSO. Use `grep_kb` to search `kb/classification.md` for QSO-specific fatal problems.
 - **Star**: Stellar absorption features (Mg I b triplet, Na I D, Ca II triplet) are primary diagnostics. Use `grep_kb` to search `kb/classification.md` for star-specific guidance. If evidence is marginal, flag as UNKNOWN rather than committing.
@@ -252,7 +265,11 @@ Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN i
    - If **AGN features are genuinely prominent** (clear broad emission distinct from noise and absorption, correct relative amplitudes, consistent redshift) and **Galaxy absorption is weak or absent** → classify as **`QSO`**
    - Both [Ne V] and Mg II CAN independently support QSO — the question is whether the feature is **REAL**, not whether it has a companion line
 
-4. **Mg II emission vs absorption coexistence**: When Mg II_abs is also claimed near the same observed wavelength, the detection may have fitted broad noise adjacent to the absorption trough as "Mg II emission." Use `read_spectrum_region` to examine the region: is the emission component a real broad peak clearly distinct from the absorption, or just vague broad wings around a dominant narrow absorption? If the narrow absorption dominates with only vague broad wings → the emission claim is likely an artifact.
+4. **Emission–absorption composite profiles**: When an emission line and an absorption line of the same species (e.g., Mg II + Mg II_abs, Hα + Hα_abs, Hβ + Hβ_abs) are claimed at nearly the same observed wavelength, they may form a single composite profile — a broad emission line split by a central absorption trough. Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/composite_profile.md` for the full diagnostic criteria. Key checks:
+   - **Read both together**: use `read_spectrum_region` on ±200 Å covering both claims.
+   - **Apply the morphological "M" test**: center consistency, wing broadness/smoothness, symmetry, continuum connectivity.
+   - **A genuine composite** (broad, symmetric, smooth "M" shape) supports both the emission AND absorption claims. Treat them as linked.
+   - **Spike–valley–spike or asymmetric noise** does NOT support either claim. Default to Galaxy classification if the only AGN evidence is a dubious Mg II composite.
 
 5. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
 

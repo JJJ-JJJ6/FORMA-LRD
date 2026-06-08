@@ -17,6 +17,22 @@ Use the lowest-ionization LIKELY line to anchor systemic z. Priority from lowest
 **Excluded** (must NOT anchor systemic z): He II (He⁺, 54.4 eV), C III] (C⁺⁺, 47.9 eV), C IV (C⁺⁺⁺, 64.5 eV), [Ne V] (Ne⁺⁺⁺⁺, 97.1 eV), Lyα (1216).
 These high-ionization lines are routinely blueshifted by AGN outflows (hundreds of km/s). If only excluded lines are available, flag the redshift as potentially biased.
 
+## Ionization Consistency Rule
+
+Higher-ionization lines imply the presence of lower-ionization lines of the same element. If a line requiring a higher ionization state is detected, the lower-ionization lines of that element MUST also be present (unless masked or at the spectrum edge).
+
+The most important case for ELG classification:
+
+| If detected | Then MUST also detect | Why |
+|-------------|----------------------|-----|
+| [O III] 4960/5008 (O⁺⁺, 35.1 eV) | [O II] 3727 (O⁺, 13.6 eV) | O⁺⁺ requires passing through O⁺ — an ionizing source strong enough to produce [O III] MUST produce abundant [O II] |
+
+**[O III] without [O II] in clean, unmasked spectral regions is a physical contradiction.** Either:
+- The [O III] identification is wrong (wrong z, wrong line ID, or OH skylines mimicking the doublet spacing), or
+- [O II] is hiding in a masked/low-SNR region (check before rejecting).
+
+See `kb/classification.md` § ELG for the full diagnostic logic.
+
 ## ELG Exception
 
 In emission-line dominated objects (strong [O II], Hβ, [O III]; Ca K/H weak or absent), Ca K/H absorption is often intrinsically weak and may not reach LIKELY or MARGINAL. Anchor systemic z on [O II] (Priority 2) instead. Do NOT downgrade an otherwise strong ELG hypothesis because Ca K/H are MARGINAL.

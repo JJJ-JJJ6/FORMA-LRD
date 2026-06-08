@@ -5,8 +5,26 @@
 **Expected features**: Strong narrow emission lines ([O II], Hβ, [O III], Hα). Weak or absent absorption.
 **Best systemic anchors**: [O II] 3727 (Priority 2), Hα (Priority 5).
 **Ca K/H**: Weak or absent is EXPECTED. Do NOT exclude an ELG hypothesis because Ca K/H are MARGINAL or NOT_FOUND — ELGs have young stellar populations and weak metal absorption.
-**Fatal problems**: Missing [O II], no Hβ, [O III] doublet spacing wrong.
+**Fatal problems**:
+- **Missing [O II]** — see ionization consistency rule below ([O III] cannot exist without [O II])
+- **[O III] doublet spacing wrong** — both components present but separation doesn't match 47.9×(1+z) Å
+- **[O III] doublet orphan** — only one [O III] component detected (typically [O III]b) while the other is NOT_FOUND in a clean, unmasked region. With the expected b:a ≈ 3:1 ratio, if [O III]b is bright enough to be KEEP, [O III]a MUST be detectable. A missing partner means either the feature is NOT [O III] (wrong line ID, possibly OH skyline or different species) or the identification is physically unsound. **An orphan [O III] doublet IS a fatal problem — treat it with the same weight as wrong spacing.** Do not invoke "extreme [O III] ratio" to rescue the identification; extreme ratios are physically rare and the simpler explanation is misidentification.
+
+**Balmer lines (Hβ, Hγ, Hδ)**: Frequently weak or undetectable in ELGs due to moderate SFR, dust extinction, or low SNR. A missing Balmer line is NOT a fatal problem and should NOT be used to reject an ELG hypothesis. Note the absence as a caveat, not a disqualifier.
+
+**Ca K/H absorption**: Weak or absent is EXPECTED in ELGs — young stellar populations have weak metal absorption. Do NOT reject an ELG hypothesis because Ca K/H features are MARGINAL, NOT_FOUND, have wrong separation, or show inverted K/H ratio. Ca K/H is a PRIMARY diagnostic for LRG/BGS only; for ELG it carries zero exclusion weight. An ELG hypothesis with perfect emission-line consistency but failed Ca K/H should NOT be penalized — the emission lines drive the classification.
 **Dn4000**: Typically < 1.4 (young stellar population). This is a reference continuum metric, NOT a classification criterion.
+
+### [O III] without [O II] — Ionization Inconsistency
+
+[O II] 3727 requires singly-ionized oxygen (O⁺, ~13.6 eV). [O III] 4960/5008 requires doubly-ionized oxygen (O⁺⁺, ~35.1 eV). Producing O⁺⁺ **requires** passing through the O⁺ ionization stage. A physical ELG spectrum cannot have [O III] detected while [O II] is genuinely absent — the ionizing source that creates O⁺⁺ must also create abundant O⁺.
+
+When a hypothesis claims [O III] as LIKELY but [O II] is NOT_FOUND or MASKED:
+
+1. **The [O III] identification is suspect.** Either the features are not actually [O III] (wrong redshift, wrong line ID, or OH skylines with coincidentally correct spacing), or [O II] is hiding in a masked region or low-SNR zone.
+2. **If [O II] falls in an unmasked, readable region** (not at the spectrum edge, not in a known bad-pixel zone), the absence of [O II] is a strong argument against the ELG hypothesis. This should be weighted similarly to a doublet spacing failure.
+3. **Do not accept the [O III] doublet spacing as sufficient** if [O II] is missing from clean spectral regions. The doublet spacing match can be coincidental — OH skylines in the red zone can mimic [O III] spacing at certain redshifts. [O II] provides independent confirmation.
+4. **Exception**: If [O II] falls in a masked region or at the extreme blue/red edge where SNR is known to be poor, note the caveat but do not reject on this basis alone.
 
 ## LRG/BGS (Luminous Red Galaxy / Bright Galaxy Sample)
 
@@ -39,11 +57,14 @@
 
 ## Mg II Emission vs Absorption Coexistence
 
-Mg II (2800 Å) can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM, FWHM < 1000 km/s). When BOTH Mg II emission AND Mg II_abs are claimed near the same observed wavelength:
+Mg II (2800 Å) can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM, FWHM < 1000 km/s). When BOTH Mg II emission AND Mg II_abs are claimed near the same observed wavelength, they may form an **emission–absorption composite profile** — a broad emission line split by a central absorption trough, producing a characteristic "M" shape in the spectrum.
 
-1. **Center coincidence check**: The emission and absorption centers must fall within each other's FWHM. If the centers are separated by more than the larger FWHM, the two features are unrelated — one is a misidentification.
-2. **Absorption-dominant region**: If the CWT feature at the predicted Mg II position is narrow and in absorption (FWHM < 1000 km/s, negative amplitude), the nearby broad "Mg II emission" is likely a CWT artifact from overfitting continuum noise. In such cases, do NOT use Mg II emission as AGN evidence.
-3. **Default rule**: In ambiguous cases, default to the absorption interpretation. Mg II ISM absorption is far more common than Mg II BLR emission in non-QSO objects. The Mg II emission claim requires POSITIVE evidence (clearly broad, clearly distinct from absorption).
+**Do NOT evaluate Mg II emission and Mg II_abs as independent features.** They may be the two halves of a single physical system. For the complete diagnostic criteria, see `kb/composite_profile.md`. Key principles:
+
+1. **Morphology over individual detections**: Read the full region (±200 Å). A genuine composite shows a broad, symmetric "M" with smooth wings. Spike–valley–spike patterns or asymmetric structures are likely noise.
+2. **Default rule**: In ambiguous cases (no clear "M" shape), default to the absorption interpretation. Mg II ISM absorption is far more common than Mg II BLR emission in non-QSO objects. The Mg II emission claim requires POSITIVE morphological evidence.
+
+This composite-profile logic also applies to Hα + Hα_abs and Hβ + Hβ_abs systems.
 
 ## Broad Lines in Non-AGN Galaxies
 

@@ -25,6 +25,7 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them. The tool acc
 | Doublet spacing, ratio rules | `grep_kb(pattern="doublet\|ratio\|separation\|Ca K/H\|O III", C=2)` |
 | Ionization priority, excluded lines, outflow | `grep_kb(pattern="priority\|excluded\|outflow\|blueshift", C=2)` |
 | Line rest wavelengths and width classes | `grep_kb(pattern="<line_name>", C=2)` |
+| Emission–absorption composite profiles | `grep_kb(pattern="composite\|coexistence\|split profile", C=3)` |
 
 ## Line Tables
 
@@ -90,7 +91,21 @@ For **each of the top 3–5 LIKELY lines** that support the winning hypothesis, 
 
 2. **Width sanity**: Look at the feature by eye. Does the apparent visual width roughly match the CWT-reported FWHM? If CWT reports a broad feature (>2000 km/s) but the raw spectrum shows only a narrow wiggle with no clear wings, the CWT width is a noise-blur artifact. Conversely, if CWT reports a narrow line but the spectrum shows a broad complex, the fitted Gaussian is only capturing one component of a blended feature.
 
-3. **Neighborhood comparison**: Is this feature notably stronger than adjacent features within ±100 Å? If the ±100 Å region is densely populated with features of similar amplitude, this is a noise-dominated zone — ALL features in such a zone are suspect, regardless of their CWT status.
+3. **Neighborhood comparison — local contrast significance**: Do NOT judge this feature in isolation. Within ±100 Å, apply the two-criterion noise test:
+
+   **Criterion A — Pattern similarity**: How many other peaks/troughs of the same type have a comparable profile (width, shape, amplitude within ~30%)? Count them.
+   - 0–1 → unique in neighborhood; 2–4 → one of several; 5+ → **noise forest** — the target is just one of many indistinguishable fluctuations.
+
+   **Criterion B — Amplitude advantage**: Compare the target's amplitude against the mean of the top 5–10 local extrema (same type) in the ±100 Å window.
+   - Target/mean > ~2.5× → strong advantage (dominates); ~1.5–2.5× → moderate; < ~1.5× → no effective advantage — the feature blends in.
+
+   **Verdict**: A feature that fails BOTH criteria (5+ similar neighbors AND <1.5× advantage) is almost certainly noise, regardless of CWT status. A feature that passes both (≤1 similar AND >2.5× advantage) is a genuine outlier. Mixed results → flag as ambiguous. This is especially important in the "clean" mid-range (4000–7800 Å) where the noise floor produces dense forests of similar oscillations that can fool narrow-window inspection.
+
+4. **[O II] doublet morphology** (MANDATORY when the winning hypothesis claims [O II] as a key line, OR when the winning and 2nd-best hypotheses disagree on whether the same feature is [O II] vs [O III]b): [O II] 3727 is an unresolved doublet (3726.0/3729.0 Å, rest sep 2.8 Å). At DESI resolution it appears as a single peak in the line catalog, but the raw spectrum carries morphological signatures. **[O III]b 5008.2 is a true single line.** Use `grep_kb(pattern="O II.*doublet|unresolved|3726", C=5)` to search `kb/lines.md` for the full criteria. Read the spectrum ±25 Å around the claimed feature and check:
+   - **Blue-wing shoulder**: A subtle plateau or slope change on the rising edge ~2.8×(1+z) Å blueward of the peak → signature of [O II]a contributing flux.
+   - **Subtle inter-component valley**: Any pixel on the rising edge where flux decreases (even by <0.01) → the valley between [O II]a and [O II]b.
+   - **Broadened FWHM**: CWT FWHM > 500 km/s for a "narrow" line → consistent with unresolved blending.
+   - **Assessment**: Clean symmetric single Gaussian → favors [O III]b (single line). Blue-wing asymmetry + subtle valley + broad FWHM → favors [O II] (unresolved doublet). If the winning hypothesis claims [O III]b but the morphology matches [O II], this is grounds for DOWNGRADE or REJECT.
 
 **Decision rule**: If ≥2 checks fail for a key line, flag it as **UNRELIABLE**. If ≥2 of the top 3–5 key lines are UNRELIABLE, the winning hypothesis is built on sand — strongly consider DOWNGRADE or REJECT.
 

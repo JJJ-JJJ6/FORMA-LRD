@@ -56,6 +56,28 @@
 - Rest separation: 34.8 Å. Observed: 34.8 × (1+z) Å.
 - Ca K MUST be deeper than Ca H. A single absorption without its partner is likely a misidentification.
 
+### [O II] Unresolved Doublet (3726.0 / 3729.0 Å) and Morphological Verification
+
+The [O II] 3727 line is a close doublet: [O II]a at 3726.0 Å and [O II]b at 3729.0 Å, rest separation **2.8–3.0 Å**. At DESI resolution (~2–3 Å at 8000 Å), the doublet is **unresolved** — it appears as a single blended emission peak in the CWT pipeline, which fits it as one "narrow" line. However, the blending leaves **detectable morphological signatures** that can be used to positively identify [O II] by reading the raw spectrum.
+
+**Observed separation**: 2.8 × (1+z) Å ≈ 5–9 pixels at typical DESI sampling (0.8 Å/pixel).
+
+**Physics**: The [O II]b / [O II]a flux ratio is density-dependent and typically 1.0–1.5 in star-forming galaxies. Both components contribute comparable flux, so the blend is symmetric or slightly asymmetric toward the red.
+
+**Visual verification procedure** (MUST read the spectrum ±25 Å around the predicted [O II] position):
+
+1. **Blue-wing shoulder/excess**: On the rising edge of the main peak, there should be a subtle shoulder, plateau, or change in slope ~2.8×(1+z) Å blueward of the main peak. This is [O II]a contributing flux before [O II]b takes over. In the flux derivative, this appears as a dip in slope (slope increases, then briefly stalls or decreases, then increases again toward the main peak).
+
+2. **Subtle inter-component valley**: A slight flux dip (only a few percent of peak flux) between the two blended components. This is the most subtle signature — at SNR < 3 it may be invisible, but at moderate SNR it appears as a tiny reversal in the rising trend. Look for any pixel where flux is LOWER than the previous pixel on the rising edge.
+
+3. **Broadened FWHM**: The blended profile is broader than a single unresolved line. A CWT-fitted FWHM > 500 km/s for a nominally "narrow" feature is a **positive indicator** of [O II] blending. True single narrow lines ([O III]b, Hβ) at similar SNR typically have FWHM 200–400 km/s in DESI data.
+
+4. **Asymmetry sense**: The blend should be slightly asymmetric — the blue side (rising edge) is more gradual than the red side (falling edge), because [O II]a spreads flux blueward. A perfectly symmetric single Gaussian argues AGAINST [O II].
+
+**Discrimination from [O III]b 5008.2**: [O III]b is a TRUE single line. When the same observed emission feature is claimed as [O II] by one hypothesis and [O III]b by another, the morphology test is decisive: symmetric single Gaussian → [O III]b; blue-wing asymmetry + subtle valley + broadened FWHM → [O II]. **CWT wavelength matching alone cannot distinguish these two cases** — the spectrum MUST be read.
+
+**False negatives**: At very low SNR (median < 1.5) or very low redshift (z < 0.15, where the observed separation is < 3.2 Å < 4 pixels), the morphological signatures may be undetectable. In these cases, report "morphology inconclusive at this SNR" rather than claiming [O II] is absent.
+
 ## Line Blend Disentanglement
 
 ### Hβ + [O III] complex (rest 4820–5050 Å)
