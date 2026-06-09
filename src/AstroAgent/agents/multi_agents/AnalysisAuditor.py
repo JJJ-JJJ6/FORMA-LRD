@@ -35,6 +35,7 @@ from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
+from AstroAgent.agents.multi_agents.harness.synthesize import _build_line_tables
 from AstroAgent.agents.multi_agents.harness.continuation import (
     _find_last_ai_message, _find_last_content_ai_message, _is_truncated,
     _format_tool_call, _format_tool_result,
@@ -770,6 +771,208 @@ def _build_feature_audit_user_message(
     return "\n".join(parts)
 
 
+def _build_merged_verified_features(harness_dir: str) -> str:
+    """Build a unified table of ALL KEEP features across all hypotheses.
+
+    Reads every ``{idx}_lines_cleaned.csv`` (falling back to ``{idx}_lines.csv``),
+    collects KEEP features, deduplicates by observed wavelength, and shows which
+    hypotheses claim each feature.
+
+    The auditor uses this to answer: "which real features does the winning
+    hypothesis NOT explain, and what does that imply?"
+    """
+    import glob as _glob
+
+    # Collect all KEEP features across hypotheses
+    all_keeps: list[dict] = []
+    pattern = os.path.join(harness_dir, "*_lines_cleaned.csv")
+    csv_files = sorted(_glob.glob(pattern))
+    if not csv_files:
+        pattern = os.path.join(harness_dir, "*_lines.csv")
+        csv_files = sorted(_glob.glob(pattern))
+
+    for csv_path in csv_files:
+        # Extract hypothesis index from filename
+        basename = os.path.basename(csv_path)
+        try:
+            hyp_idx = int(basename.split("_")[0])
+        except ValueError:
+            continue
+
+        if not os.path.exists(csv_path):
+            continue
+
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                audit = (row.get("feature_audit") or "").strip()
+                if audit != "KEEP":
+                    continue
+                # Round fitted_center for dedup
+                fc = row.get("fitted_center", "").strip()
+                try:
+                    wl_key = round(float(fc), 1) if fc else None
+                except ValueError:
+                    wl_key = None
+                if wl_key is None:
+                    continue
+
+                all_keeps.append({
+                    "hypothesis_idx": hyp_idx,
+                    "name": row.get("name", "?").strip(),
+                    "wl_key": wl_key,
+                    "fitted_center": fc,
+                    "type": "emission" if float(row.get("amplitude", "0") or "0") > 0 else "absorption",
+                    "amplitude": row.get("amplitude", "—"),
+                    "fwhm_km_s": row.get("fwhm_km_s", "—"),
+                    "status": row.get("status", "—"),
+                })
+
+    if not all_keeps:
+        return "*(No KEEP features found across any hypothesis.)*\n"
+
+    # Deduplicate by wavelength: group features within 2 Å of each other
+    all_keeps.sort(key=lambda x: x["wl_key"])
+    merged: list[dict] = []
+    used = set()
+    for i, feat in enumerate(all_keeps):
+        if i in used:
+            continue
+        wl = feat["wl_key"]
+        group = [feat]
+        for j in range(i + 1, len(all_keeps)):
+            if j in used:
+                continue
+            if abs(all_keeps[j]["wl_key"] - wl) <= 2.0:
+                group.append(all_keeps[j])
+                used.add(j)
+        used.add(i)
+
+        # Build hypothesis→claims mapping
+        claims = {}
+        for g in group:
+            h = g["hypothesis_idx"]
+            if h not in claims:
+                claims[h] = []
+            claims[h].append(g["name"])
+
+        merged.append({
+            "wl_obs": wl,
+            "type": group[0]["type"],
+            "amplitude": group[0]["amplitude"],
+            "fwhm_km_s": group[0]["fwhm_km_s"],
+            "n_hypotheses": len(claims),
+            "claims": claims,
+        })
+
+    merged.sort(key=lambda x: x["wl_obs"])
+
+    # Build table
+    lines = []
+    lines.append("## All Verified Features (KEEP across all hypotheses)")
+    lines.append("")
+    lines.append(
+        "These are ALL features that FeatureAuditor judged as **real** (KEEP) "
+        f"across every hypothesis. There are **{len(merged)}** unique verified "
+        "features in this spectrum. Every one of them is a real spectral signal "
+        "that a correct redshift hypothesis should explain — or at least "
+        "acknowledge. Features not claimed by the winning hypothesis are "
+        "**unexplained signals** that the auditor must investigate."
+    )
+    lines.append("")
+    lines.append(
+        "| λ_obs | Type | Amp | FWHM | Winner? | N(Hyp) | Claims (H: lines) |"
+    )
+    lines.append(
+        "|-------|------|-----|------|---------|--------|-------------------|"
+    )
+    winner_explained = 0
+    winner_missed = 0
+    for m in merged:
+        n_hyp = m["n_hypotheses"]
+        claim_parts = []
+        for h in sorted(m["claims"].keys()):
+            names = ", ".join(m["claims"][h])
+            claim_parts.append(f"H{h}: {names}")
+        claims_str = "; ".join(claim_parts)
+        winner_claims = best_idx in m["claims"] if best_idx is not None else False
+        if winner_claims:
+            winner_explained += 1
+        else:
+            winner_missed += 1
+        winner_mark = "✅" if winner_claims else "❌ UNEXPLAINED"
+        lines.append(
+            f"| {m['wl_obs']:.1f} | {m['type']} | {m['amplitude']} "
+            f"| {m['fwhm_km_s']} | {winner_mark} | {n_hyp} | {claims_str} |"
+        )
+    lines.append("")
+    if best_idx is not None:
+        total = winner_explained + winner_missed
+        pct = winner_explained / total * 100 if total > 0 else 0
+        lines.append(
+            f"**Completeness: H{best_idx} explains {winner_explained}/{total} "
+            f"verified features ({pct:.0f}%).** "
+            f"Unexplained features ({winner_missed}) may be noise, airglow, or "
+            f"real signals from a different physical system — investigate each one."
+        )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_cwt_catalog(harness_dir: str) -> list[dict]:
+    """Build a unified CWT feature catalog from redrock emission/absorption CSVs.
+
+    Reads ``{spectrum_id}_emission.csv`` and ``{spectrum_id}_absorption.csv``
+    from the parent output directory (one level above harness_dir).  These are
+    the FULL CWT peak/trough catalogs — every feature the CWT pipeline detected
+    across the entire spectrum, NOT limited to hypothesis-matched features.
+
+    Returns a list of dicts with keys: wavelength, amplitude, fwhm_km_s,
+    ridge_length, snr, width_class, feature_type.
+    """
+    # The output dir is the parent of harness_dir
+    output_dir = os.path.dirname(os.path.normpath(harness_dir))
+    spectrum_id = os.path.basename(os.path.normpath(harness_dir)).split("_")[0]
+
+    all_features: list[dict] = []
+
+    for csv_name in [f"{spectrum_id}_emission.csv", f"{spectrum_id}_absorption.csv"]:
+        csv_path = os.path.join(output_dir, csv_name)
+        if not os.path.exists(csv_path):
+            continue
+
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = _csv.DictReader(f)
+            for row in reader:
+                wl_str = (row.get("wavelength") or "").strip()
+                amp_str = (row.get("amplitude") or "").strip()
+                if not wl_str or not amp_str:
+                    continue
+                try:
+                    wl = round(float(wl_str), 1)
+                    amp = float(amp_str)
+                except (ValueError, TypeError):
+                    continue
+
+                fwhm_str = (row.get("FWHM_km_s") or "").strip()
+                ridge_str = (row.get("ridge_length") or "").strip()
+                snr_str = (row.get("snr") or "").strip()
+
+                all_features.append({
+                    "wavelength": wl,
+                    "amplitude": amp,
+                    "fwhm_km_s": round(float(fwhm_str)) if fwhm_str else None,
+                    "ridge_length": int(ridge_str) if ridge_str else None,
+                    "snr": round(float(snr_str), 1) if snr_str else None,
+                    "width_class": (row.get("width_class") or "").strip(),
+                    "feature_type": (row.get("feature_type") or "").strip(),
+                })
+
+    all_features.sort(key=lambda x: x["wavelength"])
+    return all_features
+
+
 def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -> str:
     """Build the user prompt for Stage B — synthesis verdict audit.
 
@@ -822,12 +1025,50 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
         parts.append("*(synthesis.csv not found — nothing to audit.)*")
         parts.append("")
 
-    # ── FA global issues (for reference, not binding) ──
+    # ── Per-hypothesis cleaned line tables (post-FeatureAuditor) ──
+    harness_results = state.get("harness_results") or []
+    best_idx = rule_analysis.get("best_hypothesis_idx")
+    excluded = rule_analysis.get("excluded_hypotheses") or []
+    audit_indices = []
+    if best_idx is not None:
+        audit_indices.append(best_idx)
+    for exc in excluded[:2]:
+        if isinstance(exc, dict) and exc.get("idx") is not None:
+            idx_e = exc["idx"]
+            if idx_e not in audit_indices:
+                audit_indices.append(idx_e)
+
+    audit_results = [r for r in harness_results if r.get("hypothesis_idx") in audit_indices]
+    if audit_results:
+        parts.append("## Per-Hypothesis Line Tables (post-FeatureAuditor)")
+        parts.append("")
+        parts.append(
+            "These are the **cleaned** line catalogs after FeatureAuditor verification. "
+            "Features marked REMOVED have been judged as noise/artifact. "
+            "FLAGGED features are real but caveated. "
+            f"Showing: H{', H'.join(str(i) for i in audit_indices)}."
+        )
+        parts.append("")
+        parts.append(_build_line_tables(audit_results, harness_dir))
+
+    # ── Merged verified features (ALL hypotheses, KEEP only) ──
+    parts.append(_build_merged_verified_features(harness_dir))
+
+    # ── Continuum description (from VisualInterpreter) ──
+    continuum = state.get("continuum") or {}
+    continuum_desc = continuum.get("description", "")
+    if continuum_desc:
+        parts.append("## Continuum Description (VisualInterpreter)")
+        parts.append("")
+        parts.append(continuum_desc)
+        parts.append("")
+
+    # ── FA global issues ──
     fa_quality = feature_audit_verdict.get("spectrum_quality", "unknown")
     fa_justification = feature_audit_verdict.get("spectrum_quality_justification", "")
     fa_global = feature_audit_verdict.get("global_issues", [])
     if fa_quality or fa_global:
-        parts.append("## FeatureAuditor Notes (FYI — not binding)")
+        parts.append("## FeatureAuditor Notes")
         parts.append("")
         parts.append(f"FA assessed spectrum quality as **{fa_quality}**.")
         if fa_justification:
@@ -837,32 +1078,199 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
             for gi in fa_global:
                 parts.append(f"- {gi}")
         parts.append("")
+
+    # ── FA structured verdicts (filtered to audited hypotheses) ──
+    # These are the FeatureAuditor's detailed findings that the synthesis agent
+    # may have seen but the auditor previously did not.  They are THE authoritative
+    # upstream judgments on doublets, composites, O II morphology, and Lyα forest.
+    # The auditor MUST respect these findings — if the synthesis contradicts FA
+    # on a composite or doublet verdict, that is a red flag.
+
+    def _filter_by_hypotheses(verdicts, key="hypothesis_idx"):
+        """Filter a list of verdict dicts to only the audited hypotheses."""
+        if not verdicts:
+            return []
+        return [v for v in verdicts if v.get(key) in audit_indices]
+
+    # ── Composite profile verdicts ──
+    composite_verdicts = _filter_by_hypotheses(
+        feature_audit_verdict.get("composite_profile_verdicts", [])
+    )
+    if composite_verdicts:
+        parts.append("### FA Composite Profile Verdicts")
+        parts.append("")
         parts.append(
-            "These are the upstream FeatureAuditor's observations.  They are "
-            "informational — you are the independent auditor.  Trust your own "
-            "judgment over FA's if they disagree."
+            "FA checked whether claimed emission+absorption pairs (e.g. Mg II + "
+            "Mg II_abs) form a genuine composite profile.  `is_composite=false` "
+            "means FA judged them as INDEPENDENT features — the synthesis should "
+            "NOT treat them as a linked physical system."
         )
         parts.append("")
+        parts.append("| H | Species | λ_em | λ_abs | Composite? | Morphology | FA Notes |")
+        parts.append("|---|---------|------|-------|------------|------------|----------|")
+        for cv in composite_verdicts:
+            parts.append(
+                f"| H{cv['hypothesis_idx']} | {cv.get('species','?')} "
+                f"| {cv.get('wl_em','—')} | {cv.get('wl_abs','—')} "
+                f"| {'✅' if cv.get('is_composite') else '❌'} "
+                f"| {cv.get('morphology','?')} "
+                f"| {cv.get('notes','')} |"
+            )
+        parts.append("")
+
+    # ── Doublet verdicts ──
+    doublet_verdicts = _filter_by_hypotheses(
+        feature_audit_verdict.get("doublet_verdicts", [])
+    )
+    if doublet_verdicts:
+        parts.append("### FA Doublet Verdicts")
+        parts.append("")
+        parts.append(
+            "FA verified known doublet pairs (Ca K/H, [O III]a/b, [N II]a/b, "
+            "[S II]a/b). `sep_ok=false` means the observed separation does not "
+            "match the expected rest separation at the claimed redshift — the "
+            "doublet identification is likely WRONG."
+        )
+        parts.append("")
+        parts.append("| H | Pair | λ_a | λ_b | Sep OK | Ratio OK | FA Notes |")
+        parts.append("|---|------|-----|-----|--------|----------|----------|")
+        for dv in doublet_verdicts:
+            wl_a = dv.get('wl_a')
+            wl_b = dv.get('wl_b')
+            parts.append(
+                f"| H{dv['hypothesis_idx']} | {dv.get('name_a','?')}+{dv.get('name_b','?')} "
+                f"| {wl_a if wl_a else '—'} | {wl_b if wl_b else '—'} "
+                f"| {'✅' if dv.get('separation_ok') else '❌'} "
+                f"| {'✅' if dv.get('ratio_ok') else '❌'} "
+                f"| {dv.get('notes','')} |"
+            )
+        parts.append("")
+
+    # ── [O II] morphology verdicts ──
+    oii_verdicts = _filter_by_hypotheses(
+        feature_audit_verdict.get("oii_morphology_verdicts", [])
+    )
+    if oii_verdicts:
+        parts.append("### FA [O II] Morphology Verdicts")
+        parts.append("")
+        parts.append(
+            "FA ran `detect_oii_slope_change` on each claimed [O II] feature. "
+            "`detected=true` (valley or slope-change) means the rising-edge "
+            "morphology supports the unresolved doublet identification."
+        )
+        parts.append("")
+        parts.append("| H | λ_obs | Detected | Type | dip_ratio | FWHM (km/s) | Prominence | FA Notes |")
+        parts.append("|---|-------|----------|------|-----------|-------------|------------|----------|")
+        for ov in oii_verdicts:
+            parts.append(
+                f"| H{ov['hypothesis_idx']} | {ov.get('wl_obs','—')} "
+                f"| {'✅' if ov.get('detected') else '❌'} "
+                f"| {ov.get('signature_type') or '—'} "
+                f"| {ov.get('dip_ratio','—')} "
+                f"| {ov.get('fwhm_km_s') or '—'} "
+                f"| {ov.get('peak_prominence','—')} "
+                f"| {ov.get('notes','')} |"
+            )
+        parts.append("")
+
+    # ── Lyα forest verdicts ──
+    lya_verdicts = _filter_by_hypotheses(
+        feature_audit_verdict.get("lyalpha_forest_verdicts", [])
+    )
+    if lya_verdicts:
+        parts.append("### FA Lyα Forest Verdicts")
+        parts.append("")
+        parts.append(
+            "FA checked for Lyα forest absorption blueward of each claimed Lyα. "
+            "Forest visible → strong positive evidence. Forest beyond blue edge → "
+            "zero weight — do NOT penalise the hypothesis."
+        )
+        parts.append("")
+        parts.append("| H | λ_obs | Forest? | FA Notes |")
+        parts.append("|---|-------|---------|----------|")
+        for lv in lya_verdicts:
+            parts.append(
+                f"| H{lv['hypothesis_idx']} | {lv.get('wl_obs','—')} "
+                f"| {lv.get('forest_visible','?')} "
+                f"| {lv.get('notes','')} |"
+            )
+        parts.append("")
+
+    parts.append(
+        "**⚠ These FA verdicts are authoritative upstream findings.** "
+        "If the synthesis agent's conclusions contradict FA on any of these "
+        "points (e.g. synthesis treats a FA composite=false pair as a linked "
+        "Mg II system, or accepts a FA sep_ok=false doublet), flag this as a "
+        "critical issue in `key_issues`."
+    )
+    parts.append("")
 
     # ── Task ──
     parts.append("## Task")
     parts.append("")
     parts.append(
-        "You are an independent defensive auditor.  Follow the **Layer 1 → Layer 2** "
-        "methodology from your system prompt:\n\n"
-        "**Layer 1** — Physical sanity screening (no spectrum reads).  Scan the line "
-        "inventory above.  Use `grep_kb` to check classification physics.  Identify "
-        "every line that is physically inconsistent with the claimed object type, "
-        "that has suspicious amplitude/FWHM relative to the catalog, or whose "
-        "implied_z deviates significantly from the best redshift.\n\n"
-        "**Layer 2** — Targeted verification (spectrum reads ONLY for Layer 1 "
-        "suspects).  Call `read_spectrum_region` ±100 Å for each suspicious line. "
-        "Judge visually: is this a real feature, or an artifact/noise that FA let "
+        "You are an independent defensive auditor.  Follow the methodology from "
+        "your system prompt:\n\n"
+        "**Layer 1** — Physical sanity screening (no spectrum reads).  Scan the "
+        "line inventory above.  Use `grep_kb` to check classification physics.  "
+        "Identify every line that is physically inconsistent with the claimed "
+        "object type, that has suspicious amplitude/FWHM relative to the catalog, "
+        "or whose implied_z deviates significantly from the best redshift.\n\n"
+        "**Layer 1b — Completeness check (MANDATORY)**: Look at the **All Verified "
+        "Features** table above.  Identify features that the WINNING hypothesis "
+        "does NOT claim.  For each unexplained verified feature:\n"
+        "- Is it likely noise that FA mistakenly KEPT?  If yes: are there features "
+        "of similar amplitude in the winning hypothesis that might ALSO be noise?\n"
+        "- Is it a real feature that the winning hypothesis cannot explain?  If "
+        "yes: can you identify what it might be (airglow? absorption from a "
+        "different system? a line at a different redshift?)?  Does the presence "
+        "of unexplained real features lower confidence in the winning hypothesis?\n"
+        "- Use `read_spectrum_region` aggressively to investigate unexplained "
+        "features — this IS your job.\n\n"
+        "**Layer 2** — Targeted verification (spectrum reads for suspicious AND "
+        "unexplained features).  Call `read_spectrum_region` ±100 Å.  Judge "
+        "visually: is this a real feature, or an artifact/noise that FA let "
         "through?\n\n"
         "**After both layers**: Assess spectrum-level issues (OH zone, blue edge, "
-        "line inventory sufficiency) and decide whether to recommend re-observation.\n\n"
+        "line inventory sufficiency), count how many verified features the winner "
+        "actually explains vs leaves unexplained, and decide whether to recommend "
+        "re-observation.\n\n"
         "Output your reasoning in free text, then the JSON verdict block."
     )
+
+    # ── Null-result fallback: guess spectral class ──
+    if rule_analysis.get("redshift") is None:
+        parts.append("")
+        parts.append("### ⚠ Null Result — Spectral Classification Guess")
+        parts.append("")
+        parts.append(
+            "The synthesis agent returned `redshift=null` — no hypothesis was "
+            "confirmed.  However, this spectrum may still contain astrophysical "
+            "signal.  Using the **continuum description** above and the **All "
+            "Verified Features** table, provide your best guess for the spectral "
+            "class of this object:"
+        )
+        parts.append("")
+        parts.append(
+            "- **QSO**: Blue/rising continuum, broad emission features, high-ionization "
+            "lines ([Ne V], C IV, C III]), Lyα forest if at high-z."
+        )
+        parts.append(
+            "- **Galaxy**: Red/flat continuum, narrow emission lines ([O II], [O III], "
+            "Balmer series), stellar absorption (Ca K/H, G-band, Mg I), 4000 Å break."
+        )
+        parts.append(
+            "- **Unknown**: Cannot determine from available data."
+        )
+        parts.append("")
+        parts.append(
+            "Base your guess on the continuum shape AND the brightest verified "
+            "features.  Include your reasoning and the guessed class in "
+            "`key_issues` or a free-text note before the JSON block.  This is "
+            "NOT a redshift determination — it's a best-effort classification "
+            "to guide follow-up observation strategy."
+        )
+        parts.append("")
 
     return "\n".join(parts)
 
@@ -1416,6 +1824,9 @@ class AnalysisAuditor(BaseAgent):
         system_prompt = _load_synthesis_audit_skill()
         user_prompt = _build_synthesis_audit_user_message(state, harness_dir)
 
+        # ── Build CWT catalog (all features, all hypotheses) ──
+        _cwt_catalog = _build_cwt_catalog(harness_dir)
+
         # ── Closure over spectrum arrays ──
         spec = state["spectrum"]
         _wl = np.asarray(spec["wavelength"])
@@ -1454,11 +1865,82 @@ class AnalysisAuditor(BaseAgent):
             """
             return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
 
+        @tool
+        def query_cwt_catalog(
+            wl_min: float = None,
+            wl_max: float = None,
+            amp_min: float = None,
+            amp_max: float = None,
+            fwhm_min: float = None,
+            fwhm_max: float = None,
+        ) -> dict:
+            """Query the full CWT feature catalog with optional filters.
+
+            The catalog contains ALL CWT-detected peaks and troughs across the
+            entire spectrum, from the redrock pipeline emission/absorption CSV
+            files.  This is the COMPLETE CWT output — not limited to features
+            matched to any hypothesis.  Use this to investigate unexplained
+            features, survey what CWT detected in a wavelength region, or find
+            features with similar properties to a suspicious line.
+
+            **Amplitude sign convention**:
+            - Positive amplitude = emission peak
+            - Negative amplitude = absorption trough
+            - ``amp_min=-10, amp_max=-3`` → absorption features with amplitude
+              between −10 and −3 (i.e. |amp| between 3 and 10, absorption only)
+            - ``amp_min=3, amp_max=10`` → emission features between +3 and +10
+            - ``amp_min=-1, amp_max=1`` → weak features of either sign
+
+            All filter parameters are optional — you can combine any subset.
+            Omitted filters are not applied.
+
+            Parameters
+            ----------
+            wl_min, wl_max : float, optional
+                Wavelength range in Å (inclusive).
+            amp_min, amp_max : float, optional
+                Amplitude range (signed — negative = absorption).
+            fwhm_min, fwhm_max : float, optional
+                FWHM range in km/s (inclusive).
+
+            Returns
+            -------
+            dict with keys:
+                n_total : int              — total features in catalog
+                n_matched : int            — features matching all filters
+                features : list[dict]      — matching features (up to 50, sorted by |amplitude| desc)
+            """
+            matched = []
+            for f in _cwt_catalog:
+                if wl_min is not None and f["wavelength"] < wl_min:
+                    continue
+                if wl_max is not None and f["wavelength"] > wl_max:
+                    continue
+                if amp_min is not None and f["amplitude"] < amp_min:
+                    continue
+                if amp_max is not None and f["amplitude"] > amp_max:
+                    continue
+                if fwhm_min is not None and (f["fwhm_km_s"] is None or f["fwhm_km_s"] < fwhm_min):
+                    continue
+                if fwhm_max is not None and (f["fwhm_km_s"] is None or f["fwhm_km_s"] > fwhm_max):
+                    continue
+                matched.append(f)
+
+            # Sort by |amplitude| descending
+            matched.sort(key=lambda x: -abs(x["amplitude"]))
+
+            return {
+                "n_total": len(_cwt_catalog),
+                "n_matched": len(matched),
+                "features": matched[:50],
+            }
+
         # ── Run LLM ──
         parsed = await _run_llm_agent(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
+            tools=[read_spectrum_region, grep_kb, detect_oii_slope_change,
+                   query_cwt_catalog],
             harness_dir=harness_dir,
             stream_filename="auditor_stream.md",
             stream_title="Auditor — Synthesis Audit",

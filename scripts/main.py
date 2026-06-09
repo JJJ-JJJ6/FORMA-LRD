@@ -162,15 +162,12 @@ async def main():
         csv_header = [
             "file_name",
             "type",
-            "score",
+            "signal_clarity",
             "redshift",
             "redshift_rms",
             "lines",
-            "human",
-            "type_2nd",
-            "redshift_2nd",
-            "redshift_rms_2nd",
-            "lines_2nd",
+            "confidence",
+            "human_review",
         ]
         # Write header once at the start (overwrite any previous run)
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -204,18 +201,21 @@ async def main():
                 logging.info(f"Image {file_name}.{format} processed")
 
                 in_brief = result.get("in_brief", {})
+                lines_val = in_brief.get("lines")
+                if isinstance(lines_val, list):
+                    lines_str = ", ".join(str(l) for l in lines_val)
+                else:
+                    lines_str = safe_str(lines_val)
+
                 row = [
                     file_name,
                     safe_str(in_brief.get("type")),
-                    safe_str(in_brief.get("score")),
+                    safe_str(in_brief.get("signal_clarity")),
                     safe_str(in_brief.get("redshift")),
                     safe_str(in_brief.get("redshift_rms")),
-                    safe_str(in_brief.get("lines")),
-                    safe_str(in_brief.get("human")),
-                    safe_str(in_brief.get("type_2nd")),
-                    safe_str(in_brief.get("redshift_2nd")),
-                    safe_str(in_brief.get("redshift_rms_2nd")),
-                    safe_str(in_brief.get("lines_2nd")),
+                    lines_str,
+                    safe_str(in_brief.get("confidence")),
+                    safe_str(in_brief.get("human_review")),
                 ]
 
                 # Append result immediately so it survives later failures

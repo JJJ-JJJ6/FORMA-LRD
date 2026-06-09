@@ -88,7 +88,106 @@ class WorkflowOrchestrator:
         print('Stage 1: Visual Interpreter')
         result = await self.spectro_agents["_Visual_Interpreter"].run(state, plot=True)
         self._check_cancel()
+        # Flag empty spectra for early exit
+        peaks = result.get("peaks") or []
+        troughs = result.get("troughs") or []
+        result["_no_features"] = (len(peaks) == 0 and len(troughs) == 0)
+        if result["_no_features"]:
+            print("[VI] No emission or absorption features detected — aborting pipeline.")
         return result
+
+    def _has_features(self, state: SpectroState) -> str:
+        """Route: skip downstream agents if VI found no features."""
+        if state.get("_no_features"):
+            return "no_features"
+        return "continue"
+
+    async def _no_features_node(self, state: SpectroState) -> SpectroState:
+        """Write placeholder report and JSON when no features were detected."""
+        import os, json as _json
+        self._check_cancel()
+        print("Stage 1b: No features — writing placeholder report.")
+
+        wl = state["spectrum"]["wavelength"]
+        wl_left = float(wl[0])
+        wl_right = float(wl[-1])
+        snr_val = state["spectrum"].get("snr")
+        import numpy as np
+        snr_median = float(np.median(snr_val)) if snr_val is not None else None
+        continuum = state.get("continuum") or {}
+        continuum_desc = continuum.get("description", "No continuum data available.")
+
+        harness_dir = state.get("harness_dir", "")
+        file_name = state.get("file_name", "unknown")
+
+        # ── Placeholder report ──
+        report = f"""# Final Analysis Report
+
+## §1: Spectrum Basic Information
+
+- Wavelength coverage: {wl_left:.0f} – {wl_right:.0f} Å
+- Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}
+- Continuum shape: {continuum_desc}
+
+**⚠ No emission or absorption features were detected in this spectrum.** The Visual Interpreter's CWT feature detection found zero peaks and zero troughs. The spectrum may be pure noise, or the signal is below the detection threshold.
+
+## §2: Hypothesis Summary
+
+No hypotheses were tested — the pipeline aborted after feature detection found no signal.
+
+## §3: Synthesis & Audit Judgments
+
+Skipped — no features to analyse.
+
+## §4: Potential Issues
+
+- **No signal detected**: CWT feature detection found no emission peaks or absorption troughs across the entire wavelength range.
+- This spectrum may be noise-dominated, or the object may be too faint for DESI to detect at this exposure.
+
+## §5: Comprehensive Assessment
+
+1. **Final object type**: Unknown
+2. **Recommended redshift**: null (no features to determine redshift)
+3. **Confirmed lines**: none
+4. **Signal clarity score**: 0 — no credible signal
+5. **Confidence**: LOW
+6. **Recommend human review**: Yes
+
+## §6: Conclusion Summary
+
+No spectral features were detected in this exposure. The spectrum appears to contain no detectable astrophysical signal above the noise floor. Deeper observation or re-observation at higher SNR is recommended to determine whether a real source is present.
+"""
+
+        # ── Write report ──
+        if harness_dir:
+            os.makedirs(harness_dir, exist_ok=True)
+            report_path = os.path.join(harness_dir, "final_report.md")
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report)
+
+        # ── Placeholder JSON ──
+        in_brief = {
+            "type": "Unknown",
+            "signal_clarity": 0,
+            "redshift": None,
+            "redshift_rms": None,
+            "lines": [],
+            "confidence": "LOW",
+            "human_review": "Yes",
+        }
+
+        state["final_report"] = report
+        state["in_brief"] = in_brief
+        state["rule_analysis"] = {"redshift": None, "classification": "Unknown", "confidence": "LOW"}
+        state["auditor_verdict_json"] = {
+            "verdict": "UNCERTAIN",
+            "calibrated_confidence": "LOW",
+            "has_real_peak": False,
+            "confirmed_lines": [],
+            "key_issues": ["No features detected by Visual Interpreter."],
+        }
+        state["feature_audit_verdict"] = {"spectrum_quality": "noise-dominated", "skipped": True}
+        return state
 
     async def _rule_analyst_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
@@ -125,23 +224,38 @@ class WorkflowOrchestrator:
         self._check_cancel()
         return result
 
+    async def _synthesis_host_node(self, state: SpectroState) -> SpectroState:
+        self._check_cancel()
+        print('Stage 6: Synthesis Host — Final Report & Info Extraction')
+        result = await self.spectro_agents["_Synthesis_Host"].run(state)
+        self._check_cancel()
+        return result
+
     def _create_workflow(self) -> StateGraph:
 
         workflow = StateGraph(SpectroState)
 
         workflow.add_node("visual_interpreter", self._visual_interpreter_node)
+        workflow.add_node("no_features", self._no_features_node)
         workflow.add_node("rule_analyst", self._rule_analyst_node)
         workflow.add_node("feature_auditor", self._feature_auditor_node)
         workflow.add_node("rule_analyst_synthesize", self._rule_analyst_synthesize_node)
         workflow.add_node("analysis_auditor", self._analysis_auditor_node)
+        workflow.add_node("synthesis_host", self._synthesis_host_node)
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
-        workflow.add_edge("visual_interpreter", "rule_analyst")
+        workflow.add_conditional_edges(
+            "visual_interpreter",
+            self._has_features,
+            {"continue": "rule_analyst", "no_features": "no_features"},
+        )
         workflow.add_edge("rule_analyst", "feature_auditor")
         workflow.add_edge("feature_auditor", "rule_analyst_synthesize")
         workflow.add_edge("rule_analyst_synthesize", "analysis_auditor")
-        workflow.add_edge("analysis_auditor", END)
+        workflow.add_edge("analysis_auditor", "synthesis_host")
+        workflow.add_edge("synthesis_host", END)
+        workflow.add_edge("no_features", END)
 
         return workflow.compile()
 

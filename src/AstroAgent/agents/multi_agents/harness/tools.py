@@ -1291,3 +1291,41 @@ def detect_oii_slope_change(
     return _detect_oii_slope_change_core(
         data["wavelength"], data["flux"], target_wl, search_window,
     )
+
+
+# ---------------------------------------------------------------------------
+# Tool 13: compute_redshift_error — redshift uncertainty from wavelength error
+# ---------------------------------------------------------------------------
+
+@tool
+def compute_redshift_error(rest_wavelength: float, wavelength_error: float) -> dict:
+    """Compute the redshift uncertainty σ_z from a line's wavelength error.
+
+    σ_z = wavelength_error / rest_wavelength
+
+    This is the propagation of the wavelength measurement uncertainty into
+    redshift space.  Use the ANCHOR line (lowest-ionization confirmed line)
+    for the most reliable σ_z estimate.
+
+    Parameters
+    ----------
+    rest_wavelength : float
+        Rest-frame wavelength of the line (Å).
+    wavelength_error : float
+        Wavelength measurement uncertainty (Å), from the CWT catalog
+        (``wavelength_err`` column in emission/absorption CSV).
+
+    Returns
+    -------
+    dict with keys:
+        sigma_z : float           — redshift uncertainty (σ_z)
+        rest_wavelength : float
+        wavelength_error : float
+    """
+    sigma_z = wavelength_error / rest_wavelength
+    return {
+        "sigma_z": round(sigma_z, 6),
+        "rest_wavelength": rest_wavelength,
+        "wavelength_error": wavelength_error,
+    }
+
