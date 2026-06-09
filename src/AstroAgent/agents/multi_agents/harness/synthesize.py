@@ -21,8 +21,6 @@ import numpy as np
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage
-
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.utils.RA import (
     prepare_diagnostic_slices,
@@ -35,7 +33,7 @@ def _resolve_max_tokens() -> int | None:
     """Resolve max_tokens from env ``LLM_MAX_TOKENS``.
 
     When the env var is empty / unset and the provider is DeepSeek, we default
-    to a generous value (16 384) to prevent output truncation.
+    to the maximum supported value (65 536) to minimise output truncation.
     """
     env_val = os.environ.get("LLM_MAX_TOKENS", "").strip()
     if env_val:
@@ -45,28 +43,16 @@ def _resolve_max_tokens() -> int | None:
             pass
     base_url = os.environ.get("LLM_BASE_URL", "")
     if "deepseek" in base_url.lower():
-        return 16384
+        return 65536
     return None
-
-
-def _find_last_ai_message(messages: list):
-    """Return the last AI message, skipping tool/other message types."""
-    for msg in reversed(messages):
-        if getattr(msg, "type", None) == "ai":
-            return msg
-    return None
-
-
-def _is_truncated(messages: list) -> bool:
-    """Check whether the last AI message was truncated by max_tokens."""
-    last_ai = _find_last_ai_message(messages)
-    if last_ai is None:
-        return False
-    return last_ai.response_metadata.get("finish_reason") == "length"
 
 
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables
 from AstroAgent.agents.multi_agents.AnalysisAuditor import build_contradiction_matrix
+from AstroAgent.agents.multi_agents.harness.continuation import (
+    _format_tool_call, _format_tool_result,
+    run_continuation_streaming, run_continuation_ainvoke,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -790,14 +776,6 @@ deeper look at a specific hypothesis is needed.
 # Formatting helpers (for streaming output)
 # ---------------------------------------------------------------------------
 
-def _format_tool_call(tc) -> str:
-    """Format a single tool call as readable markdown."""
-    name = tc.get("name", "unknown")
-    args = tc.get("args", {})
-    args_json = json.dumps(args, indent=2, ensure_ascii=False)
-    return f"**`{name}`**\n```json\n{args_json}\n```"
-
-
 def _clean_rec(rec: str) -> str:
     """Normalise an LLM-generated recommendation string (see AnalysisAuditor)."""
     rec = (rec or "").strip()
@@ -806,16 +784,6 @@ def _clean_rec(rec: str) -> str:
             rec = rec[1:-1]
             break
     return rec.strip().upper()
-
-
-def _format_tool_result(msg) -> str:
-    """Format a tool result message as readable markdown."""
-    content = msg.content if hasattr(msg, "content") else str(msg)
-    try:
-        parsed = json.loads(content) if isinstance(content, str) else content
-        return f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
-    except (json.JSONDecodeError, TypeError):
-        return str(content)
 
 
 # ---------------------------------------------------------------------------
@@ -1020,59 +988,26 @@ async def arun(
         finally:
             md.close()
 
-        # ── Truncation detection (streaming path) ─
-        if _is_truncated(accumulated_messages):
-            logging.warning(
-                "Synthesis output truncated (finish_reason=length). "
-                "Requesting continuation..."
-            )
-            try:
-                _ctn_md = open(stream_md_path, "a", encoding="utf-8")
-                continuation_msgs = list(accumulated_messages)
-                continuation_msgs.append(
-                    HumanMessage(
-                        content=(
-                            "Your previous response was truncated. Continue EXACTLY "
-                            "from where you stopped. Do NOT repeat anything. Output "
-                            "ONLY the remaining content — do not wrap in markdown fences."
-                        )
-                    )
-                )
-                async for event in agent.astream(
-                    {"messages": continuation_msgs},
-                    config=config,
-                    stream_mode="updates",
-                ):
-                    for _node_name, update in event.items():
-                        for msg in update.get("messages", []):
-                            msg_type = getattr(msg, "type", None)
-                            if msg_type == "ai":
-                                content = (
-                                    msg.content
-                                    if hasattr(msg, "content")
-                                    else ""
-                                )
-                                _ctn_md.write(
-                                    "### Assistant (continuation)\n\n"
-                                    f"{content.strip()}\n\n"
-                                )
-                                _ctn_md.flush()
-                            accumulated_messages.append(msg)
-                _ctn_md.close()
-                logging.info("Synthesis continuation completed successfully.")
-            except Exception as exc:
-                logging.warning(
-                    f"Synthesis continuation retry failed: {exc}. "
-                    "Returning truncated result."
-                )
-                try:
-                    _ctn_md.close()
-                except Exception:
-                    pass
+        # ── Truncation detection (shared continuation loop) ─
+        await run_continuation_streaming(
+            agent,
+            accumulated_messages,
+            config=config,
+            stream_md_path=stream_md_path,
+            continuation_prompt=(
+                "Your previous response was truncated. Continue EXACTLY "
+                "from where you stopped. Do NOT repeat anything. Output "
+                "ONLY the remaining content — do not wrap in markdown fences."
+            ),
+            log_prefix="Synthesis",
+        )
 
-        last_msg = _find_last_ai_message(accumulated_messages)
-        raw_content = (
-            last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+        # Concatenate ALL AI messages (original + continuation if truncated)
+        # so that partial JSON from the original + completion from continuation
+        # form a parseable whole.
+        raw_content = "\n".join(
+            msg.content for msg in accumulated_messages
+            if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
         )
 
         parsed = _extract_json_block(raw_content)
@@ -1097,38 +1032,23 @@ async def arun(
             config=config,
         )
 
-        # ── Truncation detection (non‑streaming path) ─
+        # ── Truncation detection (shared continuation loop) ─
         messages = result.get("messages", [])
-        if _is_truncated(messages):
-            logging.warning(
-                "Synthesis output truncated (finish_reason=length). "
-                "Requesting continuation..."
-            )
-            try:
-                continuation_msgs = list(messages)
-                continuation_msgs.append(
-                    HumanMessage(
-                        content=(
-                            "Your previous response was truncated. Continue EXACTLY "
-                            "from where you stopped. Do NOT repeat anything. Output "
-                            "ONLY the remaining content."
-                        )
-                    )
-                )
-                continuation_result = await agent.ainvoke(
-                    {"messages": continuation_msgs}, config=config
-                )
-                messages.extend(continuation_result.get("messages", []))
-                logging.info("Synthesis continuation completed successfully.")
-            except Exception as exc:
-                logging.warning(
-                    f"Synthesis continuation retry failed: {exc}. "
-                    "Returning truncated result."
-                )
+        await run_continuation_ainvoke(
+            agent,
+            messages,
+            config=config,
+            continuation_prompt=(
+                "Your previous response was truncated. Continue EXACTLY "
+                "from where you stopped. Do NOT repeat anything. Output "
+                "ONLY the remaining content."
+            ),
+            log_prefix="Synthesis",
+        )
 
-        last_msg = _find_last_ai_message(messages)
-        raw_content = (
-            last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+        raw_content = "\n".join(
+            msg.content for msg in messages
+            if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
         )
 
         parsed = _extract_json_block(raw_content)

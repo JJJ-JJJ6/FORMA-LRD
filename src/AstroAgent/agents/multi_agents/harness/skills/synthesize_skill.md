@@ -69,6 +69,11 @@ FeatureAuditor has already independently verified every feature by reading the r
    - **Surviving doublet ratios**: Use the "Surviving Doublets" section for pre-verified ratio/sep checks.
    - **Velocity consistency**: High-ionization vs low-ionization velocity offsets.
 
+5. **Apply FA's Advisory Verdicts** — FA's composite, [O II] morphology, and Lyα forest verdicts are **advisory judgments about physical interpretation**, not about feature reality.  FA may say "both features are real but NOT a composite" or "this [O II] slope-change is not detected."  You must translate these into line-catalog actions:
+   - **Composite verdict** (`is_composite=false`, `morphology=asymmetric/noise/spike_valley_spike`): If FA says a Mg II emission+absorption pair is NOT a genuine composite, the weaker component (usually the absorption) is likely a noise artifact that FA kept because it IS a real trough — just not a physical ISM absorption.  **Do NOT include the absorption line in the final catalog** unless there is independent evidence it is astrophysical (e.g., consistent z across multiple other absorption lines).  At minimum, downgrade it to MARGINAL with a caveat.
+   - **[O II] morphology** (`detected=false`, `peak_prominence=not_top_2`): FA says the feature is morphologically more like a single narrow line than an unresolved doublet.  If a competing hypothesis identifies this same feature as [O III]b and its classification is more consistent, this weakens the [O II] identification.  Downgrade or note the uncertainty.
+   - **Lyα forest** (`forest_visible=false`, `forest_observable=true`): FA says Lyα is claimed but no forest is seen in the observable range.  This is a negative indicator — do NOT anchor the redshift on Lyα, and cap confidence at MEDIUM for a Lyα-based classification.
+
 ## Phase 2: Targeted Spectrum Investigation
 
 If Phase 1 identifies competing hypotheses that cannot be distinguished from verified features alone, you MUST enter Phase 2. **Read as little data as possible** — each read should target a specific discriminating question.
@@ -131,6 +136,19 @@ A hypothesis is only accepted when ALL viable competitors have been excluded by 
 ## Phase 3: Output Report & CSV
 
 Write two output files BEFORE producing the final JSON verdict in Phase 4.
+
+**Before writing the CSV**: You have the authority — and the obligation — to prune the line catalog.  FA verifies feature reality; YOU decide which features belong in the final answer.  Apply two filters:
+
+**Filter 1 — FA Advisory Overrides**: Check the Composite Profile, O II Morphology, and Lyα Forest results sections in your user message.  Any feature that FA flagged as physically suspect MUST be downgraded or excluded from the final CSV:
+- Mg II_abs where FA says composite=false and morphology=asymmetric/noise → REMOVE or downgrade to MARGINAL.  A real trough on the wing of a broad emission line is not necessarily a physical ISM absorption.
+- [O II] where FA says slope-change not detected and peak not dominant → note the uncertainty, do NOT use as a primary anchor.
+- Lyα where FA says forest not visible but observable → downgrade confidence, do NOT anchor on Lyα.
+
+**Filter 2 — Classification-Aware Pruning**: Scan the line catalog before writing.  Use `grep_kb(pattern="ELG|LRG|QSO|fatal", C=3)` to check the classification physics.  A line that contradicts the object's classification CANNOT appear in the final catalog as LIKELY unless there is overwhelming visual evidence:
+- **Galaxy classification** but catalog contains Mg II / [Ne V] / C IV / C III] / Lyα?  These are AGN indicators.  **Call `read_spectrum_region` ±100 Å on each suspect line** and check visually: is this a genuine broad/high-ionization feature, or a narrow noise spike that FA kept by mistake?  If the read shows a low-amplitude wiggle indistinguishable from local noise, or a narrow feature mislabeled as "broad" (FWHM from the CSV is small, the visual profile is a blip not spanning many pixels) → REMOVE it.  These are artifacts that FA wrongly KEPT, not real AGN lines.  Only keep a line that is visually dominant and physically credible for an AGN.
+- **QSO classification** but no line with FWHM > 2000 km/s?  The QSO classification is unsupported — consider downgrading to Galaxy or UNKNOWN.
+
+The CSV you write IS the definitive answer.  Prune first, then write.
 
 ### 3a. Final Line Catalog CSV
 

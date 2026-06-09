@@ -29,14 +29,17 @@ import numpy as np
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage
-
 from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
-from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables
+from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
+from AstroAgent.agents.multi_agents.harness.continuation import (
+    _find_last_ai_message, _find_last_content_ai_message, _is_truncated,
+    _format_tool_call, _format_tool_result,
+    run_continuation_streaming, run_continuation_ainvoke,
+)
 
 
 class FeatureAuditorFailed(Exception):
@@ -73,24 +76,98 @@ def _resolve_max_tokens() -> int | None:
             pass
     base_url = os.environ.get("LLM_BASE_URL", "")
     if "deepseek" in base_url.lower():
-        return 16384
+        return 65536
     return None
 
 
-def _find_last_ai_message(messages: list):
-    """Return the last AI message, skipping tool/other message types."""
-    for msg in reversed(messages):
-        if getattr(msg, "type", None) == "ai":
-            return msg
-    return None
+def _build_continuation_prompt(messages: list, json_keys: List[str] = None) -> str:
+    """Build a smart continuation prompt that tells the LLM where it stopped.
 
+    Uses *json_keys* to detect which output schema is expected:
+    - ``["feature_verdicts"]`` → FeatureAuditor schema (counts wl_obs entries)
+    - ``["verdict"]`` → SynthesisAudit schema (tracks completed top-level keys)
+    - otherwise → generic prompt
 
-def _is_truncated(messages: list) -> bool:
-    """Check whether the last AI message was truncated by max_tokens."""
-    last_ai = _find_last_ai_message(messages)
+    Uses ``_find_last_content_ai_message`` to skip pure tool-call messages and
+    find the last AI message that actually contains text output.
+    """
+    last_ai = _find_last_content_ai_message(messages)
     if last_ai is None:
-        return False
-    return last_ai.response_metadata.get("finish_reason") == "length"
+        return (
+            "Your previous response was truncated. Continue EXACTLY "
+            "from where you stopped. Do NOT repeat anything. Output "
+            "ONLY the remaining content."
+        )
+
+    raw = last_ai.content if hasattr(last_ai, "content") else str(last_ai)
+    parts = ["Your previous response was truncated. Continue from where you stopped."]
+    json_keys = json_keys or []
+
+    if "feature_verdicts" in json_keys:
+        # ── FeatureAuditor schema: count completed wl_obs entries ──
+        n_complete = 0
+        n_broken = False
+        for m in re.finditer(r'\{\s*"wl_obs"', raw):
+            start = m.start()
+            depth = 0
+            for i in range(start, len(raw)):
+                if raw[i] == '{':
+                    depth += 1
+                elif raw[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+            if depth == 0:
+                n_complete += 1
+            else:
+                n_broken = True
+
+        if n_broken:
+            parts.append(
+                f"You have {n_complete} COMPLETE feature_verdicts entries "
+                f"and 1 BROKEN entry cut off mid-output. "
+                f"Finish the broken entry first (continue from the last "
+                f"complete character — do NOT start over). "
+                f"Then continue with the remaining verdicts."
+            )
+        elif n_complete > 0:
+            parts.append(
+                f"You have already output {n_complete} complete "
+                f"feature_verdicts entries. Continue with the next verdict. "
+                f"Do NOT repeat any of the {n_complete} entries."
+            )
+        else:
+            parts.append(
+                "Do NOT repeat anything. Output ONLY the remaining content."
+            )
+
+    elif "verdict" in json_keys:
+        # ── SynthesisAudit schema: track which top-level keys are done ──
+        _AUDIT_KEYS = [
+            "verdict", "calibrated_confidence", "spectrum_quality",
+            "key_issues", "doublet_issues", "line_inventory_issues",
+            "recommendation",
+        ]
+        found = [k for k in _AUDIT_KEYS
+                 if re.search(r'"' + re.escape(k) + r'"\s*:', raw)]
+
+        if found:
+            parts.append(
+                f"Fields already written: {', '.join(found)}. "
+                f"Continue with the remaining fields. Do NOT repeat "
+                f"anything already written."
+            )
+        else:
+            parts.append(
+                "Do NOT repeat anything. Output ONLY the remaining content."
+            )
+
+    else:
+        parts.append(
+            "Do NOT repeat anything. Output ONLY the remaining content."
+        )
+
+    return " ".join(parts)
 
 
 def _extract_json_block(text: str, keys: List[str] = None) -> Optional[dict]:
@@ -128,13 +205,9 @@ def _extract_json_block(text: str, keys: List[str] = None) -> Optional[dict]:
 # Formatting helpers (for streaming output)
 # ---------------------------------------------------------------------------
 
-def _format_tool_call(tc) -> str:
-    """Format a single tool call as readable markdown."""
-    name = tc.get("name", "unknown")
-    args = tc.get("args", {})
-    args_json = json.dumps(args, indent=2, ensure_ascii=False)
-    return f"**`{name}`**\n```json\n{args_json}\n```"
-
+# ---------------------------------------------------------------------------
+# Shared helpers (not in continuation.py — AnalysisAuditor-specific)
+# ---------------------------------------------------------------------------
 
 def _clean_rec(rec: str) -> str:
     """Normalise an LLM-generated recommendation string.
@@ -144,22 +217,11 @@ def _clean_rec(rec: str) -> str:
     model wraps the value in extra quotes or adds leading punctuation.
     """
     rec = (rec or "").strip()
-    # Strip matching outer quotes (single, double, or backtick)
     for q in ('"', "'", "`"):
         if rec.startswith(q) and rec.endswith(q) and len(rec) >= 2:
             rec = rec[1:-1]
             break
     return rec.strip().upper()
-
-
-def _format_tool_result(msg) -> str:
-    """Format a tool result message as readable markdown."""
-    content = msg.content if hasattr(msg, "content") else str(msg)
-    try:
-        parsed = json.loads(content) if isinstance(content, str) else content
-        return f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
-    except (json.JSONDecodeError, TypeError):
-        return str(content)
 
 
 # ============================================================================
@@ -715,82 +777,134 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
     2nd-best hypothesis for quick alternative checking.
     """
     rule_analysis = state.get("rule_analysis") or {}
-    harness_results = state.get("harness_results") or []
+    feature_audit_verdict = state.get("feature_audit_verdict") or {}
 
     # ── Spectrum metadata ──
     wl = state["spectrum"]["wavelength"]
     wl_left = float(wl[0])
     wl_right = float(wl[-1])
 
-    spec_lines = [
-        f"## Spectrum",
+    snr = state["spectrum"].get("snr")
+    snr_median = float(np.median(snr)) if snr is not None else None
+
+    parts = [
+        "## Spectrum",
         f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å",
+        f"- Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}",
+        f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)",
+        f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)",
+        "",
     ]
 
-    if harness_results:
-        first_meta = harness_results[0].get("hypothesis_meta") or {}
-        snr = first_meta.get("snr_median")
-        if snr is not None:
-            spec_lines.append(f"- Median SNR: {float(snr):.1f}")
-
-    spec_lines.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    spec_lines.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
-
-    parts = ["\n".join(spec_lines), ""]
-
     # ── Synthesis verdict ──
-    parts.append("## Synthesis Verdict (from synthesize.py)")
+    parts.append("## Synthesis Verdict")
     parts.append("")
     parts.append("```json")
     parts.append(json.dumps(rule_analysis, indent=2, ensure_ascii=False, default=str))
     parts.append("```")
     parts.append("")
 
-    # ── Per-hypothesis cleaned line tables ──
-    # Use the same function as the synthesizer: prefers {idx}_lines_cleaned.csv
-    # (post-FeatureAuditor) over raw {idx}_lines.csv.  Show full tables for
-    # the winning hypothesis and the top 1–2 rejected alternatives so the
-    # auditor can cross-check line identifications.
-    best_idx = rule_analysis.get("best_hypothesis_idx")
-    excluded = rule_analysis.get("excluded_hypotheses") or []
-
-    # Collect indices to show: winner + up to 2 most competitive alternatives
-    audit_indices = []
-    if best_idx is not None:
-        audit_indices.append(best_idx)
-    for exc in excluded[:2]:
-        if isinstance(exc, dict) and exc.get("idx") is not None:
-            idx_e = exc["idx"]
-            if idx_e not in audit_indices:
-                audit_indices.append(idx_e)
-
-    # Filter harness_results to only the indices we need
-    audit_results = [r for r in harness_results if r.get("hypothesis_idx") in audit_indices]
-
-    if audit_results:
-        parts.append("## Per-Hypothesis Line Tables (post-FeatureAuditor)")
+    # ── Line Inventory from synthesis.csv ──
+    synthesis_csv_path = os.path.join(harness_dir, "synthesis.csv")
+    if os.path.exists(synthesis_csv_path):
+        parts.append("## Line Inventory from Synthesis")
         parts.append("")
         parts.append(
-            "These tables use the **cleaned** line catalogs after FeatureAuditor "
-            "verification. Features marked REMOVED have been judged as noise/artifact "
-            "and should NOT be used. Features marked FLAGGED are real but caveated. "
-            "Only KEEP features are fully reliable."
+            "This is the definitive line catalog produced by the synthesis agent. "
+            "Every row is a line it believes supports the best redshift hypothesis. "
+            "**Your job is to find lines that don't belong here.**"
         )
         parts.append("")
-        parts.append(_build_line_tables(audit_results, harness_dir))
+        parts.append(_format_synthesis_csv(synthesis_csv_path))
+    else:
+        parts.append("## Line Inventory from Synthesis")
+        parts.append("")
+        parts.append("*(synthesis.csv not found — nothing to audit.)*")
+        parts.append("")
+
+    # ── FA global issues (for reference, not binding) ──
+    fa_quality = feature_audit_verdict.get("spectrum_quality", "unknown")
+    fa_justification = feature_audit_verdict.get("spectrum_quality_justification", "")
+    fa_global = feature_audit_verdict.get("global_issues", [])
+    if fa_quality or fa_global:
+        parts.append("## FeatureAuditor Notes (FYI — not binding)")
+        parts.append("")
+        parts.append(f"FA assessed spectrum quality as **{fa_quality}**.")
+        if fa_justification:
+            parts.append(f"> {fa_justification}")
+        if fa_global:
+            parts.append("")
+            for gi in fa_global:
+                parts.append(f"- {gi}")
+        parts.append("")
+        parts.append(
+            "These are the upstream FeatureAuditor's observations.  They are "
+            "informational — you are the independent auditor.  Trust your own "
+            "judgment over FA's if they disagree."
+        )
+        parts.append("")
 
     # ── Task ──
     parts.append("## Task")
     parts.append("")
     parts.append(
-        "Follow the Step 1 → Step 6 methodology from your system prompt. "
-        "Your value is independent spectrum verification — you MUST call "
-        "`read_spectrum_region` for every key claim. Read BOTH edge zones "
-        "in full. Calibrate the confidence level. Output your reasoning in "
-        "free text, then end with the JSON verdict block."
+        "You are an independent defensive auditor.  Follow the **Layer 1 → Layer 2** "
+        "methodology from your system prompt:\n\n"
+        "**Layer 1** — Physical sanity screening (no spectrum reads).  Scan the line "
+        "inventory above.  Use `grep_kb` to check classification physics.  Identify "
+        "every line that is physically inconsistent with the claimed object type, "
+        "that has suspicious amplitude/FWHM relative to the catalog, or whose "
+        "implied_z deviates significantly from the best redshift.\n\n"
+        "**Layer 2** — Targeted verification (spectrum reads ONLY for Layer 1 "
+        "suspects).  Call `read_spectrum_region` ±100 Å for each suspicious line. "
+        "Judge visually: is this a real feature, or an artifact/noise that FA let "
+        "through?\n\n"
+        "**After both layers**: Assess spectrum-level issues (OH zone, blue edge, "
+        "line inventory sufficiency) and decide whether to recommend re-observation.\n\n"
+        "Output your reasoning in free text, then the JSON verdict block."
     )
 
     return "\n".join(parts)
+
+
+def _format_synthesis_csv(csv_path: str) -> str:
+    """Read synthesis.csv and format as a compact markdown table."""
+    if not os.path.exists(csv_path):
+        return "*(synthesis.csv not found)*\n"
+
+    rows = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = _csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+
+    if not rows:
+        return "*(synthesis.csv is empty)*\n"
+
+    display_cols = [
+        ("name", "Line"),
+        ("status", "Status"),
+        ("fitted_center", "λ_fit (Å)"),
+        ("amplitude", "Amp"),
+        ("fwhm_km_s", "FWHM (km/s)"),
+        ("implied_z", "z_implied"),
+        ("is_anchor", "Anchor"),
+    ]
+
+    header = "| " + " | ".join(label for _, label in display_cols) + " |"
+    sep = "|" + "|".join(["------"] * len(display_cols)) + "|"
+
+    body_lines = []
+    for row in rows:
+        vals = []
+        for key, _ in display_cols:
+            v = (row.get(key) or "").strip()
+            if key == "is_anchor":
+                v = "✓" if v.lower() == "true" else ""
+            vals.append(v if v else "—")
+        body_lines.append("| " + " | ".join(vals) + " |")
+
+    return header + "\n" + sep + "\n" + "\n".join(body_lines) + "\n"
 
 
 # ============================================================================
@@ -979,59 +1093,20 @@ async def _run_llm_agent(
         finally:
             md.close()
 
-        # ── Truncation detection ─
-        if _is_truncated(accumulated_messages):
-            logging.warning(
-                f"{log_prefix} output truncated (finish_reason=length). "
-                "Requesting continuation..."
-            )
-            try:
-                _ctn_md = open(stream_md_path, "a", encoding="utf-8")
-                continuation_msgs = list(accumulated_messages)
-                continuation_msgs.append(
-                    HumanMessage(
-                        content=(
-                            "Your previous response was truncated. Continue EXACTLY "
-                            "from where you stopped. Do NOT repeat anything. Output "
-                            "ONLY the remaining content."
-                        )
-                    )
-                )
-                async for event in agent.astream(
-                    {"messages": continuation_msgs},
-                    config=config,
-                    stream_mode="updates",
-                ):
-                    for _node_name, update in event.items():
-                        for msg in update.get("messages", []):
-                            msg_type = getattr(msg, "type", None)
-                            if msg_type == "ai":
-                                content = (
-                                    msg.content
-                                    if hasattr(msg, "content")
-                                    else ""
-                                )
-                                _ctn_md.write(
-                                    "### Assistant (continuation)\n\n"
-                                    f"{content.strip()}\n\n"
-                                )
-                                _ctn_md.flush()
-                            accumulated_messages.append(msg)
-                _ctn_md.close()
-                logging.info(f"{log_prefix} continuation completed successfully.")
-            except Exception as exc:
-                logging.warning(
-                    f"{log_prefix} continuation retry failed: {exc}. "
-                    "Returning truncated result."
-                )
-                try:
-                    _ctn_md.close()
-                except Exception:
-                    pass
+        # ── Truncation detection (shared continuation loop) ─
+        await run_continuation_streaming(
+            agent,
+            accumulated_messages,
+            config=config,
+            stream_md_path=stream_md_path,
+            continuation_prompt=_build_continuation_prompt(accumulated_messages, json_keys),
+            log_prefix=log_prefix,
+        )
 
-        last_msg = _find_last_ai_message(accumulated_messages)
-        raw_content = (
-            last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+        # Concatenate ALL AI messages (original + continuation if truncated)
+        raw_content = "\n".join(
+            msg.content for msg in accumulated_messages
+            if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
         )
 
         parsed = _extract_json_block(raw_content, keys=json_keys)
@@ -1055,34 +1130,22 @@ async def _run_llm_agent(
         )
         messages = result.get("messages", [])
 
-        if _is_truncated(messages):
-            logging.warning(
-                f"{log_prefix} output truncated. Requesting continuation..."
-            )
-            try:
-                continuation_msgs = list(messages)
-                continuation_msgs.append(
-                    HumanMessage(
-                        content=(
-                            "Your previous response was truncated. Continue EXACTLY "
-                            "from where you stopped. Do NOT repeat anything. Output "
-                            "ONLY the remaining content."
-                        )
-                    )
-                )
-                continuation_result = await agent.ainvoke(
-                    {"messages": continuation_msgs}, config=config
-                )
-                messages.extend(continuation_result.get("messages", []))
-            except Exception as exc:
-                logging.warning(f"{log_prefix} continuation failed: {exc}")
+        # ── Truncation detection (shared continuation loop) ─
+        await run_continuation_ainvoke(
+            agent,
+            messages,
+            config=config,
+            continuation_prompt=_build_continuation_prompt(messages, json_keys),
+            log_prefix=log_prefix,
+        )
 
         if not messages:
             return None
 
-        last_msg = _find_last_ai_message(messages)
-        raw_content = (
-            last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+        # Concatenate ALL AI messages (original + continuation if truncated)
+        raw_content = "\n".join(
+            msg.content for msg in messages
+            if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
         )
         return _extract_json_block(raw_content, keys=json_keys)
 
@@ -1307,12 +1370,11 @@ class AnalysisAuditor(BaseAgent):
         """Run the synthesis audit.
 
         Reads ``state['rule_analysis']`` (the synthesis verdict) and
-        ``state['harness_results']`` (per-hypothesis reports), then spawns
-        an LLM agent with ``read_spectrum_region`` + ``grep_kb`` tools to
-        independently verify the winning hypothesis.
+        synthesis.csv (the best-answer line catalog).  Spawns an LLM agent
+        with ``read_spectrum_region`` + ``grep_kb`` + ``detect_oii_slope_change``
+        tools for independent defensive review.
         """
         rule_analysis = state.get("rule_analysis") or {}
-        harness_results = state.get("harness_results") or []
 
         # ── Guard: no synthesis results ──
         if not rule_analysis or rule_analysis.get("redshift") is None:
@@ -1322,20 +1384,12 @@ class AnalysisAuditor(BaseAgent):
                 "verdict": "UNCERTAIN",
                 "calibrated_confidence": "LOW",
                 "spectrum_quality": "unknown",
-                "key_issues": ["No synthesis verdict to audit."],
-                "recommendation": "Synthesis pipeline did not produce a valid result.",
-            }
-            return state
-
-        if not harness_results:
-            print("[AnalysisAuditor] No harness results — skipping audit.")
-            state["auditor_verdict"] = "SKIPPED: no harness results"
-            state["auditor_verdict_json"] = {
-                "verdict": "UNCERTAIN",
-                "calibrated_confidence": "LOW",
-                "spectrum_quality": "unknown",
-                "key_issues": ["No harness results available for audit."],
-                "recommendation": "Harness pipeline did not produce results.",
+                "has_real_peak": False,
+                "confirmed_lines": [],
+                "line_revisions": [],
+                "spectrum_issues": ["No synthesis verdict to audit."],
+                "reobserve": False,
+                "reobserve_reason": None,
             }
             return state
 
@@ -1395,8 +1449,8 @@ class AnalysisAuditor(BaseAgent):
             unresolved at DESI resolution. A true single line ([O III]b, Hβ)
             cannot produce a derivative dip on the rising edge.
 
-            Use this when the winning and 2nd-best hypotheses disagree on
-            whether the same feature is [O II] vs [O III]b.
+            Use this when the synthesis verdict hinges on a [O II] identification
+            and you need independent morphological confirmation.
             """
             return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
 
@@ -1408,7 +1462,7 @@ class AnalysisAuditor(BaseAgent):
             harness_dir=harness_dir,
             stream_filename="auditor_stream.md",
             stream_title="Auditor — Synthesis Audit",
-            json_keys=["verdict"],
+            json_keys=["verdict", "line_revisions", "spectrum_issues"],
             log_prefix="AnalysisAuditor",
         )
 
@@ -1419,22 +1473,36 @@ class AnalysisAuditor(BaseAgent):
                 "verdict": "UNCERTAIN",
                 "calibrated_confidence": "LOW",
                 "spectrum_quality": "unknown",
-                "key_issues": ["Failed to parse JSON from auditor response."],
-                "recommendation": "Auditor LLM produced unparseable output.",
+                "has_real_peak": False,
+                "confirmed_lines": [],
+                "line_revisions": [],
+                "spectrum_issues": ["Failed to parse JSON from auditor response."],
+                "reobserve": False,
+                "reobserve_reason": None,
             }
             return state
 
         state["auditor_verdict_json"] = parsed
+        state["auditor_verdict"] = parsed.get("verdict", "?")
 
+        n_revisions = len(parsed.get("line_revisions", []))
+        n_issues = len(parsed.get("spectrum_issues", []))
         print(
-            "[AnalysisAuditor] Verdict: {} | Confidence: {} | Quality: {}".format(
+            "[AnalysisAuditor] Verdict: {} | Confidence: {} | Quality: {} | "
+            "Revisions: {} | Issues: {} | Reobserve: {}".format(
                 parsed.get("verdict", "?"),
                 parsed.get("calibrated_confidence", "?"),
                 parsed.get("spectrum_quality", "?"),
+                n_revisions,
+                n_issues,
+                parsed.get("reobserve", False),
             )
         )
-        if parsed.get("key_issues"):
-            for issue in parsed["key_issues"]:
+        if n_revisions:
+            for rev in parsed["line_revisions"]:
+                print(f"  📝 {rev['line']} → {rev['action']}: {rev['reason']}")
+        if n_issues:
+            for issue in parsed["spectrum_issues"]:
                 print(f"  ⚠ {issue}")
 
         return state

@@ -29,7 +29,6 @@ import numpy as np
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from .tools import (
@@ -61,8 +60,8 @@ def _resolve_max_tokens() -> int | None:
     """Resolve max_tokens from env ``LLM_MAX_TOKENS``.
 
     When the env var is empty / unset and the provider is DeepSeek, we default
-    to a generous value (16 384) to prevent output truncation that causes
-    "insufficient tool messages following tool_calls" errors.
+    to the maximum supported value (65 536) to minimise output truncation
+    that causes "insufficient tool messages following tool_calls" errors.
     """
     env_val = os.environ.get("LLM_MAX_TOKENS", "").strip()
     if env_val:
@@ -72,24 +71,15 @@ def _resolve_max_tokens() -> int | None:
             pass
     base_url = os.environ.get("LLM_BASE_URL", "")
     if "deepseek" in base_url.lower():
-        return 16384
+        return 65536
     return None
 
 
-def _find_last_ai_message(messages: list):
-    """Return the last AI message, skipping tool/other message types."""
-    for msg in reversed(messages):
-        if getattr(msg, "type", None) == "ai":
-            return msg
-    return None
-
-
-def _is_truncated(messages: list) -> bool:
-    """Check whether the last AI message was truncated by max_tokens."""
-    last_ai = _find_last_ai_message(messages)
-    if last_ai is None:
-        return False
-    return last_ai.response_metadata.get("finish_reason") == "length"
+from .continuation import (
+    _format_tool_call, _format_tool_result,
+    run_continuation_streaming, run_continuation_ainvoke,
+    run_continuation_invoke,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -615,37 +605,27 @@ def run(
     else:
         raise last_exc
 
-    # ── Truncation detection (sync path) ─
+    # ── Truncation detection (shared continuation loop) ─
     messages = result.get("messages", [])
-    if _is_truncated(messages):
-        logging.warning(
-            "Output truncated (finish_reason=length). Requesting continuation..."
-        )
-        try:
-            continuation_msgs = list(messages)
-            continuation_msgs.append(
-                HumanMessage(
-                    content=(
-                        "Your previous response was truncated by the token limit. "
-                        "Continue EXACTLY from where you stopped. Do NOT repeat "
-                        "anything already written."
-                    )
-                )
-            )
-            continuation_result = agent.invoke(
-                {"messages": continuation_msgs}, config=config
-            )
-            messages.extend(continuation_result.get("messages", []))
-            logging.info("Continuation completed successfully.")
-        except Exception as exc:
-            logging.warning(
-                f"Continuation retry failed: {exc}. Returning truncated result."
-            )
+    run_continuation_invoke(
+        agent,
+        messages,
+        config=config,
+        continuation_prompt=(
+            "Your previous response was truncated by the token limit. "
+            "Continue EXACTLY from where you stopped. Do NOT repeat "
+            "anything already written."
+        ),
+        log_prefix="TargetedSearch",
+    )
 
     feature_catalog = []
 
-    last_msg = _find_last_ai_message(messages)
-    report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+    # Concatenate ALL AI messages (original + continuation if truncated)
+    report = "\n".join(
+        msg.content for msg in messages
+        if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
+    )
     structured_output = _extract_json_block(report)
 
     return {
@@ -656,24 +636,6 @@ def run(
         "feature_catalog": feature_catalog,
         "messages": messages,
     }
-
-
-def _format_tool_call(tc) -> str:
-    """Format a single tool call as readable markdown."""
-    name = tc.get("name", "unknown")
-    args = tc.get("args", {})
-    args_json = json.dumps(args, indent=2, ensure_ascii=False)
-    return f"**`{name}`**\n```json\n{args_json}\n```"
-
-
-def _format_tool_result(msg) -> str:
-    """Format a tool result message as readable markdown."""
-    content = msg.content if hasattr(msg, "content") else str(msg)
-    try:
-        parsed = json.loads(content) if isinstance(content, str) else content
-        return f"```json\n{json.dumps(parsed, indent=2, ensure_ascii=False)}\n```"
-    except (json.JSONDecodeError, TypeError):
-        return str(content)
 
 
 async def arun(
@@ -818,66 +780,27 @@ async def arun(
         else:
             raise last_exc
 
-        # ── Truncation detection (streaming path) ─
-        if _is_truncated(accumulated_messages):
-            logging.warning(
-                "Output truncated (finish_reason=length). Requesting continuation..."
-            )
-            # Re-open stream_md in append mode for continuation output
-            _ctn_md = None
-            if stream_md_path:
-                try:
-                    _ctn_md = open(stream_md_path, "a", encoding="utf-8")
-                except Exception:
-                    pass
-            try:
-                continuation_msgs = list(accumulated_messages)
-                continuation_msgs.append(
-                    HumanMessage(
-                        content=(
-                            "Your previous response was truncated by the token limit. "
-                            "Continue EXACTLY from where you stopped. Do NOT repeat "
-                            "anything already written. Be concise — focus on completing "
-                            "the remaining line evaluations and the Phase 3 report "
-                            "(sections 13a–13g)."
-                        )
-                    )
-                )
-                async for event in agent.astream(
-                    {"messages": continuation_msgs},
-                    config=config,
-                    stream_mode="updates",
-                ):
-                    for _node_name, update in event.items():
-                        for msg in update.get("messages", []):
-                            msg_type = getattr(msg, "type", None)
-                            if msg_type == "ai":
-                                content = (
-                                    msg.content
-                                    if hasattr(msg, "content")
-                                    else ""
-                                )
-                                if _ctn_md:
-                                    _ctn_md.write(
-                                        "### Assistant (continuation)\n\n"
-                                        f"{content.strip()}\n\n"
-                                    )
-                                    _ctn_md.flush()
-                            accumulated_messages.append(msg)
-                logging.info("Continuation completed successfully.")
-            except Exception as exc:
-                logging.warning(
-                    f"Continuation retry failed: {exc}. Returning truncated result."
-                )
-            finally:
-                if _ctn_md:
-                    try:
-                        _ctn_md.close()
-                    except Exception:
-                        pass
+        # ── Truncation detection (shared continuation loop) ─
+        await run_continuation_streaming(
+            agent,
+            accumulated_messages,
+            config=config,
+            stream_md_path=stream_md_path,
+            continuation_prompt=(
+                "Your previous response was truncated by the token limit. "
+                "Continue EXACTLY from where you stopped. Do NOT repeat "
+                "anything already written. Be concise — focus on completing "
+                "the remaining line evaluations and the Phase 3 report "
+                "(sections 13a–13g)."
+            ),
+            log_prefix="TargetedSearch",
+        )
 
-        last_msg = _find_last_ai_message(accumulated_messages)
-        report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+        # Concatenate ALL AI messages (original + continuation if truncated)
+        report = "\n".join(
+            msg.content for msg in accumulated_messages
+            if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
+        )
         feature_catalog = []
 
         return {
@@ -907,37 +830,27 @@ async def arun(
     else:
         raise last_exc
 
-    # ── Truncation detection (non‑streaming path) ─
+    # ── Truncation detection (shared continuation loop) ─
     messages = result.get("messages", [])
-    if _is_truncated(messages):
-        logging.warning(
-            "Output truncated (finish_reason=length). Requesting continuation..."
-        )
-        try:
-            continuation_msgs = list(messages)
-            continuation_msgs.append(
-                HumanMessage(
-                    content=(
-                        "Your previous response was truncated by the token limit. "
-                        "Continue EXACTLY from where you stopped. Do NOT repeat "
-                        "anything already written."
-                    )
-                )
-            )
-            continuation_result = await agent.ainvoke(
-                {"messages": continuation_msgs}, config=config
-            )
-            messages.extend(continuation_result.get("messages", []))
-            logging.info("Continuation completed successfully.")
-        except Exception as exc:
-            logging.warning(
-                f"Continuation retry failed: {exc}. Returning truncated result."
-            )
+    await run_continuation_ainvoke(
+        agent,
+        messages,
+        config=config,
+        continuation_prompt=(
+            "Your previous response was truncated by the token limit. "
+            "Continue EXACTLY from where you stopped. Do NOT repeat "
+            "anything already written."
+        ),
+        log_prefix="TargetedSearch",
+    )
 
     feature_catalog = []
 
-    last_msg = _find_last_ai_message(messages)
-    report = last_msg.content if last_msg and hasattr(last_msg, "content") else ""
+    # Concatenate ALL AI messages (original + continuation if truncated)
+    report = "\n".join(
+        msg.content for msg in messages
+        if getattr(msg, "type", None) == "ai" and hasattr(msg, "content")
+    )
 
     return {
         "hypothesis_idx": hypothesis_idx,
