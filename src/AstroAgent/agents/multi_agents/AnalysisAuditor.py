@@ -436,6 +436,109 @@ def build_contradiction_matrix(
 
 
 # ============================================================================
+# Emission-absorption pair detector (for composite profile check prompting)
+# ============================================================================
+
+# Species whose emission and absorption forms may form a composite profile.
+# Key: (emission_name_suffix, absorption_name_suffix)
+_COMPOSITE_SPECIES = [
+    ("Mg II",       "Mg II_abs"),
+    ("Hα",          "Hα_abs"),
+    ("Hβ",          "Hβ_abs"),
+]
+
+
+def _detect_emission_absorption_pairs(
+    matrix_rows: List[dict],
+    harness_results: List[dict],
+) -> List[dict]:
+    """Detect emission-absorption pairs of the same species within each hypothesis.
+
+    Returns a list of dicts, each describing a pair that requires a composite
+    profile check: hypothesis_idx, species, wl_em, wl_abs, status_em, status_abs.
+    """
+    pairs = []
+    for hi, feat_list in _group_features_by_hypothesis(matrix_rows).items():
+        em_by_species: dict[str, dict] = {}
+        ab_by_species: dict[str, dict] = {}
+        for f in feat_list:
+            name = f.get("name", "")
+            for em_name, ab_name in _COMPOSITE_SPECIES:
+                if name == em_name:
+                    em_by_species.setdefault(em_name, f)
+                elif name == ab_name:
+                    ab_by_species.setdefault(ab_name, f)
+        for em_name, ab_name in _COMPOSITE_SPECIES:
+            em_feat = em_by_species.get(em_name)
+            ab_feat = ab_by_species.get(ab_name)
+            if em_feat is not None and ab_feat is not None:
+                pairs.append({
+                    "hypothesis_idx": hi,
+                    "species": em_name.replace("_abs", ""),
+                    "wl_em": em_feat.get("wl_obs", 0),
+                    "wl_abs": ab_feat.get("wl_obs", 0),
+                    "status_em": em_feat.get("status", "?"),
+                    "status_abs": ab_feat.get("status", "?"),
+                })
+    return pairs
+
+
+def _group_features_by_hypothesis(matrix_rows: List[dict]) -> dict:
+    """Group matrix row cells by hypothesis index, flattening into feature dicts."""
+    grouped: dict[int, list] = {}
+    for row in matrix_rows:
+        cells = row.get("cells", {})
+        for hi, cell in cells.items():
+            feat = {
+                "name": cell.get("name", ""),
+                "wl_obs": row.get("wl_obs", 0),
+                "status": cell.get("status", "?"),
+            }
+            grouped.setdefault(hi, []).append(feat)
+    return grouped
+
+
+def _build_emission_absorption_pairs_section(
+    matrix_rows: List[dict],
+    harness_results: List[dict],
+) -> str:
+    """Build the 'Emission–Absorption Pairs' section for the FA user prompt."""
+    pairs = _detect_emission_absorption_pairs(matrix_rows, harness_results)
+    if not pairs:
+        return (
+            "\n## Emission–Absorption Pairs (Composite Profile Check Required)\n\n"
+            "*No emission-absorption pairs of the same species detected "
+            "in any hypothesis.*\n"
+        )
+
+    lines = [
+        "## Emission–Absorption Pairs (Composite Profile Check Required)",
+        "",
+        "The following hypotheses claim BOTH an emission line AND its absorption "
+        "counterpart of the same species. These may form a single composite "
+        "profile (broad emission split by a central absorption trough).  "
+        "**You MUST perform the composite profile check (Step 3.5) for EVERY "
+        "pair listed below.**  Read ±200 Å covering both features together, "
+        "apply the morphological \"M\" test, and record your verdict in the "
+        "`composite_profile_verdicts` field of your JSON output.",
+        "",
+        "| H | Species | λ_em (Å) | λ_abs (Å) | Status (em) | Status (abs) |",
+        "|---|---------|----------|-----------|-------------|-------------|",
+    ]
+    for p in pairs:
+        hi = p["hypothesis_idx"]
+        sp = p["species"]
+        wl_em = f'{p["wl_em"]:.1f}' if isinstance(p["wl_em"], (int, float)) else str(p["wl_em"])
+        wl_abs = f'{p["wl_abs"]:.1f}' if isinstance(p["wl_abs"], (int, float)) else str(p["wl_abs"])
+        lines.append(
+            f"| H{hi} | {sp} | {wl_em} | {wl_abs} | "
+            f'{p["status_em"]} | {p["status_abs"]} |'
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ============================================================================
 # User message builders
 # ============================================================================
 
@@ -575,19 +678,26 @@ def _build_feature_audit_user_message(
                 )
             parts.append("")
 
+    # ── Emission-Absorption Pairs ──
+    parts.append(_build_emission_absorption_pairs_section(matrix_rows, harness_results))
+
     # ── Task ──
     parts.append("## Task")
     parts.append("")
     parts.append(
-        "Follow the Step 1 → Step 6 methodology from your system prompt. "
+        "Follow the Step 1 → Step 2 → Step 3 → Step 3.5 → Step 4 → Step 5 "
+        "→ Step 6 → Step 7 → Step 8 methodology from your system prompt. "
         "Your job is to independently verify whether each feature is physically "
         "real or a noise artifact. You MUST:\n\n"
         "1. Batch-read the spectrum at EVERY unique λ_obs in the matrix "
         "(±80 Å per read, merge adjacent rows when closer than 80 Å)\n"
         "2. Read BOTH edge zones in full\n"
         "3. Apply the Three-Question Test to each feature\n"
-        "4. Check doublet annotations for ratio violations\n"
-        "5. Output a verdict for EVERY row in the matrix\n\n"
+        "4. Check the Emission–Absorption Pairs section above — if any pairs "
+        "are listed, you MUST perform the composite profile check (Step 3.5) "
+        "for EVERY pair and populate the `composite_profile_verdicts` field\n"
+        "5. Check doublet annotations for ratio violations\n"
+        "6. Output a verdict for EVERY row in the matrix\n\n"
         "The downstream synthesis agent depends on you to filter noise from "
         "its input. A noise feature left in the catalogs will propagate into "
         "wrong cross-comparisons. A real feature wrongly removed will weaken "

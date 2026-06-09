@@ -930,9 +930,7 @@ _GREP_FILES: dict[str, _Path] = {
     "kb/classification.md": _SKILLS_DIR / "kb" / "classification.md",
     "kb/ionization.md": _SKILLS_DIR / "kb" / "ionization.md",
     "kb/lines.md": _SKILLS_DIR / "kb" / "lines.md",
-    "synthesize_skill.md": _SKILLS_DIR / "synthesize_skill.md",
-    "targeted_search_skill.md": _SKILLS_DIR / "targeted_search_skill.md",
-    "redrock_search_skill.md": _SKILLS_DIR / "redrock_search_skill.md",
+    "kb/composite_profile.md": _SKILLS_DIR / "kb" / "composite_profile.md",
 }
 
 _grep_cache: dict[str, str] | None = None

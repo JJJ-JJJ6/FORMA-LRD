@@ -69,6 +69,7 @@ Scan the full matrix to understand what's at stake:
 - Which rows are single-hypothesis vs multi-hypothesis?
 - Which rows have doublet annotations with `✗` (ratio violation)?
 - How many features fall in edge zones (🔵/🔴)?
+- **Check the "Emission–Absorption Pairs" section** — are there any same-species emission+absorption pairs that need composite profile checking? If yes, note them for Step 3.5.
 
 This step should be brief — one paragraph orienting yourself. Do NOT spend tokens describing every row.
 
@@ -77,6 +78,8 @@ This step should be brief — one paragraph orienting yourself. Do NOT spend tok
 For **each unique observed wavelength** in the matrix, call `read_spectrum_region` on **λ_obs ± 80 Å**. **Batch all reads in a single turn** — do not read one, think about it, then read the next. All reads must happen before any analysis.
 
 **Exception**: If two matrix rows are within 80 Å of each other, merge them into a single wider read. You control this — the matrix rows are pre-grouped, but adjacent rows may still be close enough to merge.
+
+**Composite pairs**: If the "Emission–Absorption Pairs" section lists any pairs, include wide reads (±200 Å) covering both the emission and absorption claims in this batch. These reads serve double duty — they cover the individual λ_obs for Step 3 AND provide the full context needed for the composite profile check in Step 3.5.
 
 For example, if rows exist at 7471.2 and 7510.5 (39 Å apart), one read covering 7430–7570 covers both.
 
@@ -163,9 +166,11 @@ Rules for blue edge features (🔵, λ_obs < 4000 Å):
 OH/OI screening rule (applies everywhere, not just edge zones):
 - **Narrow emission (Width = narrow, Type = em)**: call `grep_kb(pattern="skyline|OH|OI|airglow", C=3)` to screen for OI/OH contamination. OI 5577 and 6300/6364 can appear anywhere in the visible band.
 
-#### 3e. Emission–Absorption coexistence check
+### Step 3.5: Emission–Absorption Composite Profile Check (MANDATORY)
 
-When the matrix shows an **emission feature and an absorption feature of the same line species** (e.g., Mg II + Mg II_abs, Hα + Hα_abs, Hβ + Hβ_abs) at nearly the same observed wavelength, they may form a single composite profile — a broad emission line split by a central absorption trough. Do NOT treat them as independent detections.
+**Check the "Emission–Absorption Pairs" section in your user message.** If any pairs are listed there, you MUST perform the composite profile check for EVERY pair. This is NOT optional — a missed composite check will cause the synthesis agent to treat an artifact+emission pair as a genuine AGN composite profile.
+
+For each pair listed:
 
 Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/composite_profile.md` for the full diagnostic criteria. Key checks:
 
@@ -175,6 +180,8 @@ Use `grep_kb(pattern="composite|coexistence|split profile", C=3)` to search `kb/
    - Clear composite profile (broad "M" shape, symmetric, smooth wings) → both components are **real and physically linked**. KEEP or FLAG both, note "composite profile confirmed" in issues.
    - Spike–valley–spike pattern (narrow peaks, sharp transitions) → likely **noise**. REMOVE both or FLAG with low confidence.
    - Asymmetric (only one broad wing) → flag the absorption as possibly real, REMOVE or FLAG the emission as suspect.
+
+**You MUST populate the `composite_profile_verdicts` field in your JSON output** for every pair listed in the user message's "Emission–Absorption Pairs" section. If the section is empty (no pairs detected), you may leave `composite_profile_verdicts` as an empty array `[]`.
 
 ### Step 4: Doublet Verification
 
