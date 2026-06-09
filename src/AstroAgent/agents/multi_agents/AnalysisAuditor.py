@@ -771,7 +771,7 @@ def _build_feature_audit_user_message(
     return "\n".join(parts)
 
 
-def _build_merged_verified_features(harness_dir: str) -> str:
+def _build_merged_verified_features(harness_dir: str, best_idx: int = None) -> str:
     """Build a unified table of ALL KEEP features across all hypotheses.
 
     Reads every ``{idx}_lines_cleaned.csv`` (falling back to ``{idx}_lines.csv``),
@@ -1052,7 +1052,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
         parts.append(_build_line_tables(audit_results, harness_dir))
 
     # ── Merged verified features (ALL hypotheses, KEEP only) ──
-    parts.append(_build_merged_verified_features(harness_dir))
+    parts.append(_build_merged_verified_features(harness_dir, best_idx))
 
     # ── Continuum description (from VisualInterpreter) ──
     continuum = state.get("continuum") or {}

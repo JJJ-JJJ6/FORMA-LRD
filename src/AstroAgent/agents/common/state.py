@@ -131,3 +131,4 @@ class SpectroState(MessagesState):
     # refine_history: Optional[List] = field(default_factory=list)
     summary: Optional[str] = None
     in_brief: Optional[Dict[str, Any]] = None
+    _no_features: Optional[bool] = None                      # set by orchestrator when VI finds zero features
