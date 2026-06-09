@@ -41,10 +41,11 @@ class SynthesisHost(BaseAgent):
             return state
 
         # ── Build LLM kwargs from runtime config ──
+        llm_cfg = self.runtime.configs.model.llm
         llm_kwargs = {
-            "model": getattr(self.runtime.configs.llm, "model", "sonnet"),
-            "api_key": getattr(self.runtime.configs.llm, "api_key", None),
-            "base_url": getattr(self.runtime.configs.llm, "base_url", None),
+            "model": llm_cfg.get("model", "sonnet"),
+            "api_key": llm_cfg.get("api_key"),
+            "base_url": llm_cfg.get("base_url"),
             "temperature": 0.3,
         }
 
