@@ -23,8 +23,8 @@ from AstroAgent.agents.multi_agents.harness.tools import (
 )
 from AstroAgent.core.llm import (
     _detect_vendor, _build_thinking_extra_body, _create_chat_openai,
-    _resolve_max_tokens as _llm_resolve_max_tokens,
 )
+from AstroAgent.agents.multi_agents.harness.synthesize import _resolve_max_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ async def arun(
         api_key=api_key,
         base_url=base_url,
         temperature=temperature,
-        max_tokens=_llm_resolve_max_tokens(),
+        max_tokens=_resolve_max_tokens(),
         extra_body=extra_body,
     )
 
