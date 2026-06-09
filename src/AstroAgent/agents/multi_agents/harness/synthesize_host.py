@@ -233,14 +233,17 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
             parts.append("")
 
     # ── Task ──
+    report_path = os.path.join(harness_dir, "final_report.md")
     parts.append("## 任务")
     parts.append("")
     parts.append(
-        "请按照你的 system prompt 中的 6 节结构撰写最终报告。"
-        "使用 `compute_redshift_error(rest_wavelength, wavelength_error)` "
-        "为每条有波长误差的认证谱线计算 σ_z。"
-        "所有判断均已在上游完成——你的任务是**总结和呈现**，不是重新分析。"
+        f"请按照你的 system prompt 中的 6 节结构撰写最终报告。"
+        f"使用 `compute_redshift_error(rest_wavelength, wavelength_error)` "
+        f"为每条有波长误差的认证谱线计算 σ_z。"
+        f"调用 `write_report(file_path=\"{report_path}\", content=<完整 markdown>)` 保存报告。"
+        f"所有判断均已在上游完成——你的任务是**总结和呈现**，不是重新分析。"
     )
+    parts.append("")
 
     return "\n".join(parts)
 
@@ -260,8 +263,8 @@ def _extract_json_from_text(text: str) -> Optional[dict]:
         parts = text.split("```")
         if len(parts) >= 2:
             text = parts[1]
-    # Try to find a bare JSON object
-    m = re.search(r'\{[^{}]*"type"\s*:\s*"[^"]*"[^{}]*\}', text)
+    # Try to find a bare JSON object (DOTALL for multi-line)
+    m = re.search(r'\{[^{}]*"type"\s*:\s*"[^"]*"[^{}]*\}', text, re.DOTALL)
     if m:
         try:
             return json.loads(m.group())
@@ -284,13 +287,29 @@ async def arun(
     base_url: Optional[str] = None,
     temperature: float = 0.3,
     max_turns: int = 30,
+    stream_md_path: Optional[str] = None,
 ) -> Tuple[str, Optional[dict]]:
     """Run the Synthesis Host report-writing agent.
 
     Returns (final_report_markdown, comprehensive_assessment_json).
+
+    If ``stream_md_path`` is set, writes the full conversation (system prompt,
+    tool calls, tool results, and final output) to that file.
     """
     system_prompt = _load_skill()
     user_prompt = _build_user_message(state, harness_dir)
+
+    # ── Streaming setup ──
+    md = None
+    if stream_md_path:
+        os.makedirs(os.path.dirname(stream_md_path) or ".", exist_ok=True)
+        md = open(stream_md_path, "w", encoding="utf-8")
+        md.write("# Synthesis Host — Final Report Writing\n\n")
+        md.write("## System Prompt\n\n```\n")
+        md.write(system_prompt)
+        md.write("\n```\n\n## User Prompt\n\n```\n")
+        md.write(user_prompt)
+        md.write("\n```\n\n## Conversation\n\n")
 
     # ── Build LLM ──
     vendor = _detect_vendor(base_url)
@@ -322,8 +341,13 @@ async def arun(
         config=config,
     )
 
-    # ── Extract final text and JSON ──
+    # ── Write stream ──
     messages = result.get("messages", [])
+    if md:
+        _write_stream(md, messages)
+        md.close()
+
+    # ── Extract final text and JSON ──
     final_text = ""
     for msg in reversed(messages):
         content = getattr(msg, "content", "") or ""
@@ -333,3 +357,29 @@ async def arun(
 
     parsed_json = _extract_json_from_text(final_text)
     return final_text, parsed_json
+
+
+def _write_stream(md, messages: list) -> None:
+    """Write conversation messages to a stream markdown file."""
+    for msg in messages:
+        role = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", "") or ""
+        tool_calls = getattr(msg, "tool_calls", None) or []
+
+        if role == "human":
+            continue  # skip the initial user message (already written)
+
+        if role == "ai":
+            if content and isinstance(content, str) and content.strip():
+                md.write(f"### LLM\n\n{content}\n\n")
+            for tc in tool_calls:
+                name = tc.get("name", "?")
+                args = tc.get("args", {})
+                md.write(f"### Tool Call: {name}\n\n```json\n{json.dumps(args, indent=2, ensure_ascii=False)}\n```\n\n")
+
+        elif role == "tool":
+            name = getattr(msg, "name", "?")
+            if isinstance(content, str) and content.strip():
+                md.write(f"### Tool Result: {name}\n\n```\n{content[:2000]}\n```\n\n")
+            else:
+                md.write(f"### Tool Result: {name}\n\n*(empty)*\n\n")

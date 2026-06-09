@@ -50,9 +50,10 @@ class SynthesisHost(BaseAgent):
         }
 
         print("[SynthesisHost] Writing final report ...")
+        stream_path = os.path.join(harness_dir, "synthesis_host_stream.md")
         try:
             final_report, in_brief = await synthesize_host.arun(
-                state, harness_dir, **llm_kwargs
+                state, harness_dir, stream_md_path=stream_path, **llm_kwargs
             )
         except Exception as e:
             logging.warning(f"[SynthesisHost] Report writing failed: {e}")
