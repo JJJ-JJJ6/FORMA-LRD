@@ -271,11 +271,13 @@ class VisualInterpreter(BaseAgent):
 
             # 保存光谱数组
             spec = state["spectrum"]
+            vi_dir = os.path.join(state['output_dir'], 'visual_interpreter')
+            os.makedirs(vi_dir, exist_ok=True)
             save_data = {k: spec[k] for k in ("wavelength", "flux", "snr") if k in spec}
             if spec.get("ivar") is not None:
                 save_data["ivar"] = spec["ivar"]
             np.savez_compressed(
-                os.path.join(state['output_dir'], 'visual_interpreter', f"{state['file_name']}_spectrum.npz"),
+                os.path.join(vi_dir, f"{state['file_name']}_spectrum.npz"),
                 **save_data,
             )
             state['spectrum_npz_path'] = os.path.join(
