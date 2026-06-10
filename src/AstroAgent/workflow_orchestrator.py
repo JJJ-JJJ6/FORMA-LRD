@@ -189,7 +189,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
     async def _hypothesis_analyst_search_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
         print('Stage 2: Hypothesis Analyst — Single-Hypothesis Search')
-        result = await self.spectro_agents["_Rule_Analyst"].run(state)
+        result = await self.spectro_agents["_Hypothesis_Analyst"].run(state)
         self._check_cancel()
         return result
 
@@ -203,7 +203,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
     async def _hypothesis_analyst_synthesize_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
         print('Stage 4: Hypothesis Analyst — Synthesis')
-        result = await self.spectro_agents["_Rule_Analyst"].run_hypothesis_synthesis(state)
+        result = await self.spectro_agents["_Hypothesis_Analyst"].run_hypothesis_synthesis(state)
         self._check_cancel()
         return result
 
