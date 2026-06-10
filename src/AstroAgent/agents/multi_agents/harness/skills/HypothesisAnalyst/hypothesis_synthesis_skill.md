@@ -1,4 +1,4 @@
-# Redshift Hypothesis Synthesis
+# Hypothesis Synthesis
 
 ## Role
 

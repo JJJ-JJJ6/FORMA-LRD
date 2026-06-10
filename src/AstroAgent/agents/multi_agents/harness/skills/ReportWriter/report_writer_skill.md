@@ -1,4 +1,4 @@
-# Synthesis Host — Final Report Writing
+# Report Writer — Final Report Writing
 
 ## Role
 
@@ -27,7 +27,7 @@ Your user prompt contains:
 
 1. **Spectrum metadata** — wavelength range, SNR, edge zones
 2. **Continuum description** — from VisualInterpreter
-3. **Synthesis summary** — best hypothesis, excluded hypotheses, confidence, classification
+3. **Hypothesis Synthesis summary** — best hypothesis, excluded hypotheses, confidence, classification
 4. **AA verdict** — verdict, calibrated_confidence, has_real_peak, confirmed_lines (with wavelengths and errors), key_issues
 5. **Per-hypothesis line tables** — cleaned, post-FeatureAuditor
 6. **FA structured verdicts** — composite, doublet, O II morphology, Lyα forest
@@ -59,9 +59,9 @@ Include Dn4000 and σ_z if available.
 
 ---
 
-### §3: Synthesis & Audit Judgments
+### §3: Hypothesis Synthesis & Audit Judgments
 
-**Synthesis judgment**: What the synthesis agent concluded — best redshift, anchor line, classification, confidence, primary evidence.
+**Hypothesis Synthesis judgment**: What the Hypothesis Synthesis agent concluded — best redshift, anchor line, classification, confidence, primary evidence.
 
 **Audit judgment**: What the Analysis Auditor concluded — verdict (CONFIRM / NEEDS_REVISION / UNCERTAIN), calibrated confidence, key findings from `key_issues`. If AA revised any lines, note them.
 

@@ -74,8 +74,8 @@ class HypothesisAnalyst(BaseAgent):
         state['hypothesis_results'] = hypothesis_results
 
         # ── Set hypothesis_dir in state for downstream stages ─
-        hypothesis_dir = os.path.join(state['output_dir'], f"{state['file_name']}_harness")
-        state['hypothesis_dir'] = hypothesis_dir
+        hypothesis_dir = state['output_dir']
+        state['harness_dir'] = hypothesis_dir
 
         # ── Phase 1b: plot adopted features for each candidate ──
         self._plot_harness_candidates(state, hypothesis_results)
@@ -156,7 +156,7 @@ class HypothesisAnalyst(BaseAgent):
         concurrency = self.runtime.configs.params.harness_concurrency
         sem = asyncio.Semaphore(max(1, concurrency))
 
-        harness_dir = os.path.join(state['output_dir'], f"{state['file_name']}_harness")
+        harness_dir = state['output_dir']
         os.makedirs(harness_dir, exist_ok=True)
 
         overlap = state['spectrum'].get('overlap_regions')
@@ -185,9 +185,9 @@ class HypothesisAnalyst(BaseAgent):
                     z_min=round(hyp['z'] - z_half, 4),
                     z_max=round(hyp['z'] + z_half, 4),
                     masked_regions=overlap,
-                    report_path=os.path.join(harness_dir, f'{idx + 1}_report.md'),
-                    csv_path=os.path.join(harness_dir, f'{idx + 1}_lines.csv'),
-                    stream_md_path=os.path.join(harness_dir, f'{idx + 1}_stream.md'),
+                    report_path=os.path.join(harness_dir, 'single_hypothesis', f'{idx + 1}_report.md'),
+                    csv_path=os.path.join(harness_dir, 'single_hypothesis', f'{idx + 1}_lines.csv'),
+                    stream_md_path=os.path.join(harness_dir, 'single_hypothesis', f'{idx + 1}_stream.md'),
                     model=model_cfg['model'],
                     api_key=model_cfg['api_key'],
                     base_url=model_cfg['base_url'],
@@ -253,8 +253,8 @@ class HypothesisAnalyst(BaseAgent):
                 continue
             idx = result.get('hypothesis_idx', 0)
             z = result.get('redshift', 0)
-            csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
-            output_path = os.path.join(harness_dir, f"{idx}_features.png")
+            csv_path = os.path.join(harness_dir, "single_hypothesis", f"{idx}_lines.csv")
+            output_path = os.path.join(harness_dir, "single_hypothesis", f"{idx}_features.png")
 
             try:
                 plot_harness_candidate(
@@ -318,9 +318,9 @@ class HypothesisAnalyst(BaseAgent):
             model=model_cfg['model'],
             api_key=model_cfg['api_key'],
             base_url=model_cfg['base_url'],
-            stream_md_path=os.path.join(harness_dir, 'synthesis_stream.md'),
-            report_path=os.path.join(harness_dir, 'synthesis_report.md'),
-            csv_path=os.path.join(harness_dir, 'synthesis.csv'),
+            stream_md_path=os.path.join(harness_dir, 'hypothesis_synthesis', 'stream.md'),
+            report_path=os.path.join(harness_dir, 'hypothesis_synthesis', 'report.md'),
+            csv_path=os.path.join(harness_dir, 'hypothesis_synthesis', 'catalog.csv'),
             summaries=summaries,
             feature_audit_verdict=feature_audit_verdict,
         )

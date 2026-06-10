@@ -824,10 +824,10 @@ def _resolve_csv_path(harness_dir: str, idx: int) -> str:
     cleaned version doesn't exist.
     """
     import os as _os
-    cleaned = _os.path.join(harness_dir, f"{idx}_lines_cleaned.csv")
+    cleaned = _os.path.join(harness_dir, f"single_hypothesis/{idx}_lines_cleaned.csv")
     if _os.path.exists(cleaned):
         return cleaned
-    return _os.path.join(harness_dir, f"{idx}_lines.csv")
+    return _os.path.join(harness_dir, f"single_hypothesis/{idx}_lines.csv")
 
 
 def _build_line_tables(harness_results: list, harness_dir: str) -> str:

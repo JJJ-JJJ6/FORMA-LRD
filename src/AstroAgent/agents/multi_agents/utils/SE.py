@@ -92,7 +92,7 @@ async def analyze_failure(
     summaries = []
     for i, r in enumerate(harness_results):
         idx = r.get("hypothesis_idx", i + 1)
-        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_path = os.path.join(harness_dir, f"single_hypothesis/{idx}_lines.csv")
         csv_rows = _read_csv_lines(csv_path) if os.path.exists(csv_path) else []
         table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
         structured = r.get("structured_output") or {}
@@ -108,7 +108,7 @@ async def analyze_failure(
         ))
 
     # ── Extract key synthesis reasoning ──
-    stream_path = os.path.join(harness_dir, "synthesis_stream.md")
+    stream_path = os.path.join(harness_dir, "hypothesis_synthesis/stream.md")
     synthesis_reasoning = ""
     if os.path.exists(stream_path):
         text = Path(stream_path).read_text(encoding="utf-8")
@@ -626,7 +626,7 @@ def _record_failure(
     import datetime
 
     if not output_dir:
-        output_dir = os.path.dirname(harness_dir)
+        output_dir = harness_dir
 
     record = {
         "timestamp": datetime.datetime.now().isoformat(),
@@ -637,13 +637,13 @@ def _record_failure(
         "root_cause": analysis.get("root_cause"),
         "explanation": analysis.get("explanation"),
         "suggested_fix": analysis.get("suggested_fix"),
-        "hypothesis_dir": harness_dir,
-        "synthesis_stream": os.path.join(harness_dir, "synthesis_stream.md"),
-        "failure_analysis_stream": os.path.join(harness_dir, "failure_analysis_stream.md"),
+        "harness_dir": harness_dir,
+        "synthesis_stream": os.path.join(harness_dir, "hypothesis_synthesis/stream.md"),
+        "failure_analysis_stream": os.path.join(harness_dir, "self_evolve/failure_analysis_stream.md"),
     }
 
     # Per-sample stream to harness dir (individual review)
-    harness_failure_path = os.path.join(harness_dir, "failure_analysis.json")
+    harness_failure_path = os.path.join(harness_dir, "self_evolve/failure_analysis.json")
     with open(harness_failure_path, "w", encoding="utf-8") as f:
         json.dump(record, f, ensure_ascii=False, indent=2)
 

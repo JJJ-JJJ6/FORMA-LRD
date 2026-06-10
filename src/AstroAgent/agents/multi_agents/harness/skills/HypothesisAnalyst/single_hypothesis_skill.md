@@ -134,9 +134,9 @@ If the "Features" column is `—` or all features were rejected in step 4: mark 
    - **NOT_FOUND**: no CWT feature nearby, or all features rejected
    - **MASKED**: entire z-window wavelength range has no data ([fully masked]) — cannot evaluate
 
-   Important: LIKELY is the HIGHEST possible status. The job of the downstream synthesis agent is to weigh multiple LIKELY lines across hypotheses — do not attempt to pre-empt that judgment.
+   Important: LIKELY is the HIGHEST possible status. The job of the downstream Hypothesis Synthesis agent is to weigh multiple LIKELY lines across hypotheses — do not attempt to pre-empt that judgment.
 
-   MASKED ≠ NOT_FOUND. NOT_FOUND means "we examined the data and found no feature." MASKED means "there is no data to examine." The synthesis agent must treat them differently: a MASKED line provides zero information (neither supporting nor refuting the hypothesis), while NOT_FOUND is weak negative evidence.
+   MASKED ≠ NOT_FOUND. NOT_FOUND means "we examined the data and found no feature." MASKED means "there is no data to examine." The Hypothesis Synthesis agent must treat them differently: a MASKED line provides zero information (neither supporting nor refuting the hypothesis), while NOT_FOUND is weak negative evidence.
 
    Lines with ``[λ_pred masked]`` or ``[window partially masked]`` are still evaluated as LIKELY/MARGINAL/NOT_FOUND — the mask annotation is informational, not a status. Report it in the line's caveat.
 
@@ -256,7 +256,7 @@ Do not add extra sections. Write the report only after ALL lines have been evalu
 - **Hβ + [O III] complex (4820–5050 Å rest)**: Hβ shortest, [O III]a middle, [O III]b longest. If only 2 peaks: Hβ+[O III]b (a too weak), or [O III]a+b (Hβ blended).
 - **Hα + [N II] complex (6520–6620 Å rest)**: [N II]a 6549.8, Hα 6564.6, [N II]b 6585.3. Separated ~15–20 Å each. May blend into single asymmetric profile.
 - **Ca K/H + Hε absorption (3930–3975 Å rest)**: Ca K_abs 3934.8, Ca H_abs 3969.6, Hε_abs 3970.1. Ca H+Hε separated by 0.5 Å → always blended.
-- **Mg II emission + absorption (2800 Å rest)**: Broad Mg II emission (BLR) superimposed on narrow Mg II absorption (ISM) in AGN host galaxies. Flag as MARGINAL, note ambiguity for synthesis agent.
+- **Mg II emission + absorption (2800 Å rest)**: Broad Mg II emission (BLR) superimposed on narrow Mg II absorption (ISM) in AGN host galaxies. Flag as MARGINAL, note ambiguity for the Hypothesis Synthesis agent.
 
 ## Reference: Ionization Priority
 

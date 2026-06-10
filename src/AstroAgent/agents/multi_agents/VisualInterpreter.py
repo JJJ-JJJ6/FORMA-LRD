@@ -275,11 +275,11 @@ class VisualInterpreter(BaseAgent):
             if spec.get("ivar") is not None:
                 save_data["ivar"] = spec["ivar"]
             np.savez_compressed(
-                os.path.join(state['output_dir'], f"{state['file_name']}_spectrum.npz"),
+                os.path.join(state['output_dir'], 'visual_interpreter', f"{state['file_name']}_spectrum.npz"),
                 **save_data,
             )
             state['spectrum_npz_path'] = os.path.join(
-                state['output_dir'], f"{state['file_name']}_spectrum.npz"
+                state['output_dir'], 'visual_interpreter', f"{state['file_name']}_spectrum.npz"
             )
 
             # === Phase D: 迭代特征检测（在 continuum fitting 之前）===

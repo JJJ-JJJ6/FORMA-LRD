@@ -16,7 +16,7 @@ from AstroAgent.agents.multi_agents.VisualInterpreter import VisualInterpreter
 from AstroAgent.agents.multi_agents.HypothesisAnalyst import HypothesisAnalyst
 from AstroAgent.agents.multi_agents.SelfEvolve import SelfEvolve
 from AstroAgent.agents.multi_agents.AnalysisAuditor import AnalysisAuditor, FeatureAuditor
-from AstroAgent.agents.multi_agents.SynthesisHost import SynthesisHost
+from AstroAgent.agents.multi_agents.ReportWriter import ReportWriter
 #########################
 
 
@@ -33,7 +33,7 @@ class WorkflowOrchestrator:
         'SelfEvolve': SelfEvolve,
         'AnalysisAuditor': AnalysisAuditor,
         'FeatureAuditor': FeatureAuditor,
-        'SynthesisHost': SynthesisHost
+        'ReportWriter': ReportWriter
     }
 
     def __init__(
@@ -66,7 +66,7 @@ class WorkflowOrchestrator:
             '_Self_Evolve': self.AGENT_CLASSES['SelfEvolve'](self.runtime),
             '_Analysis_Auditor': self.AGENT_CLASSES['AnalysisAuditor'](self.runtime),
             '_Feature_Auditor': self.AGENT_CLASSES['FeatureAuditor'](self.runtime),
-            '_Synthesis_Host': self.AGENT_CLASSES['SynthesisHost'](self.runtime)
+            '_Report_Writer': self.AGENT_CLASSES['ReportWriter'](self.runtime)
         }
         print(f"Initialized {len(spectro_agents)} agents")
         return spectro_agents
@@ -221,10 +221,10 @@ No spectral features were detected in this exposure. The spectrum appears to con
         self._check_cancel()
         return result
 
-    async def _synthesis_host_node(self, state: SpectroState) -> SpectroState:
+    async def _report_writer_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
         print('Stage 6: Synthesis Host — Final Report & Info Extraction')
-        result = await self.spectro_agents["_Synthesis_Host"].run(state)
+        result = await self.spectro_agents["_Report_Writer"].run(state)
         self._check_cancel()
         return result
 
@@ -238,7 +238,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
         workflow.add_node("feature_auditor", self._feature_auditor_node)
         workflow.add_node("hypothesis_analyst_synthesize", self._hypothesis_analyst_synthesize_node)
         workflow.add_node("analysis_auditor", self._analysis_auditor_node)
-        workflow.add_node("synthesis_host", self._synthesis_host_node)
+        workflow.add_node("report_writer", self._report_writer_node)
 
         workflow.add_edge(START, 'visual_interpreter')
         workflow.set_entry_point("visual_interpreter")
@@ -250,8 +250,8 @@ No spectral features were detected in this exposure. The spectrum appears to con
         workflow.add_edge("hypothesis_analyst_search", "feature_auditor")
         workflow.add_edge("feature_auditor", "hypothesis_analyst_synthesize")
         workflow.add_edge("hypothesis_analyst_synthesize", "analysis_auditor")
-        workflow.add_edge("analysis_auditor", "synthesis_host")
-        workflow.add_edge("synthesis_host", END)
+        workflow.add_edge("analysis_auditor", "report_writer")
+        workflow.add_edge("report_writer", END)
         workflow.add_edge("no_features", END)
 
         return workflow.compile()

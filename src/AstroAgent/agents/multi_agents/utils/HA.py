@@ -485,7 +485,7 @@ def extract_harness_summary(
         )
 
     if harness_dir:
-        csv_path = os.path.join(harness_dir, f"{hypothesis_idx}_lines.csv")
+        csv_path = os.path.join(harness_dir, f"single_hypothesis/{hypothesis_idx}_lines.csv")
         csv_rows = _read_csv_lines(csv_path)
         table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
         structured = harness_result.get('structured_output') or harness_result.get('_structured') or {}
@@ -576,7 +576,7 @@ async def a_extract_harness_summaries(
         # ── CSV line data ──
         csv_rows: list[dict] = []
         if harness_dir:
-            csv_path = os.path.join(harness_dir, f"{hypothesis_idx}_lines.csv")
+            csv_path = os.path.join(harness_dir, f"single_hypothesis/{hypothesis_idx}_lines.csv")
             csv_rows = _read_csv_lines(csv_path)
         table_rows, nf_names, sp_names, z_scat = _build_line_table(csv_rows)
 

@@ -371,7 +371,7 @@ def build_contradiction_matrix(
         idx = r.get("hypothesis_idx")
         if idx is None:
             continue
-        csv_path = os.path.join(hypothesis_dir, f"{idx}_lines.csv")
+        csv_path = os.path.join(hypothesis_dir, f"single_hypothesis/{idx}_lines.csv")
         if not os.path.exists(csv_path):
             continue
         with open(csv_path, newline="", encoding="utf-8") as f:
@@ -768,10 +768,10 @@ def _build_merged_verified_features(hypothesis_dir: str, best_idx: int = None) -
 
     # Collect all KEEP features across hypotheses
     all_keeps: list[dict] = []
-    pattern = os.path.join(hypothesis_dir, "*_lines_cleaned.csv")
+    pattern = os.path.join(hypothesis_dir, "single_hypothesis", "*_lines_cleaned.csv")
     csv_files = sorted(_glob.glob(pattern))
     if not csv_files:
-        pattern = os.path.join(hypothesis_dir, "*_lines.csv")
+        pattern = os.path.join(hypothesis_dir, "single_hypothesis", "*_lines.csv")
         csv_files = sorted(_glob.glob(pattern))
 
     for csv_path in csv_files:
@@ -991,7 +991,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
     parts.append("")
 
     # ── Line Inventory from synthesis.csv ──
-    synthesis_csv_path = os.path.join(hypothesis_dir, "synthesis.csv")
+    synthesis_csv_path = os.path.join(hypothesis_dir, "hypothesis_synthesis/catalog.csv")
     if os.path.exists(synthesis_csv_path):
         parts.append("## Line Inventory from Hypothesis Synthesis")
         parts.append("")
@@ -1005,7 +1005,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
     else:
         parts.append("## Line Inventory from Hypothesis Synthesis")
         parts.append("")
-        parts.append("*(synthesis.csv not found — nothing to audit.)*")
+        parts.append("*(hypothesis_synthesis/catalog.csv not found — nothing to audit.)*")
         parts.append("")
 
     # ── Per-hypothesis cleaned line tables (post-FeatureAuditor) ──
@@ -1258,9 +1258,9 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
 
 
 def _format_synthesis_csv(csv_path: str) -> str:
-    """Read synthesis.csv and format as a compact markdown table."""
+    """Read hypothesis synthesis catalog CSV and format as a compact markdown table."""
     if not os.path.exists(csv_path):
-        return "*(synthesis.csv not found)*\n"
+        return "*(catalog.csv not found)*\n"
 
     rows = []
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -1269,7 +1269,7 @@ def _format_synthesis_csv(csv_path: str) -> str:
             rows.append(row)
 
     if not rows:
-        return "*(synthesis.csv is empty)*\n"
+        return "*(catalog.csv is empty)*\n"
 
     display_cols = [
         ("name", "Line"),
@@ -1325,7 +1325,7 @@ def _write_cleaned_csvs(
         idx = r.get("hypothesis_idx")
         if idx is None:
             continue
-        csv_path = os.path.join(hypothesis_dir, f"{idx}_lines.csv")
+        csv_path = os.path.join(hypothesis_dir, f"single_hypothesis/{idx}_lines.csv")
         if not os.path.exists(csv_path):
             continue
 
@@ -1341,7 +1341,7 @@ def _write_cleaned_csvs(
 
         out_fieldnames = list(fieldnames) + ["feature_audit", "feature_audit_flag"]
 
-        cleaned_path = os.path.join(hypothesis_dir, f"{idx}_lines_cleaned.csv")
+        cleaned_path = os.path.join(hypothesis_dir, f"single_hypothesis/{idx}"single_hypothesis/*_lines_cleaned.csv")
         with open(cleaned_path, "w", newline="", encoding="utf-8") as f:
             writer = _csv.DictWriter(f, fieldnames=out_fieldnames)
             writer.writeheader()
@@ -1576,15 +1576,15 @@ class FeatureAuditor(BaseAgent):
             return state
 
         # ── Resolve harness directory ──
-        hypothesis_dir = state.get("hypothesis_dir")
+        hypothesis_dir = state.get("harness_dir")
         if not hypothesis_dir:
             output_dir = state.get("output_dir") or ""
             file_name = state.get("file_name") or ""
             if output_dir and file_name:
-                hypothesis_dir = os.path.join(output_dir, f"{file_name}_harness")
+                hypothesis_dir = output_dir
             else:
                 hypothesis_dir = "."
-        state["hypothesis_dir"] = hypothesis_dir
+        state["harness_dir"] = hypothesis_dir
 
         # ── Build matrix ──
         spec = state["spectrum"]
@@ -1664,7 +1664,7 @@ class FeatureAuditor(BaseAgent):
                 user_prompt=user_prompt,
                 tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
                 hypothesis_dir=hypothesis_dir,
-                stream_filename="feature_audit_stream.md",
+                stream_filename="feature_auditor/stream.md",
                 stream_title="Feature Audit — Cross-Hypothesis Verification",
                 json_keys=["feature_verdicts"],
                 log_prefix="FeatureAuditor",
@@ -1724,7 +1724,7 @@ class FeatureAuditor(BaseAgent):
         )
 
         # Save verdict JSON
-        verdict_path = os.path.join(hypothesis_dir, "feature_audit_verdict.json")
+        verdict_path = os.path.join(hypothesis_dir, "feature_auditor/verdict.json")
         try:
             with open(verdict_path, "w", encoding="utf-8") as f:
                 json.dump(parsed, f, indent=2, ensure_ascii=False)
@@ -1795,12 +1795,12 @@ class AnalysisAuditor(BaseAgent):
         )
 
         # ── Resolve harness directory ──
-        hypothesis_dir = state.get("hypothesis_dir")
+        hypothesis_dir = state.get("harness_dir")
         if not hypothesis_dir:
             output_dir = state.get("output_dir") or ""
             file_name = state.get("file_name") or ""
             if output_dir and file_name:
-                hypothesis_dir = os.path.join(output_dir, f"{file_name}_harness")
+                hypothesis_dir = output_dir
             else:
                 hypothesis_dir = "."
 
@@ -1926,7 +1926,7 @@ class AnalysisAuditor(BaseAgent):
             tools=[read_spectrum_region, grep_kb, detect_oii_slope_change,
                    query_cwt_catalog],
             hypothesis_dir=hypothesis_dir,
-            stream_filename="auditor_stream.md",
+            stream_filename="result_auditor/stream.md",
             stream_title="Auditor — Synthesis Audit",
             json_keys=["verdict", "line_revisions", "spectrum_issues"],
             log_prefix="AnalysisAuditor",

@@ -144,9 +144,7 @@ class SelfEvolve(BaseAgent):
 
         # ── Run two-round failure analysis ────────────────────────
         model_cfg = self.runtime.configs.model.llm
-        harness_dir = os.path.join(
-            state["output_dir"], f"{state['file_name']}_harness"
-        )
+        harness_dir = state["output_dir"]
 
         ground_truth = {"z": expected_z, "type": expected_type}
         mismatch_info = {
@@ -169,7 +167,7 @@ class SelfEvolve(BaseAgent):
             model=model_cfg["model"],
             api_key=model_cfg["api_key"],
             base_url=model_cfg["base_url"],
-            stream_md_path=os.path.join(harness_dir, "failure_analysis_stream.md"),
+            stream_md_path=os.path.join(harness_dir, "self_evolve/failure_analysis_stream.md"),
         )
 
         _record_failure(

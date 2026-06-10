@@ -685,7 +685,7 @@ def _build_user_message(
         idx = r["hypothesis_idx"]
         report_text = r.get("report", "")
         if not report_text:
-            _report_path = os.path.join(harness_dir, f"{idx}_report.md")
+            _report_path = os.path.join(harness_dir, f"single_hypothesis/{idx}_report.md")
             if os.path.exists(_report_path):
                 report_text = Path(_report_path).read_text(encoding="utf-8")
 

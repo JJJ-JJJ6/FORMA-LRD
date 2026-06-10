@@ -1,5 +1,5 @@
 """
-Synthesis Host — Final Report Writing Harness.
+Report Writer — Final Report Writing Harness.
 
 Runs AFTER the Analysis Auditor.  Takes all upstream outputs (synthesis
 verdict, AA verdict, FA structured verdicts, continuum description, cleaned
@@ -33,7 +33,7 @@ from AstroAgent.agents.multi_agents.harness.hypothesis_synthesis import _resolve
 
 def _load_skill() -> str:
     skill_path = os.path.join(
-        os.path.dirname(__file__), "skills", "SynthesisHost", "synthesize_host_skill.md"
+        os.path.dirname(__file__), "skills", "ReportWriter", "report_writer_skill.md"
     )
     if os.path.exists(skill_path):
         return open(skill_path, encoding="utf-8").read()
@@ -58,8 +58,8 @@ def _lookup_wavelength_errors(harness_dir: str, output_dir: str) -> dict:
 
     csv_paths = []
     import glob as _glob
-    csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "*_lines.csv"))))
-    csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "*_lines_cleaned.csv"))))
+    csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "single_hypothesis", "*_lines.csv"))))
+    csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "single_hypothesis", "*_lines_cleaned.csv"))))
     for csv_name in [f"{spectrum_id}_emission.csv", f"{spectrum_id}_absorption.csv"]:
         p = os.path.join(output_dir, csv_name)
         if os.path.exists(p):
@@ -115,7 +115,7 @@ def _format_confirmed_lines_with_errors(
 # ---------------------------------------------------------------------------
 
 def _build_user_message(state: SpectroState, harness_dir: str) -> str:
-    """Build the user prompt for the Synthesis Host report-writing LLM."""
+    """Build the user prompt for the Report Writer report-writing LLM."""
     rule_analysis = state.get("hypothesis_analysis") or {}
     auditor_json = state.get("auditor_verdict_json") or {}
     continuum = state.get("continuum") or {}
@@ -128,7 +128,7 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     snr_val = state["spectrum"].get("snr")
     snr_median = float(np.median(snr_val)) if snr_val is not None else None
 
-    output_dir = os.path.dirname(os.path.normpath(harness_dir))
+    output_dir = harness_dir
 
     parts = []
 
@@ -289,7 +289,7 @@ async def arun(
     max_turns: int = 30,
     stream_md_path: Optional[str] = None,
 ) -> Tuple[str, Optional[dict]]:
-    """Run the Synthesis Host report-writing agent.
+    """Run the Report Writer report-writing agent.
 
     Returns (final_report_markdown, comprehensive_assessment_json).
 
@@ -304,7 +304,7 @@ async def arun(
     if stream_md_path:
         os.makedirs(os.path.dirname(stream_md_path) or ".", exist_ok=True)
         md = open(stream_md_path, "w", encoding="utf-8")
-        md.write("# Synthesis Host — Final Report Writing\n\n")
+        md.write("# Report Writer — Final Report Writing\n\n")
         md.write("## System Prompt\n\n```\n")
         md.write(system_prompt)
         md.write("\n```\n\n## User Prompt\n\n```\n")

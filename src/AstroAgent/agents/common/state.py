@@ -42,22 +42,10 @@ class SpectroState(MessagesState):
     curve_points: Optional[List[List[int]]] = None
     curve_gray_values: Optional[Union[List[float], np.ndarray]] = None
     spectrum: Optional[Dict[str, Union[List[float], float]]] = None
-    peak_groups: Optional[List[List[Dict[str, Any]]]] = None
-    trough_groups: Optional[List[List[Dict[str, Any]]]] = None
-    cleaned_spectrum: Optional[Dict[str, Union[List[float], float]]] = None
     continuum: Optional[Dict[str, Any]] = None
     residual_spectrum: Optional[Dict[str, Union[List[float], float]]] = None
-    approved_peaks: Optional[List[Dict[str, float]]] = None
-    approved_troughs: Optional[List[Dict[str, float]]] = None
-    peaks: Optional[List[Dict[str, float]]] = None  
+    peaks: Optional[List[Dict[str, float]]] = None
     troughs: Optional[List[Dict[str, float]]] = None
-    # ROI_peaks: Optional[List[Dict[str, float]]] = None
-    # ROI_troughs: Optional[List[Dict[str, float]]] = None
-    # merged_peaks: Optional[List[Dict[str, float]]] = None
-    # merged_troughs: Optional[List[Dict[str, float]]] = None
-    # cleaned_peaks: Optional[List[Dict[str, float]]] = None
-    # wiped_peaks: Optional[List[Dict[str, float]]] = None
-    # cleaned_troughs: Optional[List[Dict[str, float]]] = None
     brute_force_matching: Optional[List[Dict[str, Any]]] = None  # unified key (all peaks + all troughs, single pass)
     absorption_records: Optional[List[Dict[str, Any]]] = None
     emission_records: Optional[List[Dict[str, Any]]] = None
@@ -81,15 +69,15 @@ class SpectroState(MessagesState):
     preliminary_classification_with_absention: Optional[str] = None
     preliminary_classification_monkey: Optional[str] = None
     possible_object: Optional[List] = field(default=None)
-    Lyalpha_candidate: Optional[List] = field(default=None)
     verdict: Optional[str] = None                         # AnalysisAuditor auditing_verdict output
-    final_report: Optional[str] = None                    # SynthesisHost final report output
+    final_report: Optional[str] = None                    # ReportWriter final report output
     hypothesis_analysis: Optional[Dict[str, Any]] = None
     feature_audit_verdict: Optional[Dict[str, Any]] = None    # FeatureAuditor output
-    hypothesis_dir: Optional[str] = None                          # per-spectrum harness output directory
+    harness_dir: Optional[str] = None                          # per-spectrum harness output directory
     _hypothesis_mode: Optional[str] = None                        # "nomad" or "redrock"
     auditor_verdict: Optional[str] = None                      # AnalysisAuditor (Stage B) verdict string
     auditor_verdict_json: Optional[Dict[str, Any]] = None      # AnalysisAuditor (Stage B) full verdict
-    summary: Optional[str] = None
     in_brief: Optional[Dict[str, Any]] = None
     _no_features: Optional[bool] = None                      # set by orchestrator when VI finds zero features
+    margin: Optional[Dict[str, int]] = None               # VisualInterpreter crop margins
+    _failure_recorded: Optional[bool] = None              # SelfEvolve failure tracking

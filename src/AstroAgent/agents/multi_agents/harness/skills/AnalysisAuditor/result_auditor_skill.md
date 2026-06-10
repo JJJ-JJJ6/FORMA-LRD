@@ -1,4 +1,4 @@
-# Hypothesis Synthesis Audit — Independent Defensive Review
+# Result Audit — Independent Defensive Review
 
 ## Role
 
@@ -83,7 +83,7 @@ ONLY for lines flagged in Layer 1 AND unexplained features from the completeness
    - Is it visually dominant, or does it blend into a forest of similar-amplitude oscillations?
 3. Apply the physics context from Layer 1:
    - A visually marginal line that also violates classification physics → **REMOVE**. The combined weight of "doesn't look real" + "shouldn't be here" is decisive.
-   - A visually dominant line in the wrong class → **FLAG**. It may be a genuine feature that the synthesis misidentified. Recommend human review.
+   - A visually dominant line in the wrong class → **FLAG**. It may be a genuine feature that Hypothesis Synthesis misidentified. Recommend human review.
    - A visually convincing line that passes all Layer 1 checks → **KEEP** (no action needed).
 
 Batch your reads: all suspicious lines in a single turn.

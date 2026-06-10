@@ -525,10 +525,10 @@ class ResultWriter:
         """Write harness-based rule analysis results."""
         output_dir, file_name = self._resolve_output_dir(state), state.get("file_name", "unknown")
         os.makedirs(output_dir, exist_ok=True)
-        path = os.path.join(output_dir, f"{file_name}_rule_analysis.txt")
+        path = os.path.join(output_dir, f"{file_name}_hypothesis_analysis.txt")
 
         synthesis = state.get('hypothesis_analysis') or {}
-        ranked = state.get('harness_ranked') or []
+        ranked = state.get('ranked_hypotheses') or []
         results = state.get('hypothesis_results') or []
 
         with open(path, "w", encoding=self.encoding) as f:
