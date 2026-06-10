@@ -19,10 +19,10 @@ You are NOT a second FeatureAuditor. You do NOT re-verify every feature. You are
 
 | When you need... | Call |
 |------------------|------|
-| Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG\|LRG\|QSO\|fatal", C=3)` |
-| Ionization priority, excluded lines, consistency rules | `grep_kb(pattern="priority\|excluded\|outflow\|blueshift", C=2)` |
+| Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG|LRG|QSO|fatal", C=3)` |
+| Ionization priority, excluded lines, consistency rules | `grep_kb(pattern="priority|excluded|outflow|blueshift", C=2)` |
 | Line rest wavelengths and width classes | `grep_kb(pattern="<line_name>", C=2)` |
-| Doublet spacing, ratio rules | `grep_kb(pattern="doublet\|ratio\|separation\|Ca K/H\|O III", C=2)` |
+| Doublet spacing, ratio rules | `grep_kb(pattern="doublet|ratio|separation|Ca K/H|O III", C=2)` |
 | Query CWT features by wavelength, amplitude, or FWHM | `query_cwt_catalog(wl_min=..., amp_min=..., fwhm_min=...)` |
 
 ## Layer 1: Physical Sanity Screening (no spectrum reads needed)
@@ -34,7 +34,7 @@ Scan the line inventory from `synthesis.csv`. For each LIKELY or MARGINAL line, 
 Use `grep_kb(pattern="ELG|LRG|QSO|fatal", C=3)` to recall the expected and fatal features for the claimed classification, then check:
 
 - **Galaxy classification** but catalog contains **Mg II / [Ne V] / C IV / C III] / Lyα**? These are AGN indicators — a Galaxy should not have them. Check the FWHM and amplitude of these lines: if they are narrow (FWHM < 2000 km/s for Mg II, C IV, C III]) and low-amplitude, this is a strong signal that FA kept noise/artifacts that should have been removed.
-- **QSO classification** but NO line has FWHM > 2000 km/s? A QSO requires at least one genuinely broad line. If all claimed broad lines (Mg II, C IV, C III], Lyα) are narrow, the QSO classification is unsupported.
+- **QSO classification** but NO line has FWHM > 2000 km/s? QSO encompasses both Type 1 (broad-line) and Type 2 / narrow-line / obscured AGN. A Type 2 QSO can legitimately lack broad lines but MUST have at least one unambiguous high-ionization narrow emission line — most commonly [Ne V] 3426. If [Ne V] is visually convincing, the QSO classification is plausible as Type 2 even without broad lines. If NEITHER broad lines NOR a convincing [Ne V] line is present, the QSO classification is unsupported.
 - **ELG** has [O III] but [O II] is NOT_FOUND or MARGINAL with very low amplitude? See `grep_kb(pattern="priority|excluded|outflow", C=2)` — this is an ionization inconsistency.
 - **LRG** has Ca K_abs but Ca H_abs is NOT_FOUND? The Ca K/H doublet is a primary diagnostic for LRG.
 

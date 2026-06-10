@@ -217,18 +217,33 @@ def _filter_contradiction_matrix(
         else:
             n_removed += 1
 
-    # Filter doublet annotations (use amp from annotation to build key)
+    # Annotate doublet annotations with per-component FA status.
+    # Always keep every doublet — even if a component was REMOVED, the pair
+    # carries context that the Synthesis agent needs (e.g. an orphan whose
+    # claimed feature is noise tells the agent the doublet is spurious).
+    def _comp_status(key: tuple) -> str:
+        v = verdict_lookup.get(key)
+        if v is None:
+            return "not_reviewed"
+        rec = _clean_rec(v.get("recommendation"))
+        if rec.startswith("REMOVE"):
+            return "removed"
+        if rec.startswith("KEEP") or rec.startswith("FLAG"):
+            return "surviving"
+        return "not_reviewed"
+
     filtered_doublets = []
     for da in doublet_annotations:
         if da.get("complete"):
             key_a = (int(da["wl_a"]), 1 if da.get("amp_a", 0) >= 0 else -1)
             key_b = (int(da["wl_b"]), 1 if da.get("amp_b", 0) >= 0 else -1)
-            if _is_survivor_by_key(key_a) and _is_survivor_by_key(key_b):
-                filtered_doublets.append(da)
+            da["comp_a_status"] = _comp_status(key_a)
+            da["comp_b_status"] = _comp_status(key_b)
+            filtered_doublets.append(da)
         else:
             key = (int(da["wl_claimed"]), 1 if da.get("amp_claimed", 0) >= 0 else -1)
-            if _is_survivor_by_key(key):
-                filtered_doublets.append(da)
+            da["comp_claimed_status"] = _comp_status(key)
+            filtered_doublets.append(da)
 
     # Recompute stats
     n_total = sum(row["n_hypotheses"] for row in filtered_rows)
@@ -382,9 +397,9 @@ def _build_surviving_doublets_section(
 
     lines = ["## Surviving Doublets", ""]
     lines.append(
-        "Doublet pairs and orphans where all relevant components survived "
-        "FeatureAuditor verification. FeatureAuditor's visual verification "
-        "of doublet ratio is included where available."
+        "Doublet pairs and orphans from the FeatureAuditor contradiction matrix. "
+        "Components removed by FA (noise/artifact) are marked with ~~strikethrough~~. "
+        "FeatureAuditor's visual verification of doublet ratio is included where available."
     )
     lines.append("")
 
@@ -407,10 +422,25 @@ def _build_surviving_doublets_section(
                 ratio_status = " ✗ ratio anomaly"
 
             fa_note = f" — {notes}" if notes else ""
+
+            # Format components: strikethrough if removed by FA
+            a_status = da.get("comp_a_status", "not_reviewed")
+            b_status = da.get("comp_b_status", "not_reviewed")
+            a_disp = f"~~{na}@{da['wl_a']:.1f}~~" if a_status == "removed" else f"{na}@{da['wl_a']:.1f}"
+            b_disp = f"~~{nb}@{da['wl_b']:.1f}~~" if b_status == "removed" else f"{nb}@{da['wl_b']:.1f}"
+
+            # Build removal note
+            removal_notes = []
+            if a_status == "removed":
+                removal_notes.append(f"{na} removed by FA (noise)")
+            if b_status == "removed":
+                removal_notes.append(f"{nb} removed by FA (noise)")
+            removal_str = f" — {', '.join(removal_notes)}" if removal_notes else ""
+
             lines.append(
-                f"- **H{hi}**: {na}@{da['wl_a']:.1f} + {nb}@{da['wl_b']:.1f} → "
+                f"- **H{hi}**: {a_disp} + {b_disp} → "
                 f"ratio {da['note']}"
-                f"{ratio_status}{fa_note}"
+                f"{ratio_status}{removal_str}{fa_note}"
             )
         lines.append("")
 
@@ -425,11 +455,20 @@ def _build_surviving_doublets_section(
             fa_note = dv.get("notes", "")
             note_str = f" — {fa_note}" if fa_note else ""
 
+            # Format claimed component: strikethrough if removed by FA
+            c_status = da.get("comp_claimed_status", "not_reviewed")
+            if c_status == "removed":
+                claimed_disp = f"~~{claimed}@"
+                removal_note = " — claimed component removed by FA (noise)"
+            else:
+                claimed_disp = f"{claimed}@"
+                removal_note = ""
+
             lines.append(
-                f"- **H{hi}**: {claimed}@"
+                f"- **H{hi}**: {claimed_disp}"
                 f"{da['wl_claimed']:.1f} (amp={da['amp_claimed']:+.3f}) → "
                 f"**missing {da['missing']}** at λ ≈ {da['wl_missing']:.1f} Å"
-                f"{note_str}"
+                f"{removal_note}{note_str}"
             )
         lines.append("")
 

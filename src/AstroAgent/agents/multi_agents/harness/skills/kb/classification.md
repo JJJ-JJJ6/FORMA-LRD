@@ -35,9 +35,11 @@
 
 **Fatal problems**: Ca K/H missing (one present without the other AND no 4000 Å break observed), broad emission lines with FWHM > 2000 km/s detected by AGN line checks.
 
-## QSO (Quasar / Type 1 AGN)
+## QSO (Quasar / AGN — Type 1 and Type 2)
 
-**Expected features**: Broad emission lines (Lyα, C IV, C III], Mg II) with FWHM > 2000 km/s. Narrow forbidden lines may also be present.
+**Type 1 (broad-line) QSO**: Broad emission lines (Lyα, C IV, C III], Mg II) with FWHM > 2000 km/s. Narrow forbidden lines may also be present.
+
+**Type 2 (narrow-line / obscured) QSO**: Narrow emission lines only (no broad BLR), but with at least one high-ionization forbidden line — [Ne V] 3426. The absence of broad lines is EXPECTED in Type 2 — it is NOT a fatal problem. The key diagnostic is the presence of [Ne V], which requires AGN-level ionization (97.1 eV) that cannot be produced by stellar photoionization.
 
 **Best systemic anchors**: Mg II 2800 (Priority 6), [O II] (Priority 2) if narrow component visible.
 
@@ -45,7 +47,9 @@
 
 **Lyα multi-peak fragmentation**: IGM absorption can split broad Lyα into 2–3 apparent peaks along the line of sight. Each fragment may match Lyα at slightly different implied z. This is physically normal — the true Lyα center lies among the detected fragments. Multiple narrow/intermediate Lyα matches at nearby wavelengths can still support a QSO hypothesis.
 
-**Fatal problems**: All claimed broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing at predicted positions. A spectroscopically convincing broad line (spanning tens of pixels, smooth wings) carries more weight than the exact FWHM value.
+**Fatal problems for Type 1 QSO**: All claimed broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing at predicted positions. A spectroscopically convincing broad line (spanning tens of pixels, smooth wings) carries more weight than the exact FWHM value.
+
+**Fatal problems for Type 2 QSO**: [Ne V] is NOT visually convincing, AND no broad lines are present. A Type 2 QSO without [Ne V] is indistinguishable from a star-forming Galaxy — do NOT classify as QSO in this case. If [Ne V] IS visually convincing, Type 2 QSO is a valid classification even with zero broad lines.
 
 ## Star
 
