@@ -99,16 +99,23 @@ Provide the following structured information:
    - Include the wavelength error if available.
    - If AA returned no confirmed lines, write "none".
 
-4. **Signal clarity score** (0–4):
-   Evaluate how much real signal this spectrum contains, independent of whether it was correctly identified:
+4. **Signal clarity score** (0–4): Must be strictly determined top-down, item by item, according to the following decision tree. **Stop when a criterion is met**:
 
-   - **4**: Multiple clearly real emission/absorption lines, well above noise. `has_real_peak=true` with ≥3 confirmed lines.
-   - **3**: Several real features but some ambiguity. ≥2 confirmed lines OR one very strong confirmed line with good continuum support.
-   - **2**: At least one real feature confirmed, but limited line inventory. One confirmed line, or multiple features near noise floor.
-   - **1**: Possible signal but no line can be confidently confirmed. `has_real_peak=true` but `confirmed_lines=[]`.
-   - **0**: No credible signal. `has_real_peak=false`, spectrum is noise-dominated.
+   **Step 1: Count the lines**
+   *   AA `confirmed_lines` ≥ 2? → **Score 4** (stop, ignore continuum)
+   *   AA `confirmed_lines` = 1? → Proceed to Step 2
+   *   AA `confirmed_lines` = 0? → Proceed to Step 3
 
-   This score is about **signal presence**, not identification correctness.
+   **Step 2: Examine the continuum (only when lines = 1)**
+   *   Is the continuum shape roughly consistent with the expected type, or are there many weaker features? → **Score 3**
+   *   Not satisfied? → Proceed to Step 3
+
+   **Step 3: Check for ambiguous signals (lines = 0 or Step 2 condition not met)**
+   *   Is there at least one obvious emission line, but its identity is uncertain? → **Score 2**
+   *   Are there spectral line features but cannot be reliably matched? → **Score 1**
+   *   No emission lines / poor SNR / no signal? → **Score 0**
+
+   > **Strictly Prohibited**: Do not lower the score obtained from a higher-priority rule because of reasons such as abnormal continuum, low confidence, or existing doubts. Continuum quality only participates in the judgment in Step 2 (when lines = exactly 1), and has no impact on the Score 4 determination.
 
 5. **Confidence**: AA's `calibrated_confidence` (HIGH / MEDIUM / LOW). If AA is unavailable, use synthesis confidence.
 
@@ -147,7 +154,7 @@ Provide the following structured information:
 
 **Field definitions**:
 - `type`: QSO | GALAXY | Unknown
-- `signal_clarity`: 0–4 integer
+- `signal_clarity`: 0–4 integer (see the decision tree in §3)
 - `redshift`: recommended redshift z (float), or null if unknown
 - `redshift_rms`: σ_z (float), or null if error unknown
 - `lines`: confirmed line names as a list of strings, or [] if none
