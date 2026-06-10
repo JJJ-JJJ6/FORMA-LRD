@@ -655,14 +655,14 @@ def _build_feature_audit_user_message(
     parts.append("")
     parts.append(
         "Each row is a unique observed wavelength where ≥1 hypothesis claims a "
-        "feature (LIKELY or MARGINAL). Cells show the line identification + status. "
-        "`—` means no claim at this wavelength. "
+        "feature (LIKELY or MARGINAL). Cells show `✓` if the hypothesis claims "
+        "a feature at this wavelength, `—` if it does not. "
         "`🔵` = blue edge, `🔴` = red edge. "
-        "Type, Amp, and Width are properties of the CWT-detected feature itself "
-        "(identical across hypotheses — same feature, different name assignments). "
+        "Type, Amp, and Width are properties of the CWT-detected feature itself. "
         "Width: broad > 2000 km/s, narrow < 2000 km/s. "
-        "Doublet pairs (below the matrix) show pre-computed separations and "
-        "amplitude ratios for the LLM to evaluate."
+        "**Line identifications are NOT shown here** — see the Doublet Pairs, "
+        "Composite Profile, [O II] Morphology, and Lyα Forest blocks below for "
+        "structured line-identification verdicts."
     )
     parts.append("")
 
@@ -694,8 +694,8 @@ def _build_feature_audit_user_message(
             if cell is None:
                 vals.append("—")
             else:
-                status_mark = " (MARG)" if cell["status"] == "MARGINAL" else ""
-                vals.append(f"{cell['name']}{status_mark}")
+                status_mark = " (M)" if cell["status"] == "MARGINAL" else ""
+                vals.append(f"✓{status_mark}")
         parts.append("| " + " | ".join(vals) + " |")
     parts.append("")
 
