@@ -60,7 +60,7 @@ def _lookup_wavelength_errors(harness_dir: str, output_dir: str) -> dict:
     import glob as _glob
     csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "single_hypothesis", "*_lines.csv"))))
     csv_paths.extend(sorted(_glob.glob(os.path.join(harness_dir, "single_hypothesis", "*_lines_cleaned.csv"))))
-    for csv_name in [f"{spectrum_id}_emission.csv", f"{spectrum_id}_absorption.csv"]:
+    for csv_name in [f"visual_interpreter/{spectrum_id}_emission.csv", f"visual_interpreter/{spectrum_id}_absorption.csv"]:
         p = os.path.join(output_dir, csv_name)
         if os.path.exists(p):
             csv_paths.append(p)

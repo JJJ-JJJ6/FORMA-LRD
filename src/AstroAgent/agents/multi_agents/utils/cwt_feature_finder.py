@@ -333,7 +333,7 @@ def run_cwt_feature_detection(
                 df_out[col] = df['amplitude']
             else:
                 df_out[col] = df.get(col, '')
-        path = os.path.join(output_dir, f"{file_name}_{suffix}.csv")
+        path = os.path.join(output_dir, "visual_interpreter", f"{file_name}_{suffix}.csv")
         df_out.to_csv(path, index=False)
 
     _save_csv(df_em, 'emission')

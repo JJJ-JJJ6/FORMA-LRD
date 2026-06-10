@@ -150,7 +150,7 @@ def plot_residual_spectrum(state: SpectroState):
     plt.xlabel('wavelength')
     plt.ylabel('flux')
     plt.legend(fontsize=12)
-    path = os.path.join(state['output_dir'], f"{state['file_name']}_residual_spectrum.png")
+    path = os.path.join(state['output_dir'], "visual_interpreter", f"{state['file_name']}_residual_spectrum.png")
     plt.savefig(
         path,
         dpi=150,
@@ -333,7 +333,7 @@ def plot_features(state: SpectroState, wavelength_label: bool = True):
     n_troughs_valid = len([t for t in troughs if t.get('wavelength') is not None and t.get('wavelength') > 0])
     print(f"Plot {n_peaks_valid} peaks, {n_troughs_valid} troughs.")
 
-    fig.savefig(os.path.join(state['output_dir'], f"{state['file_name']}_features.png"),
+    fig.savefig(os.path.join(state['output_dir'], "visual_interpreter", f"{state['file_name']}_features.png"),
                 dpi=150, bbox_inches='tight')
     plt.close(fig)
 

@@ -920,7 +920,7 @@ def _build_cwt_catalog(hypothesis_dir: str) -> list[dict]:
 
     all_features: list[dict] = []
 
-    for csv_name in [f"{spectrum_id}_emission.csv", f"{spectrum_id}_absorption.csv"]:
+    for csv_name in [f"visual_interpreter/{spectrum_id}_emission.csv", f"visual_interpreter/{spectrum_id}_absorption.csv"]:
         csv_path = os.path.join(output_dir, csv_name)
         if not os.path.exists(csv_path):
             continue
