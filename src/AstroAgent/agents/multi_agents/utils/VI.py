@@ -2006,8 +2006,6 @@ def _redrock_to_bfm_hypotheses(redrock_results: list) -> dict:
 
     for i, rr in enumerate(redrock_results):
         z = rr['z']
-        if z <= 0:
-            continue
 
         # 用 deltachi2 估算得分：deltachi2 越小表示拟合越好
         # score 映射到 [0, 100]，最佳拟合（deltachi2=0）得满分
