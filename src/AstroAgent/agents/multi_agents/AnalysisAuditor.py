@@ -1428,7 +1428,7 @@ async def _run_llm_agent(
 
     config = {"recursion_limit": 100}
     stream_md_path = os.path.join(hypothesis_dir, stream_filename)
-    os.makedirs(hypothesis_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(stream_md_path), exist_ok=True)
 
     # ── Streaming path ──────────────────────────────────────────────
     try:
