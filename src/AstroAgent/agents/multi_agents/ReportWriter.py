@@ -31,7 +31,7 @@ class ReportWriter(BaseAgent):
 
     async def run(self, state: SpectroState) -> SpectroState:
         """Write final report and extract structured summary."""
-        from AstroAgent.agents.multi_agents.harness import report_writer
+        from AstroAgent.agents.multi_agents.harness import report_writer_arun
 
         harness_dir = state.get("harness_dir")
         if not harness_dir or not os.path.isdir(harness_dir):
@@ -52,7 +52,7 @@ class ReportWriter(BaseAgent):
         print("[ReportWriter] Writing final report ...")
         stream_path = os.path.join(harness_dir, "report_writer/stream.md")
         try:
-            final_report, in_brief = await report_writer.arun(
+            final_report, in_brief = await report_writer_arun(
                 state, harness_dir, stream_md_path=stream_path, **llm_kwargs
             )
         except Exception as e:
