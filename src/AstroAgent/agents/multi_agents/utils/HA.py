@@ -43,8 +43,6 @@ def collect_hypotheses_from_bfm(bfm: dict) -> list:
 
     for m in bfm['hypotheses']:
         z = m.get('z_representative') or m.get('z_center', 0)
-        if z <= 0:
-            continue
         n_em = m.get('N_emission', 0)
         n_ab = m.get('N_absorption', 0)
         score = m.get('score', float(n_em + n_ab))

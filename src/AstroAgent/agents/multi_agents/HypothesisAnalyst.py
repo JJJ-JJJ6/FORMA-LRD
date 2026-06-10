@@ -244,9 +244,7 @@ class HypothesisAnalyst(BaseAgent):
         continuum = state.get('continuum', {})
         continuum_flux = continuum.get('flux', spec['flux'])
 
-        harness_dir = os.path.join(
-            state['output_dir'], f"{state['file_name']}_harness"
-        )
+        harness_dir = state['output_dir']
 
         for result in harness_results:
             if result is None:
@@ -289,9 +287,7 @@ class HypothesisAnalyst(BaseAgent):
         fl = np.asarray(spec['flux'])
         snr = np.asarray(spec.get('snr', []))
 
-        harness_dir = os.path.join(
-            state['output_dir'], f"{state['file_name']}_harness"
-        )
+        harness_dir = state['output_dir']
 
         # ── LLM-driven structured extraction (middleware) ──
         dn4000_lookup = build_dn4000_lookup(wl, fl, hypothesis_results)

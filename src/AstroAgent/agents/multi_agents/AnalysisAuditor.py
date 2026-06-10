@@ -1613,7 +1613,7 @@ class FeatureAuditor(BaseAgent):
         )
 
         # ── Build prompts ──
-        system_prompt = self._load_skill("feature_audit")
+        system_prompt = self._load_skill("feature_audit_skill")
         user_prompt = _build_feature_audit_user_message(
             state, hypothesis_dir, matrix_rows, doublet_annotations, stats,
         )
@@ -1805,7 +1805,7 @@ class AnalysisAuditor(BaseAgent):
                 hypothesis_dir = "."
 
         # ── Build prompts ──
-        system_prompt = self._load_skill("auditor_audit")
+        system_prompt = self._load_skill("result_auditor_skill")
         user_prompt = _build_synthesis_audit_user_message(state, hypothesis_dir)
 
         # ── Build CWT catalog (all features, all hypotheses) ──
