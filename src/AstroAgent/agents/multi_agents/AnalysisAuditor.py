@@ -1341,7 +1341,7 @@ def _write_cleaned_csvs(
 
         out_fieldnames = list(fieldnames) + ["feature_audit", "feature_audit_flag"]
 
-        cleaned_path = os.path.join(hypothesis_dir, f"single_hypothesis/{idx}"single_hypothesis/*_lines_cleaned.csv")
+        cleaned_path = os.path.join(hypothesis_dir, "single_hypothesis", f"{idx}_lines_cleaned.csv")
         with open(cleaned_path, "w", newline="", encoding="utf-8") as f:
             writer = _csv.DictWriter(f, fieldnames=out_fieldnames)
             writer.writeheader()
