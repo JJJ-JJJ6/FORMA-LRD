@@ -1,7 +1,7 @@
 """
 continuation.py — shared truncation-detection and continuation-loop logic.
 
-Used by targeted_search, synthesize, and AnalysisAuditor to handle
+Used by single_hypothesis, hypothesis_synthesis, and AnalysisAuditor to handle
 LLM output truncation (finish_reason=length).  Supports both streaming
 (agent.astream) and non-streaming (agent.ainvoke / agent.invoke) paths,
 with automatic retry when the continuation itself is truncated.

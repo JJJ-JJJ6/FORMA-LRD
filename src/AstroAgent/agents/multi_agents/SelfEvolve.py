@@ -1,7 +1,7 @@
 """
 SelfEvolve — ground-truth comparison, failure analysis, and self-evolution.
 
-Runs after RuleAnalyst (only when ``self_evolve`` is enabled).  Compares the
+Runs after HypothesisAnalyst (only when ``self_evolve`` is enabled).  Compares the
 synthesis verdict against ground truth, runs two-round LLM root-cause analysis
 on mismatches, and writes structured failure records.
 """
@@ -15,7 +15,7 @@ from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 
-from AstroAgent.agents.multi_agents.utils.RA import (
+from AstroAgent.agents.multi_agents.utils.HA import (
     extract_verdict_summary,
 )
 from AstroAgent.agents.multi_agents.utils.SE import (
@@ -51,7 +51,7 @@ class SelfEvolve(BaseAgent):
     # =====================================================================
 
     async def run(self, state: SpectroState) -> SpectroState:
-        harness_results = state.get("harness_results", [])
+        harness_results = state.get("hypothesis_results", [])
         if not harness_results:
             logging.info("[SelfEvolve] No harness results — skipping.")
             return state
@@ -96,7 +96,7 @@ class SelfEvolve(BaseAgent):
         tolerance = self.runtime.configs.params.z_tolerance
 
         # ── Compare synthesis vs ground truth ─────────────────────
-        verdict = state.get("rule_analysis", {})
+        verdict = state.get("hypothesis_analysis", {})
         summary = extract_verdict_summary(verdict)
 
         scoring_zs = [r.get("redshift", 0) for r in harness_results

@@ -1,7 +1,8 @@
+import json
 import os
 import numpy as np
 import logging
-
+from pathlib import Path
 
 from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.common.base_agent import BaseAgent
@@ -44,6 +45,7 @@ class VisualInterpreter(BaseAgent):
     """
 
     agent_name = "VisualInterpreter"
+    _SKILL_DIR = Path(__file__).resolve().parent / "harness" / "skills" / "VisualInterpreter"
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
@@ -64,18 +66,12 @@ class VisualInterpreter(BaseAgent):
 
     async def detect_axis_ticks(self, state: SpectroState) -> SpectroState:
         """调用 VLM 检测坐标轴刻度"""
-        function_name = "detect_axis_ticks"
-
         if not state['file_path'] or not os.path.exists(state['file_path']):
-            print(state['file_path'])
             logging.error("No image provided or image path does not exist")
             raise
 
-        system_prompt, user_prompt = self.runtime.prompt_manager.load(
-            state=state,
-            agent_name=self.agent_name,
-            function_name=function_name
-        )
+        system_prompt = self._load_skill("detect_axis_ticks")
+        user_prompt = "Please analyze this spectrum plot and extract the axis information."
 
         axis_info = await self.call_llm_with_context(
             system_prompt=system_prompt,
@@ -85,9 +81,9 @@ class VisualInterpreter(BaseAgent):
             description="Axis information",
             want_tools=False
         )
-        if axis_info == "非光谱图" or axis_info == "Non-spectrum":
+        if axis_info == "Non-spectrum":
             logging.error("The input image is not a spectral plot. LLM output: %s", axis_info)
-            raise
+            raise ValueError("Non-spectrum image detected")
         state["axis_info"] = axis_info
         return state
 
@@ -104,14 +100,20 @@ class VisualInterpreter(BaseAgent):
 
     async def combine_axis_mapping(self, state: SpectroState) -> SpectroState:
         """结合视觉结果与 OCR 结果生成像素-数值映射"""
-        function_name = "combine_axis_mapping"
-
-        system_prompt, user_prompt = self.runtime.prompt_manager.load(
-            state=state,
-            agent_name=self.agent_name,
-            function_name=function_name,
-            axis_info=state['axis_info'],
-            ocr=state['OCR_detected_ticks']
+        system_prompt = self._load_skill("combine_axis_mapping")
+        user_prompt = (
+            "Please perform an integrated correction on the following two sets of "
+            "structured scale results from the same spectral plot:\n\n"
+            "【Visual Model Result】\n"
+            f"{json.dumps(state['axis_info'], indent=2, ensure_ascii=False)}\n\n"
+            "【OCR / OpenCV Result】\n"
+            f"{json.dumps(state['OCR_detected_ticks'], indent=2, ensure_ascii=False)}\n\n"
+            "Task:\n"
+            "Consistency-correct and complete the OCR result, "
+            "ensuring the final output satisfies system monotonicity and "
+            "conflict-resolution rules.\n\n"
+            "Output strictly the corrected JSON array.\n"
+            "Do not include any explanations or additional text."
         )
 
         tick_pixel_raw = await self.call_llm_with_context(
@@ -127,13 +129,16 @@ class VisualInterpreter(BaseAgent):
 
     async def revise_axis_mapping(self, state: SpectroState) -> SpectroState:
         """检查并修正刻度值与像素位置匹配关系"""
-        function_name = "revise_axis_mapping"
-
-        system_prompt, user_prompt = self.runtime.prompt_manager.load(
-            state=state,
-            agent_name=self.agent_name,
-            function_name=function_name,
-            axis_mapping=state['tick_pixel_raw']
+        system_prompt = self._load_skill("revise_axis_mapping")
+        user_prompt = (
+            "Please check the following scale value to pixel mapping:\n"
+            f"{json.dumps(state['tick_pixel_raw'], indent=2, ensure_ascii=False)}\n\n"
+            "Tasks:\n"
+            "- Revise any entries that violate the monotonicity rule\n"
+            "- Keep null values unchanged\n"
+            "- Output the revised JSON array; if the original input is correct, "
+            "return it as-is\n"
+            "- Do not output any explanations or additional text"
         )
 
         tick_pixel_revised = await self.call_llm_with_context(
@@ -149,12 +154,33 @@ class VisualInterpreter(BaseAgent):
 
     async def check_border(self, state: SpectroState):
         """调用 LLM 判断裁剪边界是否干净"""
-        function_name = "check_border"
-
-        system_prompt, user_prompt = self.runtime.prompt_manager.load(
-            state=state,
-            agent_name=self.agent_name,
-            function_name=function_name
+        system_prompt = self._load_skill("check_border")
+        user_prompt = (
+            "You will receive two images:\n\n"
+            "1. The original spectral image, which may include plot borders.\n"
+            "2. A matplotlib astronomical spectrum image preprocessed with OCR and "
+            "OpenCV, where an attempt has been made to crop out the borders and "
+            "surrounding areas.\n\n"
+            "Task:\n"
+            "Determine whether obvious straight-line border remnants remain along "
+            "the four edges (top, right, bottom, left) of the image "
+            "(e.g., long, straight black or dark line segments, typically part of "
+            "the outer frame of the coordinate axes).\n\n"
+            "Judgment criteria:\n"
+            "- If **no such straight-line segment is visible** along a given edge "
+            '→ "cropped cleanly"\n'
+            "- If **obvious straight-line segments are still visible** along a "
+            'given edge → "not cropped cleanly"\n\n'
+            "Please output your result strictly in the following JSON format, "
+            "containing only the four specified keys, with values as the strings "
+            "'true' or 'false':\n\n"
+            "{\n"
+            '    "top": "true" or "false",\n'
+            '    "right": "true" or "false",\n'
+            '    "bottom": "true" or "false",\n'
+            '    "left": "true" or "false"\n'
+            "}\n\n"
+            "Do not output any other content."
         )
 
         response = await self.call_llm_with_context(

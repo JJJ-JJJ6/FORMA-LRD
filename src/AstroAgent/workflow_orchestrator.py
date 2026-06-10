@@ -13,10 +13,9 @@ import copy
 
 #########################
 from AstroAgent.agents.multi_agents.VisualInterpreter import VisualInterpreter
-from AstroAgent.agents.multi_agents.RuleAnalyst import RuleAnalyst
+from AstroAgent.agents.multi_agents.HypothesisAnalyst import HypothesisAnalyst
 from AstroAgent.agents.multi_agents.SelfEvolve import SelfEvolve
 from AstroAgent.agents.multi_agents.AnalysisAuditor import AnalysisAuditor, FeatureAuditor
-from AstroAgent.agents.multi_agents.RefinementAssistant import RefinementAssistant
 from AstroAgent.agents.multi_agents.SynthesisHost import SynthesisHost
 #########################
 
@@ -30,11 +29,10 @@ class WorkflowOrchestrator:
     # 定义语言到代理类的映射
     AGENT_CLASSES = {
         'VisualInterpreter': VisualInterpreter,
-        'RuleAnalyst': RuleAnalyst,
+        'HypothesisAnalyst': HypothesisAnalyst,
         'SelfEvolve': SelfEvolve,
         'AnalysisAuditor': AnalysisAuditor,
         'FeatureAuditor': FeatureAuditor,
-        'RefinementAssistant': RefinementAssistant,
         'SynthesisHost': SynthesisHost
     }
 
@@ -64,11 +62,10 @@ class WorkflowOrchestrator:
         """
         spectro_agents = {
             '_Visual_Interpreter': self.AGENT_CLASSES['VisualInterpreter'](self.runtime),
-            '_Rule_Analyst': self.AGENT_CLASSES['RuleAnalyst'](self.runtime),
+            '_Hypothesis_Analyst': self.AGENT_CLASSES['HypothesisAnalyst'](self.runtime),
             '_Self_Evolve': self.AGENT_CLASSES['SelfEvolve'](self.runtime),
             '_Analysis_Auditor': self.AGENT_CLASSES['AnalysisAuditor'](self.runtime),
             '_Feature_Auditor': self.AGENT_CLASSES['FeatureAuditor'](self.runtime),
-            '_Refinement_Assistant': self.AGENT_CLASSES['RefinementAssistant'](self.runtime),
             '_Synthesis_Host': self.AGENT_CLASSES['SynthesisHost'](self.runtime)
         }
         print(f"Initialized {len(spectro_agents)} agents")
@@ -178,7 +175,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
 
         state["final_report"] = report
         state["in_brief"] = in_brief
-        state["rule_analysis"] = {"redshift": None, "classification": "Unknown", "confidence": "LOW"}
+        state["hypothesis_analysis"] = {"redshift": None, "classification": "Unknown", "confidence": "LOW"}
         state["auditor_verdict_json"] = {
             "verdict": "UNCERTAIN",
             "calibrated_confidence": "LOW",
@@ -189,9 +186,9 @@ No spectral features were detected in this exposure. The spectrum appears to con
         state["feature_audit_verdict"] = {"spectrum_quality": "noise-dominated", "skipped": True}
         return state
 
-    async def _rule_analyst_node(self, state: SpectroState) -> SpectroState:
+    async def _hypothesis_analyst_search_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
-        print('Stage 2: Rule Analyst — Targeted Search')
+        print('Stage 2: Hypothesis Analyst — Single-Hypothesis Search')
         result = await self.spectro_agents["_Rule_Analyst"].run(state)
         self._check_cancel()
         return result
@@ -203,10 +200,10 @@ No spectral features were detected in this exposure. The spectrum appears to con
         self._check_cancel()
         return result
 
-    async def _rule_analyst_synthesize_node(self, state: SpectroState) -> SpectroState:
+    async def _hypothesis_analyst_synthesize_node(self, state: SpectroState) -> SpectroState:
         self._check_cancel()
-        print('Stage 4: Rule Analyst — Synthesis')
-        result = await self.spectro_agents["_Rule_Analyst"].run_synthesize(state)
+        print('Stage 4: Hypothesis Analyst — Synthesis')
+        result = await self.spectro_agents["_Rule_Analyst"].run_hypothesis_synthesis(state)
         self._check_cancel()
         return result
 
@@ -237,9 +234,9 @@ No spectral features were detected in this exposure. The spectrum appears to con
 
         workflow.add_node("visual_interpreter", self._visual_interpreter_node)
         workflow.add_node("no_features", self._no_features_node)
-        workflow.add_node("rule_analyst", self._rule_analyst_node)
+        workflow.add_node("hypothesis_analyst_search", self._hypothesis_analyst_search_node)
         workflow.add_node("feature_auditor", self._feature_auditor_node)
-        workflow.add_node("rule_analyst_synthesize", self._rule_analyst_synthesize_node)
+        workflow.add_node("hypothesis_analyst_synthesize", self._hypothesis_analyst_synthesize_node)
         workflow.add_node("analysis_auditor", self._analysis_auditor_node)
         workflow.add_node("synthesis_host", self._synthesis_host_node)
 
@@ -248,11 +245,11 @@ No spectral features were detected in this exposure. The spectrum appears to con
         workflow.add_conditional_edges(
             "visual_interpreter",
             self._has_features,
-            {"continue": "rule_analyst", "no_features": "no_features"},
+            {"continue": "hypothesis_analyst_search", "no_features": "no_features"},
         )
-        workflow.add_edge("rule_analyst", "feature_auditor")
-        workflow.add_edge("feature_auditor", "rule_analyst_synthesize")
-        workflow.add_edge("rule_analyst_synthesize", "analysis_auditor")
+        workflow.add_edge("hypothesis_analyst_search", "feature_auditor")
+        workflow.add_edge("feature_auditor", "hypothesis_analyst_synthesize")
+        workflow.add_edge("hypothesis_analyst_synthesize", "analysis_auditor")
         workflow.add_edge("analysis_auditor", "synthesis_host")
         workflow.add_edge("synthesis_host", END)
         workflow.add_edge("no_features", END)
@@ -262,7 +259,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
 
     async def run_analysis_single(self, state, cancel_checker=None) -> SpectroState:
 
-        print("🚀 Start MCP LLM Spectro Agent")
+        print("🚀 Start LLM Spectro Agent")
         # 存储取消检查器
         self.cancel_checker = cancel_checker
 
@@ -297,7 +294,6 @@ No spectral features were detected in this exposure. The spectrum appears to con
                         f"🌐 工作流遇到连接错误，{retry_delay}秒后重试..."
                         f" (尝试 {attempt + 1}/{max_tries}): {e}"
                     )
-                    await self.runtime.reset_mcp()
                     await asyncio.sleep(retry_delay)
                     # 重置中间结果，从干净状态重跑，避免脏数据（尤其是 List append 字段）污染
                     current_state = copy.deepcopy(initial_state)

@@ -6,8 +6,6 @@ import numpy as np
 from dotenv import load_dotenv
 
 import sys
-import time
-import aiohttp
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -15,67 +13,12 @@ sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
 from AstroAgent.core.config.all_config import AllConfig
 from AstroAgent.workflow_orchestrator import WorkflowOrchestrator
-from AstroAgent.manager.runtime.state_manager import SpectroStateFactory
+from AstroAgent.agents.common.state_factory import SpectroStateFactory
 from AstroAgent.agents.common.result_writer import ResultWriter
-
-MCP_SERVER_SCRIPT_FALLBACK = str(PROJECT_ROOT / 'src' / 'AstroAgent' / 'mcp_tools' / 'spectro_server.py')
-
-
-def _get_mcp_server_url(configs) -> str:
-    """Extract the MCP server URL from the loaded config (mcp_config.json)."""
-    for server_cfg in configs.mcp.config.values():
-        url = server_cfg.get("url")
-        if url:
-            return url
-    raise ValueError("No 'url' found in mcp_config.json — is transport set to streamable-http?")
-
-
-async def start_mcp_server(mcp_url: str, server_script: str, startup_timeout: int) -> asyncio.subprocess.Process:
-    """Launch MCP server as a background subprocess and wait until it is ready."""
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, server_script,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    logging.info(f"MCP server process started (pid={proc.pid}), waiting for readiness...")
-
-    deadline = time.monotonic() + startup_timeout
-    async with aiohttp.ClientSession() as session:
-        while time.monotonic() < deadline:
-            # Check if process has already exited
-            if proc.returncode is not None:
-                stdout, stderr = await proc.communicate()
-                raise RuntimeError(
-                    f"MCP server exited early (code={proc.returncode}).\n"
-                    f"stderr: {stderr.decode(errors='replace')}\n"
-                    f"stdout: {stdout.decode(errors='replace')}"
-                )
-            try:
-                async with session.get(
-                    mcp_url,
-                    headers={"Accept": "text/event-stream"},
-                    timeout=aiohttp.ClientTimeout(total=1),
-                ) as resp:
-                    # 200 or 405/406 all mean server is up and responding
-                    if resp.status < 500:
-                        logging.info("✅ MCP server is ready")
-                        return proc
-            except Exception:
-                await asyncio.sleep(0.5)
-
-    # Timeout: terminate gracefully, guard against already-dead process
-    if proc.returncode is None:
-        proc.terminate()
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            proc.kill()
-    raise RuntimeError(f"MCP server did not become ready within {startup_timeout}s")
 
 
 async def main():
     """Main asynchronous entry: unified single / batch image analysis"""
-    mcp_proc = None
     try:
         load_dotenv()
 
@@ -83,26 +26,13 @@ async def main():
         # Load configs
         # ------------------------
         configs = AllConfig.from_env()
-        # model_config = configs.model
         io_config = configs.io
         batch_config = configs.batch
-        # params_config = configs.params
         factory = SpectroStateFactory(configs)
         writer = ResultWriter()
 
         input_dir = io_config.input_dir
         output_dir = io_config.output_dir
-
-        # ------------------------
-        # Start MCP server (URL read from mcp_config.json via configs)
-        # ------------------------
-        mcp_url = _get_mcp_server_url(configs)
-        server_script = configs.mcp.server_script or MCP_SERVER_SCRIPT_FALLBACK
-        mcp_proc = await start_mcp_server(
-            mcp_url=mcp_url,
-            server_script=server_script,
-            startup_timeout=configs.mcp.startup_timeout,
-        )
 
         # ------------------------
         # Check directories
@@ -122,8 +52,6 @@ async def main():
         if not os.path.isdir(output_dir):
             logging.info(f"Output directory does not exist, creating: {output_dir}")
             os.makedirs(output_dir, exist_ok=True)
-
-        logging.info(f"Using MCP config: {configs.mcp.path}")
 
         # ------------------------
         # Resolve image IDs (single or batch)
@@ -225,7 +153,7 @@ async def main():
 
                 # ── Batch failure analysis trigger ──────────────────
                 if configs.params.self_evolve and result.get("_failure_recorded"):
-                    from AstroAgent.agents.multi_agents.utils.RA import (
+                    from AstroAgent.agents.multi_agents.utils.HA import (
                         _read_pending_failures,
                         analyze_failure_batch,
                     )
@@ -265,7 +193,7 @@ async def main():
 
         # ── Final batch flush: process any remaining pending failures ──
         if configs.params.self_evolve:
-            from AstroAgent.agents.multi_agents.utils.RA import (
+            from AstroAgent.agents.multi_agents.utils.HA import (
                 _read_pending_failures,
                 analyze_failure_batch,
             )
@@ -293,15 +221,6 @@ async def main():
 
     except Exception as e:
         logging.exception(f"Main program failed: {e}")
-
-    finally:
-        if mcp_proc is not None and mcp_proc.returncode is None:
-            mcp_proc.terminate()
-            try:
-                await asyncio.wait_for(mcp_proc.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                mcp_proc.kill()
-            logging.info("MCP server process terminated")
 
 
 if __name__ == "__main__":

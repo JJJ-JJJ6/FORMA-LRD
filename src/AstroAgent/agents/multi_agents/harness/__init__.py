@@ -1,5 +1,5 @@
-from .targeted_search import run, arun
+from .single_hypothesis import run, arun
 from .ranking import rank_hypotheses
-from .synthesize import arun as synthesize_arun
+from .hypothesis_synthesis import arun as hypothesis_synthesis_arun
 
-__all__ = ["run", "arun", "rank_hypotheses", "synthesize_arun"]
+__all__ = ["run", "arun", "rank_hypotheses", "hypothesis_synthesis_arun"]

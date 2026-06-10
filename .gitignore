@@ -10,7 +10,10 @@ llm-spectro-agent-old-master/
 .debugger/
 
 # Paper
-_paper/
+.paper/
+
+# Backup
+.backup/
 
 # Logs
 log/

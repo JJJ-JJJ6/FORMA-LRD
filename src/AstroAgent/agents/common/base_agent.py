@@ -3,12 +3,12 @@ import re
 import json
 import asyncio
 import logging
+from pathlib import Path
 
-from langchain.agents import create_agent
-from AstroAgent.manager.runtime.message_manager import create_message
+from AstroAgent.agents.common.message_utils import create_message
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body
 
-# ── 连接错误关键字，断网/重联时会触发重试 + MCP 重置 ──
+# ── 连接错误关键字，断网/重联时会触发重试 ──
 _CONNECTION_ERROR_KEYWORDS = (
     "connection reset",
     "connection refused",
@@ -22,7 +22,7 @@ _CONNECTION_ERROR_KEYWORDS = (
     "ssl",
 )
 
-# ── 超时错误关键字，触发重试但不会重置 MCP ──
+# ── 超时错误关键字 ──
 _TIMEOUT_KEYWORDS = (
     "connectionerror",
     "connecttimeout",
@@ -42,12 +42,12 @@ _RATE_LIMIT_KEYWORDS = (
 
 
 def _is_connection_error(error_msg: str) -> bool:
-    """判断是否为连接层错误（断网、连接拒绝等），需要重置 MCP。"""
+    """判断是否为连接层错误（断网、连接拒绝等）。"""
     return any(kw in error_msg for kw in _CONNECTION_ERROR_KEYWORDS)
 
 
 def _is_timeout_error(error_msg: str) -> bool:
-    """判断是否为超时错误，重试但不需要重置 MCP。"""
+    """判断是否为超时错误。"""
     return any(kw in error_msg for kw in _TIMEOUT_KEYWORDS)
 
 
@@ -64,28 +64,48 @@ class BaseAgent:
 
     agent_name: str = "BaseAgent"
 
+    # Override in subclasses to point to their skill directory.
+    _SKILL_DIR: Path | None = None
+
     def __init__(self, runtime):
         self.runtime = runtime
-
-        self._text_agent = None
-        self._vis_agent = None
 
         self._text_model = runtime.get_model("llm")
         self._vis_model = runtime.get_model("vlm")
 
-        # thinking 模式配置（从 model_config 读取，'none' 表示不支持该参数）
+        # thinking mode config ('none' = parameter not supported by this provider)
         self._llm_thinking = runtime.configs.model.llm.get('thinking', 'disabled')
         self._vlm_thinking = runtime.configs.model.vlm.get('thinking', 'none')
 
-        # 根据 base_url 自动检测厂商（用于构建正确的 thinking extra_body 格式）
+        # auto-detect vendor from base_url for correct thinking extra_body format
         self._llm_vendor = _detect_vendor(runtime.configs.model.llm.get('base_url', ''))
         self._vlm_vendor = _detect_vendor(runtime.configs.model.vlm.get('base_url', ''))
 
-        # 流式输出配置
+        # streaming config
         self._stream = runtime.configs.model.llm.get('stream', False)
 
+    # ------------------------------------------------------------------
+    # Skill helpers
+    # ------------------------------------------------------------------
+
+    def _skill_path(self, name: str) -> Path:
+        """Resolve a skill file path relative to ``_SKILL_DIR``.
+
+        If *name* has no extension, ``.md`` is appended automatically.
+        Subclasses must set ``_SKILL_DIR``.
+        """
+        if self._SKILL_DIR is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} must set _SKILL_DIR to use _load_skill()"
+            )
+        return self._SKILL_DIR / (name if name.endswith(".md") else f"{name}.md")
+
+    def _load_skill(self, name: str) -> str:
+        """Load a skill markdown file from ``_SKILL_DIR``."""
+        return self._skill_path(name).read_text(encoding="utf-8")
+
     # --------------------------
-    # Lazy agent creation
+    # Thinking / streaming helpers
     # --------------------------
 
     def _apply_thinking(self, model, thinking_cfg: str, vendor: str, want_tools: bool):
@@ -104,24 +124,14 @@ class BaseAgent:
         return model
 
     async def _stream_invoke(self, model, messages):
-        """流式调用模型，逐 token 打印到终端，返回累积的完整内容。"""
+        """Stream model output token-by-token, accumulating full content."""
         full_content = ""
         async for chunk in model.astream(messages):
             if chunk.content:
                 print(chunk.content, end="", flush=True)
                 full_content += chunk.content
-        print()  # 流结束后换行
+        print()  # newline after streaming
         return full_content
-
-    async def _ensure_text_agent(self, tools):
-        if self._text_agent is None:
-            llm = self._apply_thinking(self._text_model, self._llm_thinking, self._llm_vendor, want_tools=True)
-            self._text_agent = create_agent(llm, tools)
-
-    async def _ensure_vis_agent(self, tools):
-        if self._vis_agent is None:
-            llm = self._apply_thinking(self._vis_model, self._vlm_thinking, self._vlm_vendor, want_tools=True)
-            self._vis_agent = create_agent(llm, tools)
 
     # --------------------------
     # Call
@@ -133,8 +143,7 @@ class BaseAgent:
         user_prompt,
         image_path=None,
         parse_json=True,
-        description="LLM输出",
-        want_tools=True,
+        description="LLM output",
     ):
 
         max_retries = self.runtime.configs.max_tries or 3
@@ -149,42 +158,20 @@ class BaseAgent:
                     image_path
                 )
 
-                # ---------------- Mode selection ----------------
-
                 if image_path:
-                    if want_tools:
-                        tools = await self.runtime.get_tools()
-                        await self._ensure_vis_agent(tools)
-                        response = await self._vis_agent.ainvoke(
-                            {"messages": messages},
-                            config={"recursion_limit": 300},
-                        )
-                        raw_content = response["messages"][-1].content
+                    vlm = self._apply_thinking(self._vis_model, self._vlm_thinking, self._vlm_vendor, want_tools=False)
+                    if self._stream:
+                        raw_content = await self._stream_invoke(vlm, messages)
                     else:
-                        # want_tools=False: call VLM directly (stateless)
-                        vlm = self._apply_thinking(self._vis_model, self._vlm_thinking, self._vlm_vendor, want_tools=False)
-                        if self._stream:
-                            raw_content = await self._stream_invoke(vlm, messages)
-                        else:
-                            response = await vlm.ainvoke(messages)
-                            raw_content = response.content
+                        response = await vlm.ainvoke(messages)
+                        raw_content = response.content
                 else:
-                    if want_tools:
-                        tools = await self.runtime.get_tools()
-                        await self._ensure_text_agent(tools)
-                        response = await self._text_agent.ainvoke(
-                            {"messages": messages},
-                            config={"recursion_limit": 125},
-                        )
-                        raw_content = response["messages"][-1].content
+                    llm = self._apply_thinking(self._text_model, self._llm_thinking, self._llm_vendor, want_tools=False)
+                    if self._stream:
+                        raw_content = await self._stream_invoke(llm, messages)
                     else:
-                        # want_tools=False: call LLM directly (stateless)
-                        llm = self._apply_thinking(self._text_model, self._llm_thinking, self._llm_vendor, want_tools=False)
-                        if self._stream:
-                            raw_content = await self._stream_invoke(llm, messages)
-                        else:
-                            response = await llm.ainvoke(messages)
-                            raw_content = response.content
+                        response = await llm.ainvoke(messages)
+                        raw_content = response.content
 
                 # ---------------- JSON parse ----------------
 
@@ -218,16 +205,13 @@ class BaseAgent:
 
                 if attempt < max_retries and _is_retryable_error(error_msg):
                     if _is_connection_error(error_msg):
-                        # 连接错误：重置 agent 实例和 MCP 连接，让下次调用重建
+                        # connection error: retry after delay
                         logging.warning(
-                            f"🌐 {description}遇到连接错误，重置连接后重试..."
-                            f" (尝试 {attempt + 1}/{max_retries}): {str(e)}"
+                            f"🌐 {description} connection error, retrying..."
+                            f" (attempt {attempt + 1}/{max_retries}): {str(e)}"
                         )
-                        self._text_agent = None
-                        self._vis_agent = None
-                        await self.runtime.reset_mcp()
                     elif _is_timeout_error(error_msg):
-                        # 超时错误：保留 MCP 连接和 agent，仅等待后重试
+                        # 超时错误：仅等待后重试
                         logging.warning(
                             f"⏱️ {description}遇到超时，{retry_delay}秒后重试..."
                             f" (尝试 {attempt + 1}/{max_retries})"

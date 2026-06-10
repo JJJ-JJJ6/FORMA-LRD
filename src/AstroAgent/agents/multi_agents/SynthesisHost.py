@@ -33,7 +33,7 @@ class SynthesisHost(BaseAgent):
         """Write final report and extract structured summary."""
         from AstroAgent.agents.multi_agents.harness import synthesize_host
 
-        harness_dir = state.get("harness_dir")
+        harness_dir = state.get("hypothesis_dir")
         if not harness_dir or not os.path.isdir(harness_dir):
             print("[SynthesisHost] No harness_dir — skipping.")
             state["final_report"] = None

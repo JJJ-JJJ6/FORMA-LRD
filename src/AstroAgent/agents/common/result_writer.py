@@ -43,7 +43,7 @@ class ResultWriter:
 
         file_name = state.get("file_name", "unknown")
 
-        self._write_rule_analysis(state, output_dir, file_name)
+        self._write_hypothesis_analysis(state, output_dir, file_name)
         self._write_summary(state, output_dir, file_name)
         self._write_in_brief(state, output_dir, file_name)
         self._write_snapshot(state, output_dir, file_name)
@@ -73,7 +73,7 @@ class ResultWriter:
                         else json.dumps(value, indent=2, ensure_ascii=False))
                 f.write("\n\n")
 
-    def write_rule_analysis_qso(self, state: SpectroState) -> None:
+    def write_hypothesis_analysis_qso(self, state: SpectroState) -> None:
         """写出 rule_analysis_QSO.txt（在 QSO quantitative_analysis 结束后调用）"""
         output_dir, file_name = self._resolve_output_dir(state), state.get("file_name", "unknown")
         os.makedirs(output_dir, exist_ok=True)
@@ -86,7 +86,7 @@ class ResultWriter:
                         else json.dumps(step_f_raw, indent=2, ensure_ascii=False))
                 f.write("\n\n")
 
-    def write_rule_analysis_lrg(self, state: SpectroState) -> None:
+    def write_hypothesis_analysis_lrg(self, state: SpectroState) -> None:
         """写出 rule_analysis_LRG.txt（在 LRG/BGS quantitative_analysis 结束后调用）"""
         e = state.get("rule_analysis_LRG") or {}
         extract = state.get("extract_LRG") or {}
@@ -274,9 +274,9 @@ class ResultWriter:
                 writer.writeheader()
                 writer.writerows(rows)
 
-    def write_harness_results(self, state: SpectroState) -> None:
+    def write_hypothesis_results(self, state: SpectroState) -> None:
         """写出 per-hypothesis harness 完整报告（.txt）。"""
-        results = state.get('harness_results')
+        results = state.get('hypothesis_results')
         if not results:
             return
         output_dir = self._resolve_output_dir(state)
@@ -498,7 +498,7 @@ class ResultWriter:
                 f.write(f"  Remaining_doubts : {'; '.join(doubts) if doubts else 'none'}\n")
                 f.write("\n")
 
-    def write_rule_analysis_elg(self, state: SpectroState) -> None:
+    def write_hypothesis_analysis_elg(self, state: SpectroState) -> None:
         """写出 rule_analysis_ELG.txt（在 ELG quantitative_analysis 结束后调用）"""
         e = state.get("rule_analysis_ELG") or {}
         extract = state.get("extract_ELG") or {}
@@ -521,15 +521,15 @@ class ResultWriter:
                 f.write(json.dumps(step_f_extract, indent=2, ensure_ascii=False))
                 f.write("\n\n")
 
-    def write_rule_analysis(self, state: SpectroState) -> None:
+    def write_hypothesis_analysis(self, state: SpectroState) -> None:
         """Write harness-based rule analysis results."""
         output_dir, file_name = self._resolve_output_dir(state), state.get("file_name", "unknown")
         os.makedirs(output_dir, exist_ok=True)
         path = os.path.join(output_dir, f"{file_name}_rule_analysis.txt")
 
-        synthesis = state.get('rule_analysis') or {}
+        synthesis = state.get('hypothesis_analysis') or {}
         ranked = state.get('harness_ranked') or []
-        results = state.get('harness_results') or []
+        results = state.get('hypothesis_results') or []
 
         with open(path, "w", encoding=self.encoding) as f:
             f.write("=" * 60 + "\n")
@@ -560,7 +560,7 @@ class ResultWriter:
     # 📄 Artifact Writers
     # =========================
 
-    def _write_rule_analysis(self, state: SpectroState, output_dir: str, file_name: str):
+    def _write_hypothesis_analysis(self, state: SpectroState, output_dir: str, file_name: str):
         # rule_analysis_QSO is now a dict written directly by RuleAnalyst.py as .txt files.
         # This .md output is superseded; skip to avoid empty files.
         return

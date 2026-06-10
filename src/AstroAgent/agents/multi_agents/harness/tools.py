@@ -924,13 +924,14 @@ def _build_line_tables(harness_results: list, harness_dir: str) -> str:
 
 from pathlib import Path as _Path
 
-_SKILLS_DIR = _Path(__file__).resolve().parent / "skills"
+_BASE_DIR = _Path(__file__).resolve().parent
+_KB_DIR = _BASE_DIR / "kb"
 
 _GREP_FILES: dict[str, _Path] = {
-    "kb/classification.md": _SKILLS_DIR / "kb" / "classification.md",
-    "kb/ionization.md": _SKILLS_DIR / "kb" / "ionization.md",
-    "kb/lines.md": _SKILLS_DIR / "kb" / "lines.md",
-    "kb/composite_profile.md": _SKILLS_DIR / "kb" / "composite_profile.md",
+    "kb/classification.md": _KB_DIR / "classification.md",
+    "kb/ionization.md": _KB_DIR / "ionization.md",
+    "kb/lines.md": _KB_DIR / "lines.md",
+    "kb/composite_profile.md": _KB_DIR / "composite_profile.md",
 }
 
 _grep_cache: dict[str, str] | None = None

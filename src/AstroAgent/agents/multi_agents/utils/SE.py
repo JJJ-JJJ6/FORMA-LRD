@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
-from AstroAgent.agents.multi_agents.utils.RA import (
+from AstroAgent.agents.multi_agents.utils.HA import (
     build_dn4000_lookup,
     _read_csv_lines,
     _build_line_table,
@@ -28,11 +28,11 @@ from AstroAgent.agents.multi_agents.utils.RA import (
 # Skill prompt loading
 # ---------------------------------------------------------------------------
 
-_HARNESS_DIR = Path(__file__).resolve().parent.parent / "harness"
+_HARNESS_DIR = Path(__file__).resolve().parent.parent / "harness" / "skills" / "SelfEvolve"
 
 
 def _load_skill(filename: str) -> str:
-    """Load a skill prompt from the harness directory."""
+    """Load a skill prompt from the SelfEvolve skills directory."""
     return (_HARNESS_DIR / filename).read_text(encoding="utf-8")
 
 
@@ -637,7 +637,7 @@ def _record_failure(
         "root_cause": analysis.get("root_cause"),
         "explanation": analysis.get("explanation"),
         "suggested_fix": analysis.get("suggested_fix"),
-        "harness_dir": harness_dir,
+        "hypothesis_dir": harness_dir,
         "synthesis_stream": os.path.join(harness_dir, "synthesis_stream.md"),
         "failure_analysis_stream": os.path.join(harness_dir, "failure_analysis_stream.md"),
     }

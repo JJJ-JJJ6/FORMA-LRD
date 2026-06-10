@@ -24,7 +24,7 @@ from AstroAgent.agents.multi_agents.harness.tools import (
 from AstroAgent.core.llm import (
     _detect_vendor, _build_thinking_extra_body, _create_chat_openai,
 )
-from AstroAgent.agents.multi_agents.harness.synthesize import _resolve_max_tokens
+from AstroAgent.agents.multi_agents.harness.hypothesis_synthesis import _resolve_max_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ from AstroAgent.agents.multi_agents.harness.synthesize import _resolve_max_token
 
 def _load_skill() -> str:
     skill_path = os.path.join(
-        os.path.dirname(__file__), "skills", "synthesize_host_skill.md"
+        os.path.dirname(__file__), "skills", "SynthesisHost", "synthesize_host_skill.md"
     )
     if os.path.exists(skill_path):
         return open(skill_path, encoding="utf-8").read()
@@ -95,7 +95,7 @@ def _format_confirmed_lines_with_errors(
     wavelength_errors: {int(wavelength): error} from _lookup_wavelength_errors.
     """
     if not confirmed_lines:
-        return "*(无认证谱线)*\n"
+        return "*(no confirmed lines)*\n"
 
     lines = []
     for entry in confirmed_lines:
@@ -104,7 +104,7 @@ def _format_confirmed_lines_with_errors(
         name, wl = entry[0], entry[1]
         wl_int = int(float(wl))
         err = wavelength_errors.get(wl_int)
-        err_str = f" ± {err:.4f}" if err is not None else " (误差未知)"
+        err_str = f" ± {err:.4f}" if err is not None else " (error unknown)"
         rest_wl = "?"  # LLM looks up rest wavelength from the line tables in the prompt
         lines.append(f"- {name}: λ_obs = {wl}{err_str}")
     return "\n".join(lines) + "\n"
@@ -116,10 +116,10 @@ def _format_confirmed_lines_with_errors(
 
 def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     """Build the user prompt for the Synthesis Host report-writing LLM."""
-    rule_analysis = state.get("rule_analysis") or {}
+    rule_analysis = state.get("hypothesis_analysis") or {}
     auditor_json = state.get("auditor_verdict_json") or {}
     continuum = state.get("continuum") or {}
-    harness_results = state.get("harness_results") or []
+    harness_results = state.get("hypothesis_results") or []
 
     # ── Spectrum metadata ──
     wl = state["spectrum"]["wavelength"]
@@ -132,54 +132,54 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
 
     parts = []
 
-    parts.append("## 光谱基本信息")
+    parts.append("## Spectrum")
     parts.append("")
-    parts.append(f"- 波长范围: {wl_left:.0f} – {wl_right:.0f} Å")
+    parts.append(f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å")
     if snr_median is not None:
-        parts.append(f"- 中值 SNR: {snr_median:.1f}")
-    parts.append(f"- 蓝端: {wl_left:.0f} – 4000 Å (throughput drop)")
-    parts.append(f"- 红端 (OH zone): 7800 – {wl_right:.0f} Å")
+        parts.append(f"- Median SNR: {snr_median:.1f}")
+    parts.append(f"- Blue edge: {wl_left:.0f} – 4000 Å (throughput drop)")
+    parts.append(f"- Red edge (OH zone): 7800 – {wl_right:.0f} Å")
     parts.append("")
 
     # ── Continuum description ──
     continuum_desc = continuum.get("description", "")
     if continuum_desc:
-        parts.append("## 连续谱描述 (VisualInterpreter)")
+        parts.append("## Continuum Description (VisualInterpreter)")
         parts.append("")
         parts.append(continuum_desc)
         parts.append("")
 
     # ── Synthesis summary ──
-    parts.append("## 合成裁决 (Synthesis)")
+    parts.append("## Hypothesis Synthesis Verdict")
     parts.append("")
     best_idx = rule_analysis.get("best_hypothesis_idx")
-    parts.append(f"- 最佳假设: H{best_idx}, z = {rule_analysis.get('redshift')}")
-    parts.append(f"- 分类: {rule_analysis.get('classification', '?')}")
-    parts.append(f"- 置信度: {rule_analysis.get('confidence', '?')}")
-    parts.append(f"- 锚线: {rule_analysis.get('anchor_line', '?')} at {rule_analysis.get('anchor_wavelength', '?')} Å")
-    parts.append(f"- 主要证据: {rule_analysis.get('primary_evidence', '?')}")
+    parts.append(f"- Best hypothesis: H{best_idx}, z = {rule_analysis.get('redshift')}")
+    parts.append(f"- Classification: {rule_analysis.get('classification', '?')}")
+    parts.append(f"- Confidence: {rule_analysis.get('confidence', '?')}")
+    parts.append(f"- Anchor line: {rule_analysis.get('anchor_line', '?')} at {rule_analysis.get('anchor_wavelength', '?')} Å")
+    parts.append(f"- Primary evidence: {rule_analysis.get('primary_evidence', '?')}")
     parts.append("")
 
     excluded = rule_analysis.get("excluded_hypotheses") or []
     if excluded:
-        parts.append("被排除的假设:")
+        parts.append("Excluded hypotheses:")
         for exc in excluded:
             if isinstance(exc, dict):
                 parts.append(f"  - H{exc.get('idx')} (z={exc.get('z')}): {exc.get('reason', '')}")
         parts.append("")
 
     # ── AA verdict ──
-    parts.append("## 审计裁决 (Analysis Auditor)")
+    parts.append("## Analysis Auditor Verdict")
     parts.append("")
-    parts.append(f"- 裁决: {auditor_json.get('verdict', '?')}")
-    parts.append(f"- 校准后置信度: {auditor_json.get('calibrated_confidence', '?')}")
-    parts.append(f"- 光谱质量: {auditor_json.get('spectrum_quality', '?')}")
+    parts.append(f"- Verdict: {auditor_json.get('verdict', '?')}")
+    parts.append(f"- Calibrated confidence: {auditor_json.get('calibrated_confidence', '?')}")
+    parts.append(f"- Spectrum quality: {auditor_json.get('spectrum_quality', '?')}")
     parts.append(f"- has_real_peak: {auditor_json.get('has_real_peak', '?')}")
     parts.append("")
 
     key_issues = auditor_json.get("key_issues") or []
     if key_issues:
-        parts.append("关键问题:")
+        parts.append("Key issues:")
         for ki in key_issues:
             parts.append(f"  - {ki}")
         parts.append("")
@@ -187,12 +187,12 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     # ── Confirmed lines with wavelength errors ──
     confirmed_lines = auditor_json.get("confirmed_lines") or []
     wavelength_errors = _lookup_wavelength_errors(harness_dir, output_dir)
-    parts.append("## 认证谱线 (含波长误差)")
+    parts.append("## Confirmed Lines (with wavelength errors)")
     parts.append("")
     parts.append(_format_confirmed_lines_with_errors(confirmed_lines, wavelength_errors))
 
     # ── Per-hypothesis line tables ──
-    from AstroAgent.agents.multi_agents.harness.synthesize import _build_line_tables
+    from AstroAgent.agents.multi_agents.harness.hypothesis_synthesis import _build_line_tables
     audit_indices = []
     if best_idx is not None:
         audit_indices.append(best_idx)
@@ -203,7 +203,7 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     if audit_indices:
         audit_results = [r for r in harness_results if r.get("hypothesis_idx") in audit_indices]
         if audit_results:
-            parts.append("## 每假设谱线表 (post-FeatureAuditor)")
+            parts.append("## Per-Hypothesis Line Tables (post-FeatureAuditor)")
             parts.append("")
             parts.append(_build_line_tables(audit_results, harness_dir))
 
@@ -214,34 +214,34 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     oii_v = [v for v in fa.get("oii_morphology_verdicts", []) if v.get("hypothesis_idx") in audit_indices]
 
     if composite_v or doublet_v or oii_v:
-        parts.append("## FA 结构化裁决")
+        parts.append("## FA Structured Verdicts")
         parts.append("")
         if composite_v:
-            parts.append("### 复合体判定")
+            parts.append("### Composite Profile Verdicts")
             for cv in composite_v:
                 parts.append(f"- H{cv['hypothesis_idx']} {cv.get('species','?')}: composite={cv.get('is_composite')}, {cv.get('notes','')}")
             parts.append("")
         if doublet_v:
-            parts.append("### 双线判定")
+            parts.append("### Doublet Verdicts")
             for dv in doublet_v:
                 parts.append(f"- H{dv['hypothesis_idx']} {dv.get('name_a','?')}+{dv.get('name_b','?')}: ratio_ok={dv.get('ratio_ok')}, {dv.get('notes','')}")
             parts.append("")
         if oii_v:
-            parts.append("### [O II] 形态学判定")
+            parts.append("### [O II] Morphology Verdicts")
             for ov in oii_v:
                 parts.append(f"- H{ov['hypothesis_idx']} {ov.get('wl_obs','?')}: detected={ov.get('detected')}, {ov.get('notes','')}")
             parts.append("")
 
     # ── Task ──
     report_path = os.path.join(harness_dir, "final_report.md")
-    parts.append("## 任务")
+    parts.append("## Task")
     parts.append("")
     parts.append(
-        f"请按照你的 system prompt 中的 6 节结构撰写最终报告。"
-        f"使用 `compute_redshift_error(rest_wavelength, wavelength_error)` "
-        f"为每条有波长误差的认证谱线计算 σ_z。"
-        f"调用 `write_report(file_path=\"{report_path}\", content=<完整 markdown>)` 保存报告。"
-        f"所有判断均已在上游完成——你的任务是**总结和呈现**，不是重新分析。"
+        f"Write the final report following the 6-section structure in your system prompt. "
+        f"Use `compute_redshift_error(rest_wavelength, wavelength_error)` "
+        f"to compute σ_z for each confirmed line that has a wavelength error. "
+        f"Call `write_report(file_path=\"{report_path}\", content=<full markdown>)` to save the report. "
+        f"All judgments have been made upstream — your job is to **summarise and present**, not to re-analyse."
     )
     parts.append("")
 

@@ -35,7 +35,7 @@ from AstroAgent.agents.common.result_writer import ResultWriter
 from AstroAgent.core.runtime.runtime_container import RuntimeContainer
 from AstroAgent.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from AstroAgent.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
-from AstroAgent.agents.multi_agents.harness.synthesize import _build_line_tables
+from AstroAgent.agents.multi_agents.harness.hypothesis_synthesis import _build_line_tables
 from AstroAgent.agents.multi_agents.harness.continuation import (
     _find_last_ai_message, _find_last_content_ai_message, _is_truncated,
     _format_tool_call, _format_tool_result,
@@ -47,21 +47,6 @@ class FeatureAuditorFailed(Exception):
     """Raised when FeatureAuditor fails after all retries are exhausted."""
 
 
-# ---------------------------------------------------------------------------
-# Skill paths
-# ---------------------------------------------------------------------------
-
-SKILLS_DIR = Path(__file__).resolve().parent / "harness" / "skills"
-FEATURE_AUDIT_SKILL_PATH = SKILLS_DIR / "feature_audit_skill.md"
-SYNTHESIS_AUDIT_SKILL_PATH = SKILLS_DIR / "auditor_audit_skill.md"
-
-
-def _load_feature_audit_skill() -> str:
-    return FEATURE_AUDIT_SKILL_PATH.read_text(encoding="utf-8")
-
-
-def _load_synthesis_audit_skill() -> str:
-    return SYNTHESIS_AUDIT_SKILL_PATH.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -363,8 +348,8 @@ def _detect_doublets(
 
 
 def build_contradiction_matrix(
-    harness_results: List[dict],
-    harness_dir: str,
+    hypothesis_results: List[dict],
+    hypothesis_dir: str,
     wl_min: float,
     wl_max: float,
 ) -> Tuple[List[dict], List[dict], dict]:
@@ -382,11 +367,11 @@ def build_contradiction_matrix(
     all_features = []
     features_by_hyp = defaultdict(list)
 
-    for r in harness_results:
+    for r in hypothesis_results:
         idx = r.get("hypothesis_idx")
         if idx is None:
             continue
-        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_path = os.path.join(hypothesis_dir, f"{idx}_lines.csv")
         if not os.path.exists(csv_path):
             continue
         with open(csv_path, newline="", encoding="utf-8") as f:
@@ -446,7 +431,7 @@ def build_contradiction_matrix(
 
     hyp_indices = sorted(set(f["hypothesis_idx"] for f in all_features))
     hyp_info = {}
-    for r in harness_results:
+    for r in hypothesis_results:
         idx = r.get("hypothesis_idx")
         if idx is not None:
             hyp_info[idx] = {"redshift": r.get("redshift", 0)}
@@ -513,7 +498,7 @@ _COMPOSITE_SPECIES = [
 
 def _detect_emission_absorption_pairs(
     matrix_rows: List[dict],
-    harness_results: List[dict],
+    hypothesis_results: List[dict],
 ) -> List[dict]:
     """Detect emission-absorption pairs of the same species within each hypothesis.
 
@@ -563,10 +548,10 @@ def _group_features_by_hypothesis(matrix_rows: List[dict]) -> dict:
 
 def _build_emission_absorption_pairs_section(
     matrix_rows: List[dict],
-    harness_results: List[dict],
+    hypothesis_results: List[dict],
 ) -> str:
     """Build the 'Emission–Absorption Pairs' section for the FA user prompt."""
-    pairs = _detect_emission_absorption_pairs(matrix_rows, harness_results)
+    pairs = _detect_emission_absorption_pairs(matrix_rows, hypothesis_results)
     if not pairs:
         return (
             "\n## Emission–Absorption Pairs (Composite Profile Check Required)\n\n"
@@ -607,20 +592,20 @@ def _build_emission_absorption_pairs_section(
 
 def _build_feature_audit_user_message(
     state: SpectroState,
-    harness_dir: str,
+    hypothesis_dir: str,
     matrix_rows: List[dict],
     doublet_annotations: List[dict],
     stats: dict,
 ) -> str:
     """Build the user prompt for Stage A — feature verification."""
-    harness_results = state.get("harness_results") or []
+    hypothesis_results = state.get("hypothesis_results") or []
     wl = state["spectrum"]["wavelength"]
     wl_left = float(wl[0])
     wl_right = float(wl[-1])
 
     hyp_indices = stats.get("hypothesis_indices", [])
     hyp_info = {}
-    for r in harness_results:
+    for r in hypothesis_results:
         idx = r.get("hypothesis_idx")
         if idx is not None:
             hyp_info[idx] = {"redshift": r.get("redshift", 0)}
@@ -740,7 +725,7 @@ def _build_feature_audit_user_message(
             parts.append("")
 
     # ── Emission-Absorption Pairs ──
-    parts.append(_build_emission_absorption_pairs_section(matrix_rows, harness_results))
+    parts.append(_build_emission_absorption_pairs_section(matrix_rows, hypothesis_results))
 
     # ── Task ──
     parts.append("## Task")
@@ -759,7 +744,7 @@ def _build_feature_audit_user_message(
         "for EVERY pair and populate the `composite_profile_verdicts` field\n"
         "5. Check doublet annotations for ratio violations\n"
         "6. Output a verdict for EVERY row in the matrix\n\n"
-        "The downstream synthesis agent depends on you to filter noise from "
+        "The downstream Hypothesis Synthesis agent depends on you to filter noise from "
         "its input. A noise feature left in the catalogs will propagate into "
         "wrong cross-comparisons. A real feature wrongly removed will weaken "
         "the correct hypothesis. Err on the side of FLAG (keep with warning) "
@@ -769,7 +754,7 @@ def _build_feature_audit_user_message(
     return "\n".join(parts)
 
 
-def _build_merged_verified_features(harness_dir: str, best_idx: int = None) -> str:
+def _build_merged_verified_features(hypothesis_dir: str, best_idx: int = None) -> str:
     """Build a unified table of ALL KEEP features across all hypotheses.
 
     Reads every ``{idx}_lines_cleaned.csv`` (falling back to ``{idx}_lines.csv``),
@@ -783,10 +768,10 @@ def _build_merged_verified_features(harness_dir: str, best_idx: int = None) -> s
 
     # Collect all KEEP features across hypotheses
     all_keeps: list[dict] = []
-    pattern = os.path.join(harness_dir, "*_lines_cleaned.csv")
+    pattern = os.path.join(hypothesis_dir, "*_lines_cleaned.csv")
     csv_files = sorted(_glob.glob(pattern))
     if not csv_files:
-        pattern = os.path.join(harness_dir, "*_lines.csv")
+        pattern = os.path.join(hypothesis_dir, "*_lines.csv")
         csv_files = sorted(_glob.glob(pattern))
 
     for csv_path in csv_files:
@@ -918,20 +903,20 @@ def _build_merged_verified_features(harness_dir: str, best_idx: int = None) -> s
     return "\n".join(lines)
 
 
-def _build_cwt_catalog(harness_dir: str) -> list[dict]:
+def _build_cwt_catalog(hypothesis_dir: str) -> list[dict]:
     """Build a unified CWT feature catalog from redrock emission/absorption CSVs.
 
     Reads ``{spectrum_id}_emission.csv`` and ``{spectrum_id}_absorption.csv``
-    from the parent output directory (one level above harness_dir).  These are
+    from the parent output directory (one level above hypothesis_dir).  These are
     the FULL CWT peak/trough catalogs — every feature the CWT pipeline detected
     across the entire spectrum, NOT limited to hypothesis-matched features.
 
     Returns a list of dicts with keys: wavelength, amplitude, fwhm_km_s,
     ridge_length, snr, width_class, feature_type.
     """
-    # The output dir is the parent of harness_dir
-    output_dir = os.path.dirname(os.path.normpath(harness_dir))
-    spectrum_id = os.path.basename(os.path.normpath(harness_dir)).split("_")[0]
+    # The output dir is the parent of hypothesis_dir
+    output_dir = os.path.dirname(os.path.normpath(hypothesis_dir))
+    spectrum_id = os.path.basename(os.path.normpath(hypothesis_dir)).split("_")[0]
 
     all_features: list[dict] = []
 
@@ -971,13 +956,13 @@ def _build_cwt_catalog(harness_dir: str) -> list[dict]:
     return all_features
 
 
-def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -> str:
+def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str) -> str:
     """Build the user prompt for Stage B — synthesis verdict audit.
 
     Includes the synthesis verdict, winning hypothesis details, and the
     2nd-best hypothesis for quick alternative checking.
     """
-    rule_analysis = state.get("rule_analysis") or {}
+    rule_analysis = state.get("hypothesis_analysis") or {}
     feature_audit_verdict = state.get("feature_audit_verdict") or {}
 
     # ── Spectrum metadata ──
@@ -997,8 +982,8 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
         "",
     ]
 
-    # ── Synthesis verdict ──
-    parts.append("## Synthesis Verdict")
+    # ── Hypothesis Synthesis verdict ──
+    parts.append("## Hypothesis Synthesis Verdict")
     parts.append("")
     parts.append("```json")
     parts.append(json.dumps(rule_analysis, indent=2, ensure_ascii=False, default=str))
@@ -1006,25 +991,25 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
     parts.append("")
 
     # ── Line Inventory from synthesis.csv ──
-    synthesis_csv_path = os.path.join(harness_dir, "synthesis.csv")
+    synthesis_csv_path = os.path.join(hypothesis_dir, "synthesis.csv")
     if os.path.exists(synthesis_csv_path):
-        parts.append("## Line Inventory from Synthesis")
+        parts.append("## Line Inventory from Hypothesis Synthesis")
         parts.append("")
         parts.append(
-            "This is the definitive line catalog produced by the synthesis agent. "
+            "This is the definitive line catalog produced by the Hypothesis Synthesis agent. "
             "Every row is a line it believes supports the best redshift hypothesis. "
             "**Your job is to find lines that don't belong here.**"
         )
         parts.append("")
         parts.append(_format_synthesis_csv(synthesis_csv_path))
     else:
-        parts.append("## Line Inventory from Synthesis")
+        parts.append("## Line Inventory from Hypothesis Synthesis")
         parts.append("")
         parts.append("*(synthesis.csv not found — nothing to audit.)*")
         parts.append("")
 
     # ── Per-hypothesis cleaned line tables (post-FeatureAuditor) ──
-    harness_results = state.get("harness_results") or []
+    hypothesis_results = state.get("hypothesis_results") or []
     best_idx = rule_analysis.get("best_hypothesis_idx")
     excluded = rule_analysis.get("excluded_hypotheses") or []
     audit_indices = []
@@ -1036,7 +1021,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
             if idx_e not in audit_indices:
                 audit_indices.append(idx_e)
 
-    audit_results = [r for r in harness_results if r.get("hypothesis_idx") in audit_indices]
+    audit_results = [r for r in hypothesis_results if r.get("hypothesis_idx") in audit_indices]
     if audit_results:
         parts.append("## Per-Hypothesis Line Tables (post-FeatureAuditor)")
         parts.append("")
@@ -1047,10 +1032,10 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
             f"Showing: H{', H'.join(str(i) for i in audit_indices)}."
         )
         parts.append("")
-        parts.append(_build_line_tables(audit_results, harness_dir))
+        parts.append(_build_line_tables(audit_results, hypothesis_dir))
 
     # ── Merged verified features (ALL hypotheses, KEEP only) ──
-    parts.append(_build_merged_verified_features(harness_dir, best_idx))
+    parts.append(_build_merged_verified_features(hypothesis_dir, best_idx))
 
     # ── Continuum description (from VisualInterpreter) ──
     continuum = state.get("continuum") or {}
@@ -1195,9 +1180,9 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
 
     parts.append(
         "**⚠ These FA verdicts are authoritative upstream findings.** "
-        "If the synthesis agent's conclusions contradict FA on any of these "
+        "If the Hypothesis Synthesis agent's conclusions contradict FA on any of these "
         "points (e.g. synthesis treats a FA composite=false pair as a linked "
-        "Mg II system, or accepts a FA sep_ok=false doublet), flag this as a "
+        "Mg II system, or accepts a FA ratio_ok=false doublet), flag this as a "
         "critical issue in `key_issues`."
     )
     parts.append("")
@@ -1241,7 +1226,7 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
         parts.append("### ⚠ Null Result — Spectral Classification Guess")
         parts.append("")
         parts.append(
-            "The synthesis agent returned `redshift=null` — no hypothesis was "
+            "The Hypothesis Synthesis agent returned `redshift=null` — no hypothesis was "
             "confirmed.  However, this spectrum may still contain astrophysical "
             "signal.  Using the **continuum description** above and the **All "
             "Verified Features** table, provide your best guess for the spectral "
@@ -1317,8 +1302,8 @@ def _format_synthesis_csv(csv_path: str) -> str:
 # ============================================================================
 
 def _write_cleaned_csvs(
-    harness_dir: str,
-    harness_results: List[dict],
+    hypothesis_dir: str,
+    hypothesis_results: List[dict],
     feature_verdicts: List[dict],
 ) -> None:
     """Write ``{idx}_lines_cleaned.csv`` files with noise features annotated.
@@ -1336,11 +1321,11 @@ def _write_cleaned_csvs(
         amp_sign = -1 if ft.startswith("abs") else 1  # emission by default
         verdict_lookup[(int(float(wl)), amp_sign)] = v
 
-    for r in harness_results:
+    for r in hypothesis_results:
         idx = r.get("hypothesis_idx")
         if idx is None:
             continue
-        csv_path = os.path.join(harness_dir, f"{idx}_lines.csv")
+        csv_path = os.path.join(hypothesis_dir, f"{idx}_lines.csv")
         if not os.path.exists(csv_path):
             continue
 
@@ -1356,7 +1341,7 @@ def _write_cleaned_csvs(
 
         out_fieldnames = list(fieldnames) + ["feature_audit", "feature_audit_flag"]
 
-        cleaned_path = os.path.join(harness_dir, f"{idx}_lines_cleaned.csv")
+        cleaned_path = os.path.join(hypothesis_dir, f"{idx}_lines_cleaned.csv")
         with open(cleaned_path, "w", newline="", encoding="utf-8") as f:
             writer = _csv.DictWriter(f, fieldnames=out_fieldnames)
             writer.writeheader()
@@ -1405,7 +1390,7 @@ async def _run_llm_agent(
     system_prompt: str,
     user_prompt: str,
     tools: list,
-    harness_dir: str,
+    hypothesis_dir: str,
     stream_filename: str,
     stream_title: str,
     json_keys: List[str],
@@ -1442,8 +1427,8 @@ async def _run_llm_agent(
     )
 
     config = {"recursion_limit": 100}
-    stream_md_path = os.path.join(harness_dir, stream_filename)
-    os.makedirs(harness_dir, exist_ok=True)
+    stream_md_path = os.path.join(hypothesis_dir, stream_filename)
+    os.makedirs(hypothesis_dir, exist_ok=True)
 
     # ── Streaming path ──────────────────────────────────────────────
     try:
@@ -1574,15 +1559,16 @@ class FeatureAuditor(BaseAgent):
     """
 
     agent_name = "FeatureAuditor"
+    _SKILL_DIR = Path(__file__).resolve().parent / "harness" / "skills" / "AnalysisAuditor"
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
 
     async def run(self, state: SpectroState) -> SpectroState:
         """Run the feature audit stage."""
-        harness_results = state.get("harness_results") or []
+        hypothesis_results = state.get("hypothesis_results") or []
 
-        if not harness_results:
+        if not hypothesis_results:
             print("[FeatureAuditor] No harness results — skipping.")
             state["feature_audit_verdict"] = {
                 "skipped": True, "reason": "No harness results to audit.",
@@ -1590,15 +1576,15 @@ class FeatureAuditor(BaseAgent):
             return state
 
         # ── Resolve harness directory ──
-        harness_dir = state.get("harness_dir")
-        if not harness_dir:
+        hypothesis_dir = state.get("hypothesis_dir")
+        if not hypothesis_dir:
             output_dir = state.get("output_dir") or ""
             file_name = state.get("file_name") or ""
             if output_dir and file_name:
-                harness_dir = os.path.join(output_dir, f"{file_name}_harness")
+                hypothesis_dir = os.path.join(output_dir, f"{file_name}_harness")
             else:
-                harness_dir = "."
-        state["harness_dir"] = harness_dir
+                hypothesis_dir = "."
+        state["hypothesis_dir"] = hypothesis_dir
 
         # ── Build matrix ──
         spec = state["spectrum"]
@@ -1606,7 +1592,7 @@ class FeatureAuditor(BaseAgent):
         wl_max = float(spec["wavelength"][-1])
 
         matrix_rows, doublet_annotations, stats = build_contradiction_matrix(
-            harness_results, harness_dir, wl_min, wl_max,
+            hypothesis_results, hypothesis_dir, wl_min, wl_max,
         )
 
         if not matrix_rows:
@@ -1627,9 +1613,9 @@ class FeatureAuditor(BaseAgent):
         )
 
         # ── Build prompts ──
-        system_prompt = _load_feature_audit_skill()
+        system_prompt = self._load_skill("feature_audit")
         user_prompt = _build_feature_audit_user_message(
-            state, harness_dir, matrix_rows, doublet_annotations, stats,
+            state, hypothesis_dir, matrix_rows, doublet_annotations, stats,
         )
 
         # ── Closure over spectrum arrays ──
@@ -1677,7 +1663,7 @@ class FeatureAuditor(BaseAgent):
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
-                harness_dir=harness_dir,
+                hypothesis_dir=hypothesis_dir,
                 stream_filename="feature_audit_stream.md",
                 stream_title="Feature Audit — Cross-Hypothesis Verification",
                 json_keys=["feature_verdicts"],
@@ -1716,10 +1702,10 @@ class FeatureAuditor(BaseAgent):
         feature_verdicts = parsed.get("feature_verdicts", [])
         if feature_verdicts:
             try:
-                _write_cleaned_csvs(harness_dir, harness_results, feature_verdicts)
+                _write_cleaned_csvs(hypothesis_dir, hypothesis_results, feature_verdicts)
                 print(
                     f"[FeatureAuditor] Wrote cleaned CSVs for "
-                    f"{len(harness_results)} hypotheses."
+                    f"{len(hypothesis_results)} hypotheses."
                 )
             except Exception as exc:
                 logging.warning(f"[FeatureAuditor] Failed to write cleaned CSVs: {exc}")
@@ -1738,7 +1724,7 @@ class FeatureAuditor(BaseAgent):
         )
 
         # Save verdict JSON
-        verdict_path = os.path.join(harness_dir, "feature_audit_verdict.json")
+        verdict_path = os.path.join(hypothesis_dir, "feature_audit_verdict.json")
         try:
             with open(verdict_path, "w", encoding="utf-8") as f:
                 json.dump(parsed, f, indent=2, ensure_ascii=False)
@@ -1755,13 +1741,14 @@ class FeatureAuditor(BaseAgent):
 class AnalysisAuditor(BaseAgent):
     """Adversarial second reviewer for the synthesis verdict.
 
-    Takes the synthesis output (rule_analysis + harness_results) and
+    Takes the synthesis output (rule_analysis + hypothesis_results) and
     independently stress-tests the winning hypothesis by reading the raw
     spectrum.  Outputs a calibrated verdict: CONFIRM / DOWNGRADE / REJECT
     / UNCERTAIN.
     """
 
     agent_name = "AnalysisAuditor"
+    _SKILL_DIR = Path(__file__).resolve().parent / "harness" / "skills" / "AnalysisAuditor"
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
@@ -1774,12 +1761,12 @@ class AnalysisAuditor(BaseAgent):
     async def run(self, state: SpectroState) -> SpectroState:
         """Run the synthesis audit.
 
-        Reads ``state['rule_analysis']`` (the synthesis verdict) and
+        Reads ``state['hypothesis_analysis']`` (the synthesis verdict) and
         synthesis.csv (the best-answer line catalog).  Spawns an LLM agent
         with ``read_spectrum_region`` + ``grep_kb`` + ``detect_oii_slope_change``
         tools for independent defensive review.
         """
-        rule_analysis = state.get("rule_analysis") or {}
+        rule_analysis = state.get("hypothesis_analysis") or {}
 
         # ── Guard: no synthesis results ──
         if not rule_analysis or rule_analysis.get("redshift") is None:
@@ -1808,21 +1795,21 @@ class AnalysisAuditor(BaseAgent):
         )
 
         # ── Resolve harness directory ──
-        harness_dir = state.get("harness_dir")
-        if not harness_dir:
+        hypothesis_dir = state.get("hypothesis_dir")
+        if not hypothesis_dir:
             output_dir = state.get("output_dir") or ""
             file_name = state.get("file_name") or ""
             if output_dir and file_name:
-                harness_dir = os.path.join(output_dir, f"{file_name}_harness")
+                hypothesis_dir = os.path.join(output_dir, f"{file_name}_harness")
             else:
-                harness_dir = "."
+                hypothesis_dir = "."
 
         # ── Build prompts ──
-        system_prompt = _load_synthesis_audit_skill()
-        user_prompt = _build_synthesis_audit_user_message(state, harness_dir)
+        system_prompt = self._load_skill("auditor_audit")
+        user_prompt = _build_synthesis_audit_user_message(state, hypothesis_dir)
 
         # ── Build CWT catalog (all features, all hypotheses) ──
-        _cwt_catalog = _build_cwt_catalog(harness_dir)
+        _cwt_catalog = _build_cwt_catalog(hypothesis_dir)
 
         # ── Closure over spectrum arrays ──
         spec = state["spectrum"]
@@ -1938,7 +1925,7 @@ class AnalysisAuditor(BaseAgent):
             user_prompt=user_prompt,
             tools=[read_spectrum_region, grep_kb, detect_oii_slope_change,
                    query_cwt_catalog],
-            harness_dir=harness_dir,
+            hypothesis_dir=hypothesis_dir,
             stream_filename="auditor_stream.md",
             stream_title="Auditor — Synthesis Audit",
             json_keys=["verdict", "line_revisions", "spectrum_issues"],

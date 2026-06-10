@@ -59,15 +59,11 @@ class SpectroState(MessagesState):
     # wiped_peaks: Optional[List[Dict[str, float]]] = None
     # cleaned_troughs: Optional[List[Dict[str, float]]] = None
     brute_force_matching: Optional[List[Dict[str, Any]]] = None  # unified key (all peaks + all troughs, single pass)
-    # [deprecated] 3-mode keys — kept for rollback; will be removed after RuleAnalyst migration
-    brute_force_matching_qso: Optional[List[Dict[str, Any]]] = None
-    brute_force_matching_elg: Optional[List[Dict[str, Any]]] = None
-    brute_force_matching_lrg_bgs: Optional[List[Dict[str, Any]]] = None
     absorption_records: Optional[List[Dict[str, Any]]] = None
     emission_records: Optional[List[Dict[str, Any]]] = None
     overlap_regions: Optional[Dict[str, List[float]]] = None
     redshift_scoring: Optional[Dict[str, Any]] = None              # VI output: low_z/high_z hypothesis lists
-    harness_results: Optional[List[Dict[str, Any]]] = None       # per-hypothesis harness output (report + feature_catalog)
+    hypothesis_results: Optional[List[Dict[str, Any]]] = None       # per-hypothesis harness output (report + feature_catalog)
     ranked_hypotheses: Optional[List[Dict[str, Any]]] = None     # top-5 hypotheses ranked by global Δχ²
     spectrum_npz_path: Optional[str] = None                      # path to saved spectrum .npz for harness use
     # ===========================
@@ -86,49 +82,14 @@ class SpectroState(MessagesState):
     preliminary_classification_monkey: Optional[str] = None
     possible_object: Optional[List] = field(default=None)
     Lyalpha_candidate: Optional[List] = field(default=None)
-    rule_analysis_QSO: Optional[Dict[str, Any]] = field(default_factory=dict)
-    rule_analysis_ELG: Optional[Dict[str, Any]] = field(default_factory=dict)
-    rule_analysis_LRG: Optional[Dict[str, Any]] = field(default_factory=dict)
-    extract_QSO: Optional[Dict[str, Any]] = field(default_factory=dict)
-    extract_ELG: Optional[Dict[str, Any]] = field(default_factory=dict)
-    extract_LRG: Optional[Dict[str, Any]] = field(default_factory=dict)
-    patched_extract_QSO: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
-    patched_extract_ELG: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
-    patched_extract_LRG: Optional[Dict[str, Any]] = field(default_factory=dict)  # After per-path critique+patch
-    critique_QSO: Optional[List[str]] = None              # Per-hypothesis critique results (QSO)
-    critique_ELG: Optional[List[str]] = None              # Per-hypothesis critique results (ELG)
-    critique_LRG: Optional[List[str]] = None              # Per-hypothesis critique results (LRG)
-    patch_response_QSO: Optional[List[str]] = None        # Per-hypothesis patch responses (QSO)
-    patch_response_ELG: Optional[List[str]] = None        # Per-hypothesis patch responses (ELG)
-    patch_response_LRG: Optional[List[str]] = None        # Per-hypothesis patch responses (LRG)
-    debate_history_QSO: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (QSO)
-    debate_history_ELG: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (ELG)
-    debate_history_LRG: Optional[List[Dict[str, Any]]] = None  # Accumulated (critique, response) pairs across rounds (LRG)
-    current_discussion_round: int = 0                     # Current critique+patch round counter
     verdict: Optional[str] = None                         # AnalysisAuditor auditing_verdict output
-    verdict_extract: Optional[List[Dict[str, Any]]] = None  # AnalysisAuditor verdict_extract output
-    critique: Optional[str] = None                        # (legacy) kept for backward compat
-    patched_verdict: Optional[str] = None                 # (legacy) kept for backward compat
-    final_report: Optional[str] = None                    # RefinementAssistant refining_final output
-    discussion_rounds: Optional[int] = None               # Number of critique+patch discussion rounds
-    synthesis_QSO: Optional[str] = None
-    rule_analysis_galaxy: Optional[List] = field(default_factory=list)
-    # other Analysts
-    auditing_history_QSO: Optional[List] = field(default_factory=list)
-    refining_history_QSO: Optional[List] = field(default_factory=list)
-    auditing_history_galaxy: Optional[List] = field(default_factory=list)
-    refining_history_galaxy: Optional[List] = field(default_factory=list)
-    rule_analysis: Optional[Dict[str, Any]] = None
+    final_report: Optional[str] = None                    # SynthesisHost final report output
+    hypothesis_analysis: Optional[Dict[str, Any]] = None
     feature_audit_verdict: Optional[Dict[str, Any]] = None    # FeatureAuditor output
-    harness_dir: Optional[str] = None                          # per-spectrum harness output directory
-    _harness_mode: Optional[str] = None                        # "nomad" or "redrock"
+    hypothesis_dir: Optional[str] = None                          # per-spectrum harness output directory
+    _hypothesis_mode: Optional[str] = None                        # "nomad" or "redrock"
     auditor_verdict: Optional[str] = None                      # AnalysisAuditor (Stage B) verdict string
     auditor_verdict_json: Optional[Dict[str, Any]] = None      # AnalysisAuditor (Stage B) full verdict
-    skip_synthesis: Optional[bool] = None
-    debate_rounds: Optional[int] = None
-    count: Optional[int] = None
-    # auditing_history: Optional[List] = field(default_factory=list)
-    # refine_history: Optional[List] = field(default_factory=list)
     summary: Optional[str] = None
     in_brief: Optional[Dict[str, Any]] = None
     _no_features: Optional[bool] = None                      # set by orchestrator when VI finds zero features
