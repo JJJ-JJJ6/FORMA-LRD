@@ -224,7 +224,7 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
         if doublet_v:
             parts.append("### 双线判定")
             for dv in doublet_v:
-                parts.append(f"- H{dv['hypothesis_idx']} {dv.get('name_a','?')}+{dv.get('name_b','?')}: sep_ok={dv.get('separation_ok')}, ratio_ok={dv.get('ratio_ok')}, {dv.get('notes','')}")
+                parts.append(f"- H{dv['hypothesis_idx']} {dv.get('name_a','?')}+{dv.get('name_b','?')}: ratio_ok={dv.get('ratio_ok')}, {dv.get('notes','')}")
             parts.append("")
         if oii_v:
             parts.append("### [O II] 形态学判定")

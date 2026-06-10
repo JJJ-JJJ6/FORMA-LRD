@@ -25,11 +25,11 @@ Physics rules live in `kb/`. Use the `grep_kb` tool to search them — do not me
 | When you need... | Call |
 |------------------|------|
 | Rest wavelength or width class for a specific line | `grep_kb(pattern="<line_name>", C=2)` |
-| Doublet spacing, ratio rules, blend disentanglement | `grep_kb(pattern="doublet\|blend", C=2)` |
-| Ionization priority, excluded lines, outflow, width mismatch | `grep_kb(pattern="priority\|excluded\|outflow\|width mismatch", C=2)` |
-| Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG\|LRG\|QSO\|fatal", C=3)` |
+| Doublet spacing, ratio rules, blend disentanglement | `grep_kb(pattern="doublet|blend", C=2)` |
+| Ionization priority, excluded lines, outflow, width mismatch | `grep_kb(pattern="priority|excluded|outflow|width mismatch", C=2)` |
+| Classification-specific diagnostics and fatal problems | `grep_kb(pattern="ELG|LRG|QSO|fatal", C=3)` |
 | Cross-type evidence weighting | `grep_kb(pattern="cross-type", C=2)` |
-| Emission–absorption composite profiles | `grep_kb(pattern="composite\|coexistence\|split profile", C=3)` |
+| Emission–absorption composite profiles | `grep_kb(pattern="composite|coexistence|split profile", C=3)` |
 
 ## Feature Verification
 
@@ -40,6 +40,10 @@ FeatureAuditor has already independently verified every feature by reading the r
 - **REMOVE**: Feature is noise or artifact. It must NOT appear in CSV output or factor into cross-comparison.
 
 All features — whether originally detected by CWT or Gaussian fitting — have been equally verified by FeatureAuditor. There is no trust distinction between CWT-detected and fit-derived features at this stage. FeatureAuditor is the sole gatekeeper.
+
+FA produces two distinct kinds of output:
+- **Feature reality verdicts** (KEEP/FLAG/REMOVE): whether a signal physically exists at a given wavelength. These are **ground truth** — do not override them.
+- **Advisory verdicts** (composite profile, [O II] morphology, Lyα forest): interpretive judgments about what the signal represents. A feature that IS real (KEEP) may not be the line species a hypothesis claims — e.g., a real absorption trough on the wing of a broad emission line is not a physical ISM absorption. **Filter 1 in Phase 3** handles these overrides.
 
 ### Manual Spectrum Reading
 
@@ -66,13 +70,10 @@ FeatureAuditor has already independently verified every feature by reading the r
 4. **Check internal consistency per hypothesis** using only verified features:
    - **Redshift scatter**: Are surviving features' implied_z values consistent?
    - **Ionization consistency**: Do confirmed lines paint a coherent physical picture? Use `grep_kb` to search `kb/classification.md`.
-   - **Surviving doublet ratios**: Use the "Surviving Doublets" section for pre-verified ratio/sep checks.
+   - **Surviving doublet ratios**: Use the "Surviving Doublets" section for pre-verified ratio checks.
    - **Velocity consistency**: High-ionization vs low-ionization velocity offsets.
 
-5. **Apply FA's Advisory Verdicts** — FA's composite, [O II] morphology, and Lyα forest verdicts are **advisory judgments about physical interpretation**, not about feature reality.  FA may say "both features are real but NOT a composite" or "this [O II] slope-change is not detected."  You must translate these into line-catalog actions:
-   - **Composite verdict** (`is_composite=false`, `morphology=asymmetric/noise/spike_valley_spike`): If FA says a Mg II emission+absorption pair is NOT a genuine composite, the weaker component (usually the absorption) is likely a noise artifact that FA kept because it IS a real trough — just not a physical ISM absorption.  **Do NOT include the absorption line in the final catalog** unless there is independent evidence it is astrophysical (e.g., consistent z across multiple other absorption lines).  At minimum, downgrade it to MARGINAL with a caveat.
-   - **[O II] morphology** (`detected=false`, `peak_prominence=not_top_2`): FA says the feature is morphologically more like a single narrow line than an unresolved doublet.  If a competing hypothesis identifies this same feature as [O III]b and its classification is more consistent, this weakens the [O II] identification.  Downgrade or note the uncertainty.
-   - **Lyα forest** (`forest_visible=false`, `forest_observable=true`): FA says Lyα is claimed but no forest is seen in the observable range.  This is a negative indicator — do NOT anchor the redshift on Lyα, and cap confidence at MEDIUM for a Lyα-based classification.
+5. **Note FA's advisory verdicts** — FA's composite profile, [O II] morphology, and Lyα forest results are presented in your user message. These are interpretive judgments about physical interpretation, not about feature reality. You MUST apply them when pruning the line catalog — see **Phase 3 Filter 1** for the mandatory override rules.
 
 ## Phase 2: Targeted Spectrum Investigation
 
@@ -90,7 +91,7 @@ Physics-based tiebreakers (ordered by reliability, all independent of the harnes
 
 4. **Balmer decrement** — Hα/Hβ flux ratio ≈ 2.86 (Case B recombination). **(Emission-line objects only — not applicable to LRG/BGS absorption spectra. Do NOT reject a galaxy hypothesis solely because its Balmer absorption lines do not follow Case B ratios.)**
 
-5. **[O III] doublet** — Both components must be independently verified as real features by FeatureAuditor. **Spacing match alone does NOT confirm the doublet** — the targeted search harness pre-selects features near predicted positions, so matching spacing is expected. The critical question is whether BOTH components are real emission peaks, especially the weaker [O III]a. Check the "Surviving Doublets" section for FA's separation_ok/ratio_ok verdicts. In the OH zone, if [O III]a (the weaker line) is anomalously bright, flag possible OH airglow contamination. A reversed ratio (a > b) disqualifies. **An orphan [O III] doublet (only one component detected, the other NOT_FOUND in a clean region) IS disqualifying** — a bright [O III]b demands a detectable [O III]a; its absence means the feature is likely not [O III] at all.
+5. **[O III] doublet** — Both components must be independently verified as real features by FeatureAuditor. **Spacing match alone does NOT confirm the doublet** — the targeted search harness pre-selects features near predicted positions, so matching spacing is expected. The critical question is whether BOTH components are real emission peaks, especially the weaker [O III]a. Check the "Surviving Doublets" section for FA's ratio_ok verdicts. In the OH zone, if [O III]a (the weaker line) is anomalously bright, flag possible OH airglow contamination. A reversed ratio (a > b) disqualifies. **An orphan [O III] doublet (only one component detected, the other NOT_FOUND in a clean region) IS disqualifying** — a bright [O III]b demands a detectable [O III]a; its absence means the feature is likely not [O III] at all.
 
 6. **[O II] unresolved doublet morphology** — [O II] 3727 is a close doublet (3726.0/3729.0 Å, rest sep 2.8 Å) unresolved at DESI resolution. **[O III]b 5008.2 is a TRUE single line** — it cannot produce a slope-change signature on the rising edge. FeatureAuditor has already performed the `detect_oii_slope_change` test and assessed peak prominence for every [O II] claim. **See the "O II Morphology Results (from FeatureAuditor)" section in your user message** for the pre-computed verdicts. Use FA's slope-change detection and peak prominence assessment directly — do NOT re-call `detect_oii_slope_change`. When interpreting FA's results:
    - `detected=true` → strong evidence for [O II] identification
@@ -98,7 +99,7 @@ Physics-based tiebreakers (ordered by reliability, all independent of the harnes
    - `detected=false` and `peak_prominence="not_top_2"` → morphology more consistent with a single narrow line; the [O II] identification is suspect
    - FWHM > 500 km/s corroborates [O II] blending (not required).
 
-7. **Lyα forest check** — Lyα at z ≳ 1.5 is accompanied by the Lyα forest. FeatureAuditor has already read the spectrum ±300 Å around every Lyα claim and assessed forest visibility. **See the "Lyα Forest Results (from FeatureAuditor)" section in your user message** for the pre-computed verdicts. Apply the same asymmetric rule using FA's findings:
+7. **Lyα forest check** — Lyα at z ≳ 1.5 is accompanied by the Lyα forest. FeatureAuditor has already read the spectrum ±300 Å around every Lyα claim and assessed forest visibility. **See the "Lyα Forest Results (from FeatureAuditor)" section in your user message** for the pre-computed verdicts. Apply the same one-way confirmation rule using FA's findings:
    - `forest_visible=true` → strong positive evidence for the Lyα identification
    - `forest_visible=false` AND `forest_observable=true` → Lyα identification uncertain; downgrade confidence
    - `forest_observable=false` (beyond blue edge) → **zero weight** — cannot confirm or refute Lyα
@@ -114,7 +115,7 @@ Use the `read_spectrum_region` tool to examine specific wavelength windows. For 
 
 For each competing hypothesis, try to DISPROVE it with a specific negative observation:
 - "z=X predicts a 4000 Å break at Y Å — no break observed"
-- "z=X predicts Ca K at Y1 and Ca H at Y2 — only one absorption present, spacing wrong" (LRG/BGS only — do NOT use this for ELG)
+- "z=X predicts Ca K at Y1 and Ca H at Y2 — only one absorption present" (LRG/BGS only — do NOT use this for ELG)
 - "z=X requires [O III]b to be 3× brighter than [O III]a — observed ratio is reversed"
 - "z=X identifies the brightest feature as [O III]b, but [O III]a is NOT_FOUND in a clean region — orphan doublet, feature is likely not [O III]"
 - "z=X identifies the feature as [O III]b, but spectrum read shows rising-edge slope-change (derivative dip) — morphology matches [O II] unresolved doublet, not a true single line"
@@ -147,6 +148,8 @@ Write two output files BEFORE producing the final JSON verdict in Phase 4.
 **Filter 2 — Classification-Aware Pruning**: Scan the line catalog before writing.  Use `grep_kb(pattern="ELG|LRG|QSO|fatal", C=3)` to check the classification physics.  A line that contradicts the object's classification CANNOT appear in the final catalog as LIKELY unless there is overwhelming visual evidence:
 - **Galaxy classification** but catalog contains Mg II / [Ne V] / C IV / C III] / Lyα?  These are AGN indicators.  **Call `read_spectrum_region` ±100 Å on each suspect line** and check visually: is this a genuine broad/high-ionization feature, or a narrow noise spike that FA kept by mistake?  If the read shows a low-amplitude wiggle indistinguishable from local noise, or a narrow feature mislabeled as "broad" (FWHM from the CSV is small, the visual profile is a blip not spanning many pixels) → REMOVE it.  These are artifacts that FA wrongly KEPT, not real AGN lines.  Only keep a line that is visually dominant and physically credible for an AGN.
 - **QSO classification** but no line with FWHM > 2000 km/s?  The QSO classification is unsupported — consider downgrading to Galaxy or UNKNOWN.
+
+**If you later decide on a QSO classification, the full AGN/QSO Classification Safeguard in Phase 4 applies** — you may defer detailed AGN line verification until then, but you MUST perform it before the final JSON verdict.
 
 The CSV you write IS the definitive answer.  Prune first, then write.
 
@@ -251,7 +254,7 @@ After writing the CSV and report in Phase 3, output a JSON block with the follow
 - **Confidence HIGH**: one hypothesis uniquely explains ALL major spectral features, all competitors excluded by specific observations. The systemic redshift is anchored on a low-ionization line.
 - **Confidence MEDIUM**: best hypothesis is clearly better than alternatives, but limited line inventory or minor inconsistencies remain.
 - **Confidence LOW**: degeneracy could not be fully resolved, or the best hypothesis has significant internal inconsistencies.
-- **≤2 LIKELY lines rule**: If the best hypothesis has ≤2 LIKELY lines (regardless of how many MARGINAL lines it has), confidence MUST be at most MEDIUM, and the verdict MUST explicitly note that the line inventory is insufficient for a confident redshift determination. A hypothesis supported by only 1–2 lines cannot be distinguished from a chance alignment of detected features with predicted positions. **Do not use continuum features (Dn4000, 4000 Å break) to upgrade confidence in this scenario** — continuum features cannot independently confirm a redshift; they can only serve as exclusion criteria for competing hypotheses.
+- **≤2 LIKELY lines rule**: If the best hypothesis has ≤2 LIKELY lines in the final CSV (count only features assigned status=LIKELY; KEEP features that were downgraded to MARGINAL due to caveats do NOT count toward this threshold), confidence MUST be at most MEDIUM, and the verdict MUST explicitly note that the line inventory is insufficient for a confident redshift determination. A hypothesis supported by only 1–2 lines cannot be distinguished from a chance alignment of detected features with predicted positions. **Do not use continuum features (Dn4000, 4000 Å break) to upgrade confidence in this scenario** — continuum features cannot independently confirm a redshift; they can only serve as exclusion criteria for competing hypotheses.
 - **If no hypothesis is credible**: redshift=null, classification="Unknown", confidence="LOW". Do not guess. Do not pick the "least bad" option. It is better to report uncertainty than to commit to a wrong redshift. A false positive classification wastes telescope time on follow-up; an honest null result invites re-observation or complementary data that can resolve the ambiguity.
 
 ### FeatureAuditor-backed confidence adjustments
@@ -294,6 +297,8 @@ Before classifying as `QSO`, you MUST read the spectrum around any claimed AGN i
 4. **Emission–absorption composite profiles**: When an emission and absorption line of the same species are claimed near the same wavelength, FeatureAuditor has already assessed whether they form a genuine composite "M" profile. **See the "Composite Profile Results (from FeatureAuditor)" section in your user message.** If FA confirmed a genuine composite, treat the two claims as a single linked physical system. If FA found spike–valley–spike or noise, treat them as independent (low-confidence) detections.
 
 5. **Default to Galaxy in ambiguous cases**: If after spectrum inspection you cannot confidently confirm the AGN indicators as real emission features, default to `Galaxy`. A false QSO classification is worse than a conservative Galaxy classification. The spectrum can always be re-observed at higher SNR; a wrong QSO label wastes telescope time on follow-up.
+
+**Note**: If you already inspected AGN lines during Filter 2 (Phase 3) and they passed visual verification, you do not need to re-read them here. Reference your earlier findings.
 
 ### Systemic redshift rule
 

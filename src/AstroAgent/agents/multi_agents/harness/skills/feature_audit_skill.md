@@ -34,7 +34,7 @@ The user prompt contains a matrix where:
 - **Each row** = a unique observed wavelength where ≥1 hypothesis claims a feature
 - **Each column** = a hypothesis (H1, H2, H3, ...)
 - **Each cell** = the line identification at that hypothesis's redshift, or "—" (no claim)
-- **Status markers**: `(MARG)` = MARGINAL, no marker = LIKELY
+- **Status markers**: `(M)` = MARGINAL, no marker = LIKELY
 - **Edge zone markers**: `🔵` prefix = blue edge (λ < 4000 Å), `🔴` prefix = OH zone (λ > 7800 Å)
 - **Type, Amp, Width columns**: properties of the CWT-detected feature itself (same feature, different name assignments across hypotheses). Width: broad > 2000 km/s, narrow < 2000 km/s.
 

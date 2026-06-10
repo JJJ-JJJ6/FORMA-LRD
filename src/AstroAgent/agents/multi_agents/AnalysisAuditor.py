@@ -705,10 +705,9 @@ def _build_feature_audit_user_message(
         parts.append("")
         parts.append(
             "Known doublets claimed by each hypothesis.  **Complete pairs** show "
-            "pre-computed separation and amplitude ratio — mismatches are strong "
-            "evidence against the identification.  **Orphans** show cases where "
+            "pre-computed amplitude ratios.  **Orphans** show cases where "
             "only one component is claimed; the missing line's expected λ_obs is "
-            "given.  The LLM must check whether a real feature exists at the "
+            "given.  You must check whether a real feature exists at the "
             "missing position (misidentification) or the claimed component is a "
             "false match.  Use `read_spectrum_region` around the expected region."
         )
@@ -723,8 +722,7 @@ def _build_feature_audit_user_message(
                 parts.append(
                     f"- **H{da['hypothesis_idx']}**: {da['name_a']}@{da['wl_a']:.1f} + "
                     f"{da['name_b']}@{da['wl_b']:.1f} → "
-                    f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
-                    f"actual {da['sep_actual']:.1f} Å)"
+                    f"ratio {da['note']}"
                 )
             parts.append("")
 
@@ -753,10 +751,10 @@ def _build_feature_audit_user_message(
         "Your job is to independently verify whether each feature is physically "
         "real or a noise artifact. You MUST:\n\n"
         "1. Batch-read the spectrum at EVERY unique λ_obs in the matrix "
-        "(±80 Å per read, merge adjacent rows when closer than 80 Å)\n"
+        "(±100 Å per read, merge adjacent rows when closer than 100 Å)\n"
         "2. Read BOTH edge zones in full\n"
         "3. Apply the Three-Question Test to each feature\n"
-        "4. Check the Emission–Absorption Pairs section above — if any pairs "
+        "4. Check the \"Emission-Absorption Pairs (Composite Profile Check Required)\" section above — if any pairs "
         "are listed, you MUST perform the composite profile check (Step 3.5) "
         "for EVERY pair and populate the `composite_profile_verdicts` field\n"
         "5. Check doublet annotations for ratio violations\n"
@@ -1127,20 +1125,19 @@ def _build_synthesis_audit_user_message(state: SpectroState, harness_dir: str) -
         parts.append("")
         parts.append(
             "FA verified known doublet pairs (Ca K/H, [O III]a/b, [N II]a/b, "
-            "[S II]a/b). `sep_ok=false` means the observed separation does not "
-            "match the expected rest separation at the claimed redshift — the "
+            "[S II]a/b). `ratio_ok=false` means the observed ratio does not "
+            "match the expected doublet ratio — the "
             "doublet identification is likely WRONG."
         )
         parts.append("")
-        parts.append("| H | Pair | λ_a | λ_b | Sep OK | Ratio OK | FA Notes |")
-        parts.append("|---|------|-----|-----|--------|----------|----------|")
+        parts.append("| H | Pair | λ_a | λ_b | Ratio OK | FA Notes |")
+        parts.append("|---|------|-----|-----|----------|----------|")
         for dv in doublet_verdicts:
             wl_a = dv.get('wl_a')
             wl_b = dv.get('wl_b')
             parts.append(
                 f"| H{dv['hypothesis_idx']} | {dv.get('name_a','?')}+{dv.get('name_b','?')} "
                 f"| {wl_a if wl_a else '—'} | {wl_b if wl_b else '—'} "
-                f"| {'✅' if dv.get('separation_ok') else '❌'} "
                 f"| {'✅' if dv.get('ratio_ok') else '❌'} "
                 f"| {dv.get('notes','')} |"
             )
@@ -1644,7 +1641,7 @@ class FeatureAuditor(BaseAgent):
             """Read a raw slice of the spectrum for manual inspection.
 
             Use this to independently verify whether claimed features are real.
-            Read ±80 Å around each unique λ_obs in the matrix. Read BOTH edge
+            Read ±100 Å around each unique λ_obs in the matrix. Read BOTH edge
             zones in full (blue: λ_min→4000, red: 7800→λ_max).
             """
             mask = (_wl >= wl_min) & (_wl <= wl_max)
@@ -1837,7 +1834,7 @@ class AnalysisAuditor(BaseAgent):
             """Read a raw slice of the spectrum for manual inspection.
 
             Use this to independently verify the winning hypothesis's key
-            claims.  Read ±80 Å around each key line, and read BOTH edge
+            claims.  Read ±100 Å around each key line, and read BOTH edge
             zones in full (blue: λ_min→4000, red: 7800→λ_max).
             """
             mask = (_wl >= wl_min) & (_wl <= wl_max)

@@ -128,21 +128,6 @@ def _build_feature_audit_summary(feature_audit_verdict: dict) -> str:
     lines.append(f"| REMOVE | {len(removed)} |")
     lines.append("")
 
-    if removed:
-        lines.append("### REMOVED Features (noise/artifact)")
-        lines.append("")
-        lines.append("| λ_obs (Å) | Issues |")
-        lines.append("|-----------|--------|")
-        for v in removed:
-            issues = "; ".join(v.get("issues", [])) or "—"
-            wl = v.get("wl_obs", "?")
-            wl_str = f"{float(wl):.1f}" if isinstance(wl, (int, float)) else str(wl)
-            lines.append(f"| {wl_str} | {issues} |")
-        lines.append("")
-    else:
-        lines.append("*No features were removed.*")
-        lines.append("")
-
     if flagged:
         lines.append("### FLAGGED Features (real but caveated)")
         lines.append("")
@@ -207,12 +192,20 @@ def _filter_contradiction_matrix(
         return verdict_lookup.get(key) or {}
 
     # Filter matrix rows
+    # Rebuild group_key from row_type (matching FA's feature_type-based
+    # convention) rather than relying on pre-computed amplitude-sign keys
+    # which misclassify zero-amplitude emission features (amp=0 → >0 is False).
     filtered_rows = []
     n_removed = 0
     for row in matrix_rows:
-        gk = row.get("group_key")
-        if gk is None:
-            gk = (int(row["wl_obs"]), 1 if row.get("row_amp", 0) > 0 else -1)
+        rt = row.get("row_type", "")
+        if rt == "emission":
+            amp_sign = 1
+        elif rt == "absorption":
+            amp_sign = -1
+        else:
+            amp_sign = 1 if row.get("row_amp", 0) >= 0 else -1
+        gk = (int(row["wl_obs"]), amp_sign)
         if _is_survivor_by_key(gk):
             verdict = _get_verdict(gk)
             row["confidence"] = verdict.get("confidence", "—")
@@ -228,12 +221,12 @@ def _filter_contradiction_matrix(
     filtered_doublets = []
     for da in doublet_annotations:
         if da.get("complete"):
-            key_a = (int(da["wl_a"]), 1 if da.get("amp_a", 0) > 0 else -1)
-            key_b = (int(da["wl_b"]), 1 if da.get("amp_b", 0) > 0 else -1)
+            key_a = (int(da["wl_a"]), 1 if da.get("amp_a", 0) >= 0 else -1)
+            key_b = (int(da["wl_b"]), 1 if da.get("amp_b", 0) >= 0 else -1)
             if _is_survivor_by_key(key_a) and _is_survivor_by_key(key_b):
                 filtered_doublets.append(da)
         else:
-            key = (int(da["wl_claimed"]), 1 if da.get("amp_claimed", 0) > 0 else -1)
+            key = (int(da["wl_claimed"]), 1 if da.get("amp_claimed", 0) >= 0 else -1)
             if _is_survivor_by_key(key):
                 filtered_doublets.append(da)
 
@@ -391,7 +384,7 @@ def _build_surviving_doublets_section(
     lines.append(
         "Doublet pairs and orphans where all relevant components survived "
         "FeatureAuditor verification. FeatureAuditor's visual verification "
-        "of separation and ratio is included where available."
+        "of doublet ratio is included where available."
     )
     lines.append("")
 
@@ -404,15 +397,8 @@ def _build_surviving_doublets_section(
             nb = da["name_b"]
             dv = dv_lookup.get((hi, na, nb)) or {}
 
-            sep_ok = dv.get("separation_ok")
             ratio_ok = dv.get("ratio_ok")
             notes = dv.get("notes", "")
-
-            sep_status = ""
-            if sep_ok is True:
-                sep_status = " ✓ separation"
-            elif sep_ok is False:
-                sep_status = " ✗ separation mismatch"
 
             ratio_status = ""
             if ratio_ok is True:
@@ -423,9 +409,8 @@ def _build_surviving_doublets_section(
             fa_note = f" — {notes}" if notes else ""
             lines.append(
                 f"- **H{hi}**: {na}@{da['wl_a']:.1f} + {nb}@{da['wl_b']:.1f} → "
-                f"ratio {da['note']} (expected sep {da['sep_expected']:.1f} Å, "
-                f"actual {da['sep_actual']:.1f} Å)"
-                f"{sep_status}{ratio_status}{fa_note}"
+                f"ratio {da['note']}"
+                f"{ratio_status}{fa_note}"
             )
         lines.append("")
 
@@ -700,9 +685,9 @@ def _build_user_message(
             "or cwt_snr but provide delta_chi2_per_n and local_snr quality "
             "metrics. Treat local_snr > 10 as roughly equivalent to "
             "cwt_snr > 10 + ridge_length >= 5. For doublet fits, the "
-            "separation check is the strongest validation — a matched doublet "
-            "spacing provides independent confirmation of both the redshift "
-            "and the line identification.\n"
+            "amplitude ratio provides the strongest validation — a correct "
+            "ratio confirms that both components are physically associated "
+            "rather than chance alignments.\n"
         )
 
     _output_paths = ""
