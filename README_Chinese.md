@@ -2,6 +2,8 @@
 
 一个由大语言模型（LLM）驱动的智能体，用于对一维天文光谱进行**类人式分析与推断**。
 
+> ⚠️ **当前支持模式：** FITS 输入 + Redrock 红移假设生成。PNG 输入通道尚未完善。
+
 > 📄 相关论文正在准备中。
 
 ---
@@ -10,8 +12,8 @@
 
 本项目利用大语言模型（LLMs）对一维天文光谱（1D spectra）进行类似人类天文学家的物理推断，当前支持的核心任务包括：
 
-- **天体类型分类**（目前仅支持：恒星 / 星系 / 类星体 QSO）
-- **红移估计**
+- **天体类型分类**（目前仅支持 galaxy（LRG 和 ELG，输出为 galaxy）、QSO）
+- **红移估计**（针对 QSO）
 
 系统设计目标是**模拟人类天文学家的认知流程**，主要包括以下步骤：
 
@@ -163,16 +165,7 @@ pip install -r requirements.txt
 
 ---
 
-### 3. MCP 配置
-将 `configs/mcp_config.json` 中的:
-```json
-"args": ["/data2/wbc/llm-spectro-agent/src/AstroAgent/mcp_tools/spectro_server.py"],  
-```
-改为对应路径 (即项目的 `/src/AstroAgent/mcp_tools/spectro_server.py`)
-
----
-
-## 4. 环境变量配置
+### 3. 环境变量配置
 
 复制示例配置文件：
 
@@ -182,11 +175,13 @@ cp .env_example .env
 
 并编辑 `.env`，主要参数包括：
 
-* `API_KEY`：LLM API 密钥
-* `INPUT_DIR`：输入图像目录
-* `OUTPUT_DIR`：输出结果目录
-* `IMAGE_NAME`：光谱图像名（不含 `.png`）
-* 以及其他控制参数
+* `LLM_API_KEY`、`LLM_MODEL`：文本 LLM 配置
+* `VLM_API_KEY`、`VLM_MODEL`：视觉语言模型配置
+* `INPUT_DIR`、`OUTPUT_DIR`：输入和输出目录
+* `FILE_NAME`：输入 FITS 文件名（不含 `.fits` 扩展名）
+* `REDROCK`：设为 `true` 以启用 Redrock 红移假设生成
+* `RR_TEMPLATE_DIR`：Redrock 模板目录
+* 以及其他控制参数（详见 `.env_example`）
 
 ---
 
@@ -197,63 +192,67 @@ cp .env_example .env
 ### 运行分析
 
 ```bash
-python main.py
+python scripts/main.py
 ```
 
 分析结果将保存至 `.env` 中指定的输出目录。
 
 ---
 
-## 测试数据集（Test Set）
-
-在以下路径提供了基础测试集：
-
-```text
-./test_set/CSST/input
-./test_set/DESI/input
-```
-使用时请将 .env 中的 `INPUT_DIR` 设置为该路径。
-
----
-
 ## 输出文件说明（Output Files）
 
-对于输入图像 `{your_image_name}.png`，程序会生成主要产品：
+对于输入 FITS 文件 `{your_file_name}.fits`，流程使用 Redrock 生成红移假设，再由多智能体 LLM 分析进行验证和精炼。结果保存至 `{OUTPUT_DIR}/{your_file_name}/`，目录结构如下（以 `116.fits` 为例）：
 
-* `{your_image_name}_spec_extract.png`
-  基于 OpenCV 的重建光谱
+```
+116/
+├── 116_in_brief.json                  # 最终简要摘要（类型、红移、置信度、谱线）
+├── final_report.md                    # 最终综合报告
+├── 116_spec_extract.png               # 基于 OpenCV 的重建光谱
+├── 116_spectrum.png                   # 提取的光谱与 SNR 图
+├── 116_snapshot.json                  # 完整运行时状态快照
+├── 116_brute_force_matching.txt       # 暴力模板匹配结果
+├── 116_hypothesis_analysis.txt        # 假设综合裁决（JSON）
+├── 116_redrock/                       # Redrock 外部拟合结果
+│   ├── 116_redrock.fits
+│   └── 116_rrdetails.h5
+├── visual_interpreter/                # 视觉解释输出
+│   ├── 116_continuum.png              # 拟合连续谱
+│   ├── 116_features.png               # 检测到的光谱特征可视化
+│   ├── 116_residual_spectrum.png      # 残差光谱（数据 - 连续谱）
+│   ├── 116_emission.csv               # 检测到的发射线表
+│   ├── 116_absorption.csv             # 检测到的吸收线表
+│   └── 116_spectrum.npz               # 提取的光谱数据（NumPy）
+├── single_hypothesis/                 # 每个假设的详细分析
+│   ├── 1_report.md                    # 假设报告
+│   ├── 1_features.png                 # 该红移下的特征可视化
+│   ├── 1_lines.csv                    # 识别的谱线
+│   ├── 1_lines_cleaned.csv            # 清洗后的谱线列表
+│   └── 1_stream.md                    # 智能体流式日志
+│   ├── 2_* ...                        # （每个假设一组，最多 N 个）
+├── hypothesis_synthesis/              # 多假设综合
+│   ├── report.md                      # 综合摘要报告
+│   ├── catalog.csv                    # 所有假设的目录
+│   └── stream.md                      # 综合智能体流式日志
+├── feature_auditor/                   # 特征审计输出
+│   ├── stream.md                      # 审计智能体流式日志
+│   └── verdict.json                   # 特征裁决
+├── result_auditor/                    # 结果审计输出
+│   └── stream.md                      # 审计智能体流式日志
+└── report_writer/                     # 报告撰写输出
+    └── stream.md                      # 撰写智能体流式日志
+```
 
-* `{your_image_name}_features.png`
-  检测到的谱峰与谱谷可视化结果
+### 核心输出文件
 
-* `{your_image_name}_continuum.png`
-  拟合后的连续谱
-
-* `{your_image_name}_rule_analysis.md`
-  基于规则的中间分析报告
-
-* `{your_image_name}_summary.md`
-  最终综合报告（天体类型、红移、置信度）
-
-* in_brief.csv
-  输出结果摘要的 CSV 格式表格
-
-以及副产品
-
-* `{your_image_name}_cropped.png`
-  去除标题、坐标轴、边框后的纯光谱图
-
-* `{your_image_name}_ocr_res_img.png`
-  OCR 结果可视化图（仅Paddle版本输出）
-
-* `{your_image_name}_res.json`
-  OCR 结果文本（仅Paddle版本输出）
-
-* `{your_image_name}_spectrum.png`
-  提取到的光谱与 SNR 图
-
-* `{your_image_name}_visual_interpretation.txt`
-  视觉分析的中间产物
+| 文件 | 说明 |
+|------|------|
+| `{name}_in_brief.json` | 机器可读摘要：类型、红移、置信度、识别的谱线 |
+| `final_report.md` | 人类可读的最终报告，包含完整分析细节 |
+| `hypothesis_synthesis/report.md` | 所有测试假设的摘要与最终裁决 |
+| `hypothesis_synthesis/catalog.csv` | 所有假设及其谱线测量数据表 |
+| `visual_interpreter/{name}_emission.csv` | 所有检测到的发射线特征（波长、通量、SNR、宽度） |
+| `visual_interpreter/{name}_absorption.csv` | 所有检测到的吸收线特征 |
+| `single_hypothesis/{N}_lines.csv` | 每个测试红移的谱线识别结果 |
 
 ---
 
@@ -268,9 +267,6 @@ python main.py
 * **视觉 + 语言混合架构**
   结合 OpenCV、OCR 与多模态 LLM，实现端到端光谱理解
 
-* **MCP 协议集成**
-  基于 Model Context Protocol（MCP）进行标准化工具调用
-
 ---
 
 ## 许可证（License）
@@ -278,7 +274,3 @@ python main.py
 本项目仅用于**科研与教学目的**。
 
 ---
-
-## 更新日志
-
-- 2025.12.24: remove environment variables `WEIGHT_ORIGINAL`

@@ -2,7 +2,7 @@
 
 This project aims to build a LLM agent for human-like analysis of one-dimensional astronomical spectra, inspired by the process of Visual Inspection. The agent is designed to perform tasks such as source classification (QSO or Galaxy) and redshift estimation for QSOs.
 
-The agent is built using the LangChain framework, which provides a high-level interface for interacting with LLMs. It uses the OpenAI API for LLM inference. We test this agent using the Qwen3 model, other LLMs may require some adaptation.
+The agent is built using the LangChain framework, which provides a high-level interface for interacting with LLMs. It uses the OpenAI API for LLM inference. We test this agent using the Deepseek-v4-pro model, other LLMs may require some adaptation.
 
 ## Usage
 
@@ -16,26 +16,30 @@ you can copy the example configuration and fill in your settings.
 
 Below are some important environment variables:
 
-- `MCP_CONFIG`: The path to the MCP configuration file. A default configuration is provided in `configs/mcp_config.json`
+- `LLM_API_KEY`: Your API key for the text LLM.
+- `LLM_BASE_URL`: Base URL for the LLM API endpoint.
+- `LLM_MODEL`: Model name for text reasoning (e.g. `qwen3-max`).
 
-- `PROMPTS_CONFIG_PATH`: The path to the prompt configuration file. A default configuration is provided in `configs/prompt_config_EN.json` and `configs/prompt_config_CN.json`
+- `VLM_API_KEY`: Your API key for the vision-language model.
+- `VLM_BASE_URL`: Base URL for the VLM API endpoint.
+- `VLM_MODEL`: Model name for visual understanding (e.g. `qwen-vl-max`).
 
-- `PROMPTS_ROOT`: The root directory for prompts contents. Our prompts are stored in the `prompt_content` directory in format of `.md` files. Just set it to `/path/to/your/project/prompt_content`
+- `RUN_MODE`: This project provides two modes: `s` for single-run mode and `b` for batch mode.
 
-- `RUN_MODE`: This project provide two modes: `s` for single-run mode and `b` for batch mode.
+- `INPUT_DIR`: The directory where input FITS files are stored.
+- `INPUT_FORMAT`: Input file format (currently `fits`).
+- `OUTPUT_DIR`: The directory where output files will be saved.
+- `FILE_NAME`: The name of the input file, without the `.fits` extension.
+    - e.g. If `INPUT_DIR`=`/path/to/input`, `FILE_NAME`=`230`, the input file is `/path/to/input/230.fits`. Output will be saved to `{OUTPUT_DIR}/230/`.
 
-- `INPUT_DIR`: The directory where the input images are stored.
-- `OUTPUT_DIR`: The directory where the output files will be saved.
-- `IMAGE_NAME`: The name of the input image, without the `.png` extension.
-    - e.g. If `INPUT_DIR`=`/path/to/your/project/input`, `OUTPUT_DIR`=`/path/to/your/project/output`, `IMAGE_NAME`=`your_image_name`, then the input image will be `/path/to/your/project/input/your_image_name.png`. And the output files will be saved to `/path/to/your/project/output/`.
+- `FILE_BATCH_HEADER`, `FILE_BATCH_START`, `FILE_BATCH_END`: Used to specify the range of files to process in batch mode.
+    - e.g. If `FILE_BATCH_HEADER`=`QSO_`, `FILE_BATCH_START`=`1`, `FILE_BATCH_END`=`10`, the input files will be `QSO_1.fits` ... `QSO_10.fits`.
+    - Leave `FILE_BATCH_HEADER` empty if files are named `1.fits`, `2.fits`, ...
 
-- `BATCH_HEADER`, `BATCH_START`, `BATCH_END`: These variables are used to specify the range of images to process in batch mode. 
-    - e.g. If `BATCH_HEADER`=`example`, `BATCH_START`=`1`, `BATCH_END`=`10`, then the input images will be `/path/to/your/project/input/example_1.png`, `/path/to/your/project/input/example_2.png`, ..., `/path/to/your/project/input/example_10.png`.
-    - If `BATCH_START`=`01`, `BATCH_END`=`10`, then the input images will be `/path/to/your/project/input/example_01.png`, `/path/to/your/project/input/example_02.png`, ..., `/path/to/your/project/input/example_10.png`.
-    - You can leave `BATCH_HEADER` empty if your input images are named `1.png`, `2.png`, ..., `10.png`.
+- `REDROCK`: Set to `true` to use Redrock for redshift hypothesis generation.
+- `RR_TEMPLATE_DIR`: Path to Redrock template directory (required if `REDROCK=true`).
 
-- `DATASET`: This variable is used to specify the dataset. It is related with the prompts. The prompts in `prompt_content` directory is modified according to the dataset instrument and spectrum characteristics. Now we support `DESI` and `CSST`.
-- `OCR`: This variable is used to specify the OCR engine. It is related with the prompts. We support `PaddleOCR` and `Tesseract OCR`.
+- `OCR`: OCR engine to use. Supports `paddle` (default) and `tesseract`.
 
 After setting up your environment variables, you can run the agent by running the following command:
 ```bash
@@ -55,12 +59,10 @@ AstroAgent
 ├── README.md
 ├── requirements.txt
 ├── configs
-│   ├── mcp_config.json
 │   ├── prompt_config_CN.json
 │   └── prompt_config_EN.json
 ├── notebooks # some notebooks for testing
 │   ├── llm_test.ipynb
-│   ├── mcp_test.ipynb
 │   ├── multi_agents_test.ipynb
 │   ├── prompts_test.ipynb
 │   ├── prompts.ipynb
@@ -89,7 +91,6 @@ AstroAgent
 │       │   │   ├── all_config.py
 │       │   │   ├── batch_config.py
 │       │   │   ├── io_config.py
-│       │   │   ├── mcp_config.py
 │       │   │   ├── model_config.py
 │       │   │   ├── params_config.py
 │       │   │   └── prompt_config.py
@@ -97,25 +98,18 @@ AstroAgent
 │       │   │   └── runtime_container.py
 │       │   └── llm.py
 │       ├── manager
-│       │   ├── mcp
-│       │   │   └── mcp_manager.py
 │       │   └── runtime
 │       │       ├── message_manager.py
 │       │       ├── prompt_manager.py
 │       │       └── state_manager.py
-│       ├── mcp_tools
-│       │   ├── spectro_server.py
-│       │   ├── tool_protocol.py
-│       │   └── tools.py
 │       └── workflow_orchestrator.py
-└── test_set
 ```
 
 ## Program Structure
 
 The entry point of the program is `scripts/main.py`. In this file, we use `AllConfig` from `src/AstroAgent/core/configs/all_config.py` to load all the environment variables in `.env`. 
 
-After that, `scripts/main.py` initailizes the `RuntimeContainer` from `src/AstroAgent/core/runtime/runtime_container.py`. It is responsible for loading the model, creating the MCP client, and creating the prompt manager.
+After that, `scripts/main.py` initailizes the `RuntimeContainer` from `src/AstroAgent/core/runtime/runtime_container.py`. It is responsible for loading the model and creating the prompt manager.
 
 The program then initializes the `WorkflowOrchestrator` from `src/AstroAgent/workflow_orchestrator.py`. This class is responsible for orchestrating the workflow of the program. Since we use `langgraph` to build the agent, it require a `langgraph state` class to transfer the state between agents. The initial state is created by the `PromptManager` from `src/AstroAgent/manager/prompt.py`.
 

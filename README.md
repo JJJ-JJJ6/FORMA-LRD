@@ -6,6 +6,8 @@
 
 An LLM-powered agent for human-like analysis of one-dimensional astronomical spectra.
 
+> ⚠️ **Currently supported mode:** FITS input + Redrock redshift hypothesis generation. The PNG input pipeline is not yet fully developed.
+
 ## Overview
 
 This project use large language models (LLMs) to perform human-like astrophysical inference on 1D spectra, specifically:
@@ -118,24 +120,20 @@ Install the required Python packages:
 pip install -r requirements.txt
 ```
 
-### 3. MCP config
-Turn to `configs/mcp_config.json`, change the following line:
-```json
-"args": ["/data2/wbc/llm-spectro-agent/src/AstroAgent/mcp_tools/spectro_server.py"],  
-```
-to your spectrum server path. (it's `/src/AstroAgent/mcp_tools/spectro_server.py`)
-
-### 4. Environment Setup
+### 3. Environment Setup
 Copy the example configuration and fill in your settings:
 ```bash
 cp .env_example .env
 ```
 
 Edit `.env` to specify:
-- `API_KEY`: Your API key for LLM models
+- `LLM_API_KEY`, `LLM_MODEL`: Text LLM configuration
+- `VLM_API_KEY`, `VLM_MODEL`: Vision-language model configuration
 - `INPUT_DIR`, `OUTPUT_DIR`: Input and output directories
-- `IMAGE_NAME`: Name of the spectrum image (without `.png` extension)
-- and other parameters
+- `FILE_NAME`: Name of the input FITS file (without `.fits` extension)
+- `REDROCK`: Set to `true` to enable Redrock hypothesis generation
+- `RR_TEMPLATE_DIR`: Redrock template directory
+- and other parameters (see `.env_example` for full list)
 
 ---
 
@@ -146,68 +144,65 @@ See [Quick start](Quickstart.md) for a quick start guide.
 ### Run the Analysis
 Execute the main script:
 ```bash
-python main.py
+python scripts/main.py
 ```
 Results will be saved to the output directory specified in `.env`.
 ---
 
-## Test set
-A basic test set is offered in 
-
-```text
-./test_set/CSST/input
-./test_set/DESI/input
-```
-
----
-
 ## Output Files Description
 
-For an input image `{your_image_name}.png`, the program will generate main products:
+For an input FITS file `{your_file_name}.fits`, the pipeline uses Redrock to generate redshift hypotheses, then applies multi-agent LLM analysis to verify and refine them. Results are saved to `{OUTPUT_DIR}/{your_file_name}/` with the following structure (using `116.fits` as an example):
 
-* `{your_image_name}_spec_extract.png`
-  Reconstructed spectrum based on OpenCV.
+```
+116/
+├── 116_in_brief.json                  # Final brief summary (type, redshift, confidence, lines)
+├── final_report.md                    # Final comprehensive report
+├── 116_spec_extract.png               # Reconstructed spectrum from OpenCV
+├── 116_spectrum.png                   # Extracted spectrum and SNR plot
+├── 116_snapshot.json                  # Full runtime state snapshot
+├── 116_brute_force_matching.txt       # Brute-force template matching results
+├── 116_hypothesis_analysis.txt        # Hypothesis synthesis verdict (JSON)
+├── 116_redrock/                       # Redrock external fitting results
+│   ├── 116_redrock.fits
+│   └── 116_rrdetails.h5
+├── visual_interpreter/                # Visual interpretation outputs
+│   ├── 116_continuum.png              # Fitted continuum spectrum
+│   ├── 116_features.png               # Detected spectral features visualization
+│   ├── 116_residual_spectrum.png      # Residual spectrum (data - continuum)
+│   ├── 116_emission.csv               # Detected emission lines table
+│   ├── 116_absorption.csv             # Detected absorption lines table
+│   └── 116_spectrum.npz               # Extracted spectrum data (NumPy)
+├── single_hypothesis/                 # Per-hypothesis detailed analysis
+│   ├── 1_report.md                    # Hypothesis report
+│   ├── 1_features.png                 # Feature visualization at this redshift
+│   ├── 1_lines.csv                    # Identified spectral lines
+│   ├── 1_lines_cleaned.csv            # Cleaned line list
+│   └── 1_stream.md                    # Agent stream log
+│   ├── 2_* ...                        # (one set per hypothesis, up to N)
+├── hypothesis_synthesis/              # Multi-hypothesis synthesis
+│   ├── report.md                      # Synthesis summary report
+│   ├── catalog.csv                    # Catalog of all hypotheses
+│   └── stream.md                      # Synthesis agent stream log
+├── feature_auditor/                   # Feature auditor outputs
+│   ├── stream.md                      # Auditor agent stream log
+│   └── verdict.json                   # Feature verdict
+├── result_auditor/                    # Result auditor outputs
+│   └── stream.md                      # Auditor agent stream log
+└── report_writer/                     # Report writer outputs
+    └── stream.md                      # Writer agent stream log
+```
 
-* `{your_image_name}_features.png`
-  Visualization of detected spectral peaks and troughs.
+### Key output files
 
-* `{your_image_name}_continuum.png`
-  Fitted continuum spectrum.
-
-* `{your_image_name}_rule_analysis.md`
-  Intermediate rule-based analysis report.
-
-* `{your_image_name}_summary.md`
-  Final comprehensive report (object type, redshift, confidence level).
-
-  * in_brief.csv
-  The brief summary of the analysis
-
-And by-products:
-
-* `{your_image_name}_cropped.png`
-  Clean spectrum image with titles, axes, and borders removed.
-
-* `{your_image_name}_ocr_res_img.png`
-  OCR result visualization image (output only by Paddle version).
-
-* `{your_image_name}_res.json`
-  OCR result text (output only by Paddle version).
-
-* `{your_image_name}_spectrum.png`
-  Extracted spectrum and SNR plot.
-
-* `{your_image_name}_visual_interpretation.txt`
-  Intermediate product of visual analysis.
-
----
-
-## Architecture Highlights
-
-- **Multi-Agent Debate**: Uses LangGraph to orchestrate a structured debate between an auditor and refinement assistant, enhancing result reliability.
-- **Multi-Scale Feature Detection**: Detects spectral features across multiple Gaussian smoothing scales and merges them robustly.
-- **Hybrid Vision + Language**: Combines computer vision (OpenCV, OCR) with multimodal LLMs for end-to-end spectrum understanding.
-- **MCP Integration**: Built on the Model Context Protocol (MCP) for standardized tool interaction.
+| File | Description |
+|------|-------------|
+| `{name}_in_brief.json` | Machine-readable summary: type, redshift, confidence, identified lines |
+| `final_report.md` | Human-readable final report with full analysis details |
+| `hypothesis_synthesis/report.md` | Summary of all tested hypotheses and final verdict |
+| `hypothesis_synthesis/catalog.csv` | Table of all hypotheses with line measurements |
+| `visual_interpreter/{name}_emission.csv` | All detected emission features (wavelength, flux, SNR, width) |
+| `visual_interpreter/{name}_absorption.csv` | All detected absorption features |
+| `single_hypothesis/{N}_lines.csv` | Line identifications for each tested redshift
 
 ---
 ## License
@@ -215,5 +210,3 @@ And by-products:
 This project is for research and educational purposes. 
 
 ---
-Update 
-- 2025.12.24: remove environment variables `WEIGHT_ORIGINAL`
