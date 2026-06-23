@@ -47,7 +47,7 @@
 
 **Lyα multi-peak fragmentation**: IGM absorption can split broad Lyα into 2–3 apparent peaks along the line of sight. Each fragment may match Lyα at slightly different implied z. This is physically normal — the true Lyα center lies among the detected fragments. Multiple narrow/intermediate Lyα matches at nearby wavelengths can still support a QSO hypothesis.
 
-**Fatal problems for Type 1 QSO**: All claimed broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing at predicted positions. A spectroscopically convincing broad line (spanning tens of pixels, smooth wings) carries more weight than the exact FWHM value.
+**Fatal problems for Type 1 QSO**: All claimed broad lines are narrow (FWHM < 1000 km/s). Any of Lyα, C IV, C III], or Mg II missing at its predicted position (within the observed wavelength range — NOT MASKED) is fatal. A single missing broad line among these four is sufficient to reject the QSO classification. A spectroscopically convincing broad line (spanning tens of pixels, smooth wings) carries more weight than the exact FWHM value.
 
 **Fatal problems for Type 2 QSO**: [Ne V] is NOT visually convincing, AND no broad lines are present. A Type 2 QSO without [Ne V] is indistinguishable from a star-forming Galaxy — do NOT classify as QSO in this case. If [Ne V] IS visually convincing, Type 2 QSO is a valid classification even with zero broad lines.
 

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BatchConfig — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / <a href="config_overview.html">Config</a> / BatchConfig
+</div>
+
+<h1><span class="section-label">Core · Config</span>BatchConfig</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/core/config/batch_config.py</code></p>
+  <p><strong>Class:</strong> <code>BatchConfig(BaseModel)</code> — batch processing configuration. Defines a numeric index range and optional header prefix; generates the full list of file IDs for batch mode execution.</p>
+  <p><strong>Dependencies:</strong> <a href="config_utils.html">_utils</a> · Pydantic</p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">config</span> <span class="tag">batch</span> <span class="tag">Pydantic</span></div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Function Tree</h2>
+
+<div class="file-tree">
+  <ul class="tree">
+    <li class="file"><a href="#parse_batch_range">parse_batch_range(start, end)</a> <span class="comment">← module-level: string range → ID list</span></li>
+    <li>
+      <span class="tree-label">class BatchConfig</span>
+      <ul>
+        <li class="file">header, start, end <span class="comment">← Pydantic fields</span></li>
+        <li class="file"><a href="#from_env">from_env()</a> <span class="comment">← classmethod: load from env vars</span></li>
+        <li class="file"><a href="#validate_digit">validate_digit(v)</a> <span class="comment">← field_validator for start/end</span></li>
+        <li class="file"><a href="#is_batch_mode">is_batch_mode()</a> <span class="comment">← True if start and end both set</span></li>
+        <li class="file"><a href="#generate_ids">generate_ids()</a> <span class="comment">← produce file ID list</span></li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#parse_batch_range">parse_batch_range(start, end → List[str])</a></li>
+  <li><a href="#BatchConfig">class BatchConfig</a></li>
+  <li><a href="#from_env">from_env() — load from environment</a></li>
+  <li><a href="#is_batch_mode">is_batch_mode() — mode check</a></li>
+  <li><a href="#generate_ids">generate_ids() — file ID generation</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<div class="func-block" id="parse_batch_range">
+  <h3>parse_batch_range</h3>
+  <div class="sig"><code>parse_batch_range(start: str, end: str) -> List[str]</code></div>
+  <p>Module-level helper. Converts a numeric string range into a list of string IDs:</p>
+  <p>
+    1. Validates both <code>start</code> and <code>end</code> are numeric digits.<br>
+    2. Ensures <code>start ≤ end</code>.<br>
+    3. Detects zero-padding: if <code>start</code> has a leading zero and is wider than its integer value, uses fixed-width zero-padded output (e.g. <code>("001","005")</code> → <code>["001","002","003","004","005"]</code>).<br>
+    4. Otherwise, generates plain integer strings (<code>("1","5")</code> → <code>["1","2","3","4","5"]</code>).
+  </p>
+  <div class="return-type">→ List[str] — ordered list of numeric ID strings</div>
+</div>
+
+<div class="func-block" id="BatchConfig">
+  <h3>class BatchConfig</h3>
+  <div class="sig"><code>class BatchConfig(BaseModel)</code></div>
+  <p>Pydantic model with three fields: <code>header: str</code> (optional prefix, e.g. <code>"spec-"</code>), <code>start: Optional[str]</code>, <code>end: Optional[str]</code>. Both start/end are validated via <code>@field_validator</code> to be numeric digits if non-None.</p>
+  <p>Agents use this config to determine whether the system is in single-file or batch mode — if both start and end are set, <code>generate_ids()</code> produces the full file ID list.</p>
+</div>
+
+<div class="func-block" id="from_env">
+  <h3>from_env</h3>
+  <div class="sig"><code>@classmethod from_env() -> BatchConfig</code></div>
+  <p>Construct from environment variables: <code>FILE_BATCH_HEADER</code> (default <code>""</code>), <code>FILE_BATCH_START</code>, <code>FILE_BATCH_END</code>. If start/end are not set, they remain <code>None</code>, putting the system in single-file mode.</p>
+  <div class="return-type">→ BatchConfig instance</div>
+</div>
+
+<div class="func-block" id="validate_digit">
+  <h3>validate_digit</h3>
+  <div class="sig"><code>@field_validator("start", "end") validate_digit(v) -> Optional[str]</code></div>
+  <p>Pydantic field validator. If <code>v is None</code>, passes through. Otherwise asserts <code>v.isdigit()</code> — raises <code>ValueError</code> on non-numeric batch start/end values.</p>
+</div>
+
+<div class="func-block" id="is_batch_mode">
+  <h3>is_batch_mode</h3>
+  <div class="sig"><code>is_batch_mode(self) -> bool</code></div>
+  <p>Returns <code>True</code> only when both <code>start</code> and <code>end</code> are non-None. Controls whether the system generates a file ID list or uses the single <code>FILE_NAME</code> from IOConfig.</p>
+  <div class="return-type">→ bool</div>
+</div>
+
+<div class="func-block" id="generate_ids">
+  <h3>generate_ids</h3>
+  <div class="sig"><code>generate_ids(self) -> List[str]</code></div>
+  <p>If batch mode is active, calls <code>parse_batch_range(start, end)</code> and prefixes each index with <code>self.header</code> (e.g. <code>["spec-001", "spec-002", ...]</code>). Returns empty list if not in batch mode.</p>
+  <div class="return-type">→ List[str] — ordered file IDs, or []</div>
+</div>
+
+<div class="prev-next">
+  <a href="config_utils.html">&larr; _utils</a>
+  <span style="color:var(--text-faint)">·</span>
+  <a href="config_io.html">IOConfig &rarr;</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

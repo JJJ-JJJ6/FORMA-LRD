@@ -282,7 +282,7 @@ Use lowest-ionization LIKELY line to anchor systemic z:
 
 - **ELG**: Strong narrow emission ([O II], Hβ, [O III], Hα). Weak absorption.
 - **LRG/BGS**: Strong stellar absorption (Ca K/H, G-band, Mg I, Na D). Weak emission. Fatal: Ca K/H missing pair, Dn4000 < 1.3. Dn4000 > 1.6 for old population.
-- **QSO**: Broad emission (Lyα, C IV, C III], Mg II) FWHM > 2000 km/s. Narrow forbidden lines may coexist. Fatal: all broad lines are narrow (FWHM < 1000 km/s), Lyα and C IV missing.
+- **QSO**: Broad emission (Lyα, C IV, C III], Mg II) FWHM > 2000 km/s. Narrow forbidden lines may coexist. Fatal: all broad lines are narrow (FWHM < 1000 km/s), OR any of Lyα, C IV, C III], Mg II missing at its predicted position within the observed wavelength range.
 - **Star**: Broad absorption, no emission. Distinction from LRG: broader and deeper Balmer absorption.
 - **[Ne V] as AGN indicator**: [Ne V] (3426 Å) almost never present in non-AGN objects. If detected, AGN hypothesis must be seriously considered.
 - **Cross-type**: LRG vs LRG — absorption lines primary. ELG vs ELG — emission lines primary. Cross-type: judge each hypothesis on internal physical consistency.

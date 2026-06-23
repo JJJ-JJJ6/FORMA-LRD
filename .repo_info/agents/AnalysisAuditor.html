@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnalysisAuditor — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --space: #070710;
+    --void: #101022;
+    --surface: #1c1c32;
+    --surface2: #242440;
+    --amber: #eccd70;
+    --amber-dim: #c8a870;
+    --emission: #ff8868;
+    --emission-dim: #a85848;
+    --absorption: #6ebeff;
+    --blue-dim: #70a0d0;
+    --text: #e8e2da;
+    --text-dim: #c0b8a8;
+    --text-faint: #a09888;
+    --rule: #3a3a52;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    background: var(--space);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 36px 0 32px;
+  }
+  .breadcrumb {
+    font-size: 0.78em;
+    color: var(--text-faint);
+    margin: 32px 0 24px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  .breadcrumb a { color: var(--blue-dim); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--absorption); }
+  h1 {
+    font-family: 'EB Garamond', 'Georgia', serif;
+    font-size: 2.2em;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h1 .section-label {
+    display: block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.28em;
+    font-weight: 400;
+    color: var(--text-faint);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  h2 {
+    font-family: 'EB Garamond', 'Georgia', serif;
+    font-size: 1.4em;
+    font-weight: 500;
+    color: var(--amber);
+    margin: 40px 0 14px;
+    padding-left: 8px;
+    border-left: 2px solid var(--emission-dim);
+  }
+  h3 {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin: 24px 0 8px;
+  }
+  .overview-box {
+    background: var(--void);
+    border: 1px solid var(--rule);
+    border-left: 2px solid var(--absorption);
+    padding: 16px 20px;
+    margin: 14px 0;
+    font-size: 0.9em;
+  }
+  .overview-box p { margin: 3px 0; font-size: 0.9em; color: var(--text-dim); }
+  .overview-box strong { color: var(--text); }
+  .overview-box code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85em;
+    color: var(--amber-dim);
+  }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7em;
+    padding: 2px 7px;
+    border-radius: 2px;
+    background: rgba(74,158,255,0.08);
+    color: var(--absorption);
+    border: 1px solid rgba(74,158,255,0.15);
+    letter-spacing: 0.02em;
+  }
+  .func-block {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 16px 20px;
+    margin: 10px 0;
+  }
+  .func-block h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85em;
+    font-weight: 500;
+    color: var(--amber);
+    margin: 0 0 6px 0;
+    text-transform: none;
+    letter-spacing: 0.01em;
+  }
+  .func-block .sig {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78em;
+    color: var(--absorption);
+    margin-bottom: 6px;
+  }
+  .func-block p { font-size: 0.85em; color: var(--text-dim); }
+  .func-block .return-type {
+    font-size: 0.72em;
+    color: var(--text-faint);
+    margin-top: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85em;
+    color: var(--amber-dim);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.84em;
+  }
+  th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72em;
+    font-weight: 500;
+    text-align: left;
+    padding: 8px 12px;
+    color: var(--amber-dim);
+    background: var(--surface);
+    border-bottom: 2px solid var(--rule);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  td { padding: 7px 12px; border-bottom: 1px solid var(--rule); color: var(--text-dim); }
+  tr:hover td { background: rgba(255,255,255,0.012); }
+  .prev-next {
+    margin-top: 40px;
+    font-size: 0.82em;
+    color: var(--text-faint);
+    font-family: 'IBM Plex Mono', monospace;
+    display: flex;
+    gap: 16px;
+  }
+  .prev-next a { color: var(--blue-dim); text-decoration: none; }
+  .prev-next a:hover { color: var(--absorption); }
+  .note {
+    border-left: 2px solid var(--absorption);
+    background: rgba(74,158,255,0.04);
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 0.82em;
+    color: var(--text-dim);
+  }
+  .desc { color: var(--text-dim); font-size: 0.88em; margin: 6px 0; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 28px 0; }
+  a { color: var(--absorption); text-decoration: none; transition: color 0.15s; }
+  a:hover { color: var(--amber); }
+  .footer {
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 0.68em;
+    margin: 50px 0 30px;
+    padding: 16px 0;
+    border-top: 1px solid var(--rule);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .footer a { color: var(--blue-dim); }
+  ol.toc {
+    columns: 2;
+    column-gap: 32px;
+    list-style: none;
+    background: var(--void);
+    border: 1px solid var(--rule);
+    padding: 14px 20px;
+    margin: 12px 0;
+    font-size: 0.84em;
+  }
+  ol.toc li { margin: 4px 0; break-inside: avoid; }
+  ol.toc a { color: var(--absorption); }
+  .class-badge {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.65em;
+    padding: 2px 8px;
+    background: rgba(255,107,74,0.1);
+    color: var(--emission);
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  @media (max-width: 768px) {
+    .container { padding: 0 18px; }
+    h1 { font-size: 1.6em; }
+    ol.toc { columns: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+  :focus-visible { outline: 2px solid var(--emission); outline-offset: 3px; }
+
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#agents">Agents</a> / AnalysisAuditor
+</div>
+
+<h1><span class="section-label">Agent</span>AnalysisAuditor</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/agents/multi_agents/AnalysisAuditor.py</code></p>
+  <p>Stage 3 — Two-stage adversarial review (FeatureAuditor + AnalysisAuditor).</p>
+  <p><strong>Classes:</strong> <code>FeatureAuditorFailed</code>, <code>FeatureAuditor</code>, <code>AnalysisAuditor</code></p>
+  <p><strong>Dependencies:</strong> <a href="../harness/tools.html">tools</a> · <a href="../harness/hypothesis_synthesis.html">hypothesis_synthesis</a> · <a href="../harness/continuation.html">continuation</a></p>
+  <div class="tag-row"><span class="tag">agent</span> <span class="tag">Stage 3</span> <span class="tag">adversarial</span></div>
+</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#FeatureAuditorFailed">Class FeatureAuditorFailed</a></li>
+  <li><a href="#FeatureAuditor">Class FeatureAuditor</a></li>
+  <li><a href="#FeatureAuditor.__init__">FeatureAuditor.__init__(self, runtime)</a></li>
+  <li><a href="#FeatureAuditor.run">FeatureAuditor.run(self, state -> SpectroState)</a></li>
+  <li><a href="#AnalysisAuditor">Class AnalysisAuditor</a></li>
+  <li><a href="#AnalysisAuditor.__init__">AnalysisAuditor.__init__(self, runtime)</a></li>
+  <li><a href="#AnalysisAuditor.run">AnalysisAuditor.run(self, state -> SpectroState)</a></li>
+  <li><a href="#build_contradiction_matrix">build_contradiction_matrix(results, dir, wl_min, wl_max -> (rows, stats, ...))</a></li>
+  <li><a href="#_detect_emission_absorption_pairs">_detect_emission_absorption_pairs(matrix_rows, results -> list)</a></li>
+  <li><a href="#_build_feature_audit_user_message">_build_feature_audit_user_message(state, dir, rows, annotations, stats -> str)</a></li>
+  <li><a href="#_extract_json_block">_extract_json_block(text, keys -> Optional[dict])</a></li>
+  <li><a href="#_clean_rec">_clean_rec(rec -> str)</a></li>
+  <li><a href="#_resolve_max_tokens">_resolve_max_tokens(-> Optional[int])</a></li>
+</ol>
+
+<h2 id="FeatureAuditorFailed"><span class="class-badge">class</span> FeatureAuditorFailed</h2>
+<p class="desc">Inherits: <code>Exception</code></p>
+<p class="desc">Raised when FeatureAuditor exhausts all retries.</p>
+
+<h2 id="FeatureAuditor"><span class="class-badge">class</span> FeatureAuditor</h2>
+<p class="desc">Inherits: <code>BaseAgent</code></p>
+<p class="desc">Stage 3A — Cross-hypothesis feature verification. Builds contradiction matrix, LLM verifies each feature as real/noise.</p>
+<div class="func-block" id="FeatureAuditor.__init__">
+  <h3>__init__</h3>
+  <div class="sig"><code>__init__(self, runtime)</code></div>
+  <p>Method of <code>FeatureAuditor</code>.</p>
+</div>
+<div class="func-block" id="FeatureAuditor.run">
+  <h3>run</h3>
+  <div class="sig"><code>run(self, state -> SpectroState)</code></div>
+  <p>Main entry: build matrix, run LLM verification.</p>
+</div>
+
+<h2 id="AnalysisAuditor"><span class="class-badge">class</span> AnalysisAuditor</h2>
+<p class="desc">Inherits: <code>BaseAgent</code></p>
+<p class="desc">Stage 3B — Adversarial second review. Reviews synthesis conclusion, outputs calibrated confidence.</p>
+<div class="func-block" id="AnalysisAuditor.__init__">
+  <h3>__init__</h3>
+  <div class="sig"><code>__init__(self, runtime)</code></div>
+  <p>Method of <code>AnalysisAuditor</code>.</p>
+</div>
+<div class="func-block" id="AnalysisAuditor.run">
+  <h3>run</h3>
+  <div class="sig"><code>run(self, state -> SpectroState)</code></div>
+  <p>Main entry: read synthesis, launch LLM second review.</p>
+</div>
+
+<div class="func-block" id="build_contradiction_matrix">
+  <h3>build_contradiction_matrix</h3>
+  <div class="sig"><code>build_contradiction_matrix(results, dir, wl_min, wl_max -> (rows, stats, ...))</code></div>
+  <p>Build Feature Contradiction Matrix from all hypotheses' lines.csv.</p>
+</div>
+<div class="func-block" id="_detect_emission_absorption_pairs">
+  <h3>_detect_emission_absorption_pairs</h3>
+  <div class="sig"><code>_detect_emission_absorption_pairs(matrix_rows, results -> list)</code></div>
+  <p>Detect same-species emission-absorption pairs within hypotheses.</p>
+</div>
+<div class="func-block" id="_build_feature_audit_user_message">
+  <h3>_build_feature_audit_user_message</h3>
+  <div class="sig"><code>_build_feature_audit_user_message(state, dir, rows, annotations, stats -> str)</code></div>
+  <p>Build FeatureAuditor LLM user prompt.</p>
+</div>
+<div class="func-block" id="_extract_json_block">
+  <h3>_extract_json_block</h3>
+  <div class="sig"><code>_extract_json_block(text, keys -> Optional[dict])</code></div>
+  <p>Extract JSON block from LLM response.</p>
+</div>
+<div class="func-block" id="_clean_rec">
+  <h3>_clean_rec</h3>
+  <div class="sig"><code>_clean_rec(rec -> str)</code></div>
+  <p>Normalize recommendation string.</p>
+</div>
+<div class="func-block" id="_resolve_max_tokens">
+  <h3>_resolve_max_tokens</h3>
+  <div class="sig"><code>_resolve_max_tokens(-> Optional[int])</code></div>
+  <p>Determine max_tokens from model type.</p>
+</div>
+
+<div class="prev-next">
+  <a href="HypothesisAnalyst.html">&larr; Previous</a>
+  <span style="color:var(--text-faint)">·</span>
+  <a href="ReportWriter.html">Next &rarr;</a>
+  <span style="margin-left:auto;"><a href="../index.html#agents">All Agents</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

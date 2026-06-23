@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Config Overview — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / Config Overview
+</div>
+
+<h1><span class="section-label">Core</span>Config Overview</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/core/config/ (6 files, 5 Pydantic models + _utils)</code></p>
+  <p>Configuration system — aggregates all runtime parameters via Pydantic models loaded from environment variables. Each model has a <code>from_env()</code> classmethod factory with field-level and cross-field validation.</p>
+  <p><strong>Classes:</strong> <a href="config_all.html">AllConfig</a> · <a href="config_batch.html">BatchConfig</a> · <a href="config_io.html">IOConfig</a> · <a href="config_model.html">ModelConfig</a> · <a href="config_params.html">ParamsConfig</a> · <a href="config_utils.html">_utils</a> (helpers)</p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">config</span> <span class="tag">Pydantic</span></div>
+</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="config_all.html">AllConfig</a> — top-level aggregator</li>
+  <li><a href="config_batch.html">BatchConfig</a> — batch range &amp; file ID generation</li>
+  <li><a href="config_io.html">IOConfig</a> — I/O paths &amp; run mode validation</li>
+  <li><a href="config_model.html">ModelConfig</a> — LLM + VLM client parameters</li>
+  <li><a href="config_params.html">ParamsConfig</a> — science &amp; pipeline parameters</li>
+  <li><a href="config_utils.html">_utils</a> — env-var parsing helpers</li>
+</ol>
+
+<h2 id="AllConfig"><span class="class-badge">class</span> AllConfig</h2>
+<p class="desc">Inherits: <code>BaseModel</code></p>
+<p class="desc">Top-level config aggregation. Composes <code>BatchConfig</code>, <code>IOConfig</code>, <code>ModelConfig</code>, <code>ParamsConfig</code> plus <code>retry_delay</code> and <code>max_tries</code>. The single <code>from_env()</code> factory chains all sub-factories. <a href="config_all.html">→ Full details</a></p>
+
+<h2 id="BatchConfig"><span class="class-badge">class</span> BatchConfig</h2>
+<p class="desc">Inherits: <code>BaseModel</code></p>
+<p class="desc">Batch processing config: header prefix, numeric start/end range with field validation, <code>is_batch_mode()</code> detection, <code>generate_ids()</code> file list generation. <a href="config_batch.html">→ Full details</a></p>
+
+<h2 id="IOConfig"><span class="class-badge">class</span> IOConfig</h2>
+<p class="desc">Inherits: <code>BaseModel</code></p>
+<p class="desc">I/O path config: input_dir, input_format, output_dir, run_mode (s/b), file_name. Cross-field validation ensures mode-specific required fields are present. <a href="config_io.html">→ Full details</a></p>
+
+<h2 id="ModelConfig"><span class="class-badge">class</span> ModelConfig</h2>
+<p class="desc">Inherits: <code>BaseModel</code></p>
+<p class="desc">LLM/VLM client configuration: two dicts (llm, vlm) each with api_key, base_url, model, temperature, max_tokens, thinking mode, and streaming flag. <a href="config_model.html">→ Full details</a></p>
+
+<h2 id="ParamsConfig"><span class="class-badge">class</span> ParamsConfig</h2>
+<p class="desc">Inherits: <code>BaseModel</code></p>
+<p class="desc">Science &amp; pipeline parameters: spectral arms, CWT feature detection thresholds, Redrock redshift engine config, harness concurrency, SelfEvolve flags. 24 fields in 3 groups. <a href="config_params.html">→ Full details</a></p>
+
+<h2 id="utils"><span class="class-badge" style="background:var(--badge-done-bg);color:var(--green-accent);">module</span> _utils</h2>
+<p class="desc">Shared env-var parsing helpers: <code>safe_to_bool</code>, <code>getenv_int</code>, <code>getenv_float</code>, <code>getenv_optional_float</code>, <code>getenv_int_list</code>. Used by ModelConfig and ParamsConfig. <a href="config_utils.html">→ Full details</a></p>
+
+
+<div class="prev-next">
+  <a href="llm.html">&larr; Previous</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

@@ -6,6 +6,12 @@ test_set/
 .to_harness/
 llm-spectro-agent-old-master/
 
+# agent
+.agents/
+
+skills-lock.json
+node_modules/
+
 # Debug
 .debugger/
 

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpectroState — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / SpectroState
+</div>
+
+<h1><span class="section-label">Core</span>SpectroState</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/agents/common/state.py (+ state_factory.py + message_utils.py)</code></p>
+  <p>LangGraph state definition (60+ fields) + state factory + message utilities.</p>
+  <p><strong>Classes:</strong> <code>SpectroState</code>, <code>SpectroStateFactory</code></p>
+  <p><strong>Dependencies:</strong> <a href="config_overview.html">Config</a></p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">state</span> <span class="tag">LangGraph</span></div>
+</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#SpectroState">Class SpectroState</a></li>
+  <li><a href="#SpectroStateFactory">Class SpectroStateFactory</a></li>
+  <li><a href="#SpectroStateFactory.__init__">SpectroStateFactory.__init__(self, configs: AllConfig)</a></li>
+  <li><a href="#SpectroStateFactory.create">SpectroStateFactory.create(self, ... -> SpectroState)</a></li>
+</ol>
+
+<h2 id="SpectroState"><span class="class-badge">class</span> SpectroState</h2>
+<p class="desc">Inherits: <code>MessagesState</code></p>
+<p class="desc">Core LangGraph state class (60+ fields). Grouped by pipeline stage: input paths, axis mappings, spectrum data, CWT features, brute-force hypotheses, LLM results, audit verdicts, output.</p>
+
+<h2 id="SpectroStateFactory"><span class="class-badge">class</span> SpectroStateFactory</h2>
+<p class="desc">Creates initial SpectroState from AllConfig + input parameters.</p>
+<div class="func-block" id="SpectroStateFactory.__init__">
+  <h3>__init__</h3>
+  <div class="sig"><code>__init__(self, configs: AllConfig)</code></div>
+  <p>Method of <code>SpectroStateFactory</code>.</p>
+</div>
+<div class="func-block" id="SpectroStateFactory.create">
+  <h3>create</h3>
+  <div class="sig"><code>create(self, ... -> SpectroState)</code></div>
+  <p>Create initial state object with pre-filled paths and parameters.</p>
+</div>
+
+
+<div class="prev-next">
+  <a href="base_agent.html">&larr; Previous</a>
+  <span style="color:var(--text-faint)">·</span>
+  <a href="result_writer.html">Next &rarr;</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

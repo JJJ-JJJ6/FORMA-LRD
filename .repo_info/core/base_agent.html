@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BaseAgent — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / BaseAgent
+</div>
+
+<h1><span class="section-label">Core</span>BaseAgent</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/agents/common/base_agent.py</code></p>
+  <p>Abstract agent base class — LLM/VLM call abstraction, auto-retry, error classification, thinking mode management.</p>
+  <p><strong>Classes:</strong> <code>BaseAgent</code></p>
+  <p><strong>Dependencies:</strong> <a href="llm.html">LLM Wrapper</a> · <a href="config_overview.html">Config</a></p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">base class</span></div>
+</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#BaseAgent">Class BaseAgent</a></li>
+  <li><a href="#BaseAgent.__init__">BaseAgent.__init__(self, runtime)</a></li>
+  <li><a href="#BaseAgent._skill_path">BaseAgent._skill_path(self, name: str -> Path)</a></li>
+  <li><a href="#BaseAgent._load_skill">BaseAgent._load_skill(self, name: str -> str)</a></li>
+  <li><a href="#BaseAgent._apply_thinking">BaseAgent._apply_thinking(self, model, thinking_cfg, vendor, want_tools)</a></li>
+  <li><a href="#BaseAgent.call_llm_with_context">BaseAgent.call_llm_with_context(self, state, skill_name, ...)</a></li>
+</ol>
+
+<h2 id="BaseAgent"><span class="class-badge">class</span> BaseAgent</h2>
+<p class="desc">Abstract base class for all agents. Encapsulates LLM/VLM calls, auto-retry, error classification, thinking mode, skill loading with Jinja2 rendering.</p>
+<div class="func-block" id="BaseAgent.__init__">
+  <h3>__init__</h3>
+  <div class="sig"><code>__init__(self, runtime)</code></div>
+  <p>Initialize BaseAgent with RuntimeContainer (models, MCP, tools).</p>
+</div>
+<div class="func-block" id="BaseAgent._skill_path">
+  <h3>_skill_path</h3>
+  <div class="sig"><code>_skill_path(self, name: str -> Path)</code></div>
+  <p>Resolve skill prompt file path from name.</p>
+</div>
+<div class="func-block" id="BaseAgent._load_skill">
+  <h3>_load_skill</h3>
+  <div class="sig"><code>_load_skill(self, name: str -> str)</code></div>
+  <p>Load skill prompt template from file.</p>
+</div>
+<div class="func-block" id="BaseAgent._apply_thinking">
+  <h3>_apply_thinking</h3>
+  <div class="sig"><code>_apply_thinking(self, model, thinking_cfg, vendor, want_tools)</code></div>
+  <p>Build extended thinking parameters based on vendor and config.</p>
+</div>
+<div class="func-block" id="BaseAgent.call_llm_with_context">
+  <h3>call_llm_with_context</h3>
+  <div class="sig"><code>call_llm_with_context(self, state, skill_name, ...)</code></div>
+  <p>Core LLM call method. Assembles messages, tool definitions, handles JSON parsing, tool loops, exception retries.</p>
+</div>
+
+
+<div class="prev-next">
+  <a href="state.html">Next &rarr;</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

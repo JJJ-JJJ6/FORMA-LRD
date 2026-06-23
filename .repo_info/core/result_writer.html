@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResultWriter — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / ResultWriter
+</div>
+
+<h1><span class="section-label">Core</span>ResultWriter</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/agents/common/result_writer.py</code></p>
+  <p>Result persistence layer — writes SpectroState outputs to disk.</p>
+  <p><strong>Classes:</strong> <code>ResultWriter</code></p>
+  <p><strong>Dependencies:</strong> <a href="state.html">SpectroState</a></p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">IO</span></div>
+</div>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#ResultWriter">Class ResultWriter</a></li>
+  <li><a href="#ResultWriter.__init__">ResultWriter.__init__(self, ...)</a></li>
+  <li><a href="#ResultWriter.write">ResultWriter.write(self, state: SpectroState)</a></li>
+  <li><a href="#ResultWriter.write_qualitative_analysis">ResultWriter.write_qualitative_analysis(self, state)</a></li>
+  <li><a href="#ResultWriter.write_preliminary_classification">ResultWriter.write_preliminary_classification(self, state)</a></li>
+  <li><a href="#ResultWriter.write_brute_force_matching">ResultWriter.write_brute_force_matching(self, state)</a></li>
+  <li><a href="#ResultWriter.write_hypothesis_results">ResultWriter.write_hypothesis_results(self, state)</a></li>
+  <li><a href="#ResultWriter.write_ranked_hypotheses">ResultWriter.write_ranked_hypotheses(self, state)</a></li>
+  <li><a href="#ResultWriter.write_verdict">ResultWriter.write_verdict(self, state)</a></li>
+  <li><a href="#ResultWriter.write_final_report">ResultWriter.write_final_report(self, state)</a></li>
+  <li><a href="#ResultWriter._resolve_output_dir">ResultWriter._resolve_output_dir(self, state -> str)</a></li>
+  <li><a href="#ResultWriter._write_text">ResultWriter._write_text(self, path, content)</a></li>
+  <li><a href="#ResultWriter._write_json">ResultWriter._write_json(self, path, obj)</a></li>
+</ol>
+
+<h2 id="ResultWriter"><span class="class-badge">class</span> ResultWriter</h2>
+<p class="desc">Centralized result output manager. 20+ write_* methods covering reports, verdicts, CSV catalogs, and visualizations.</p>
+<div class="func-block" id="ResultWriter.__init__">
+  <h3>__init__</h3>
+  <div class="sig"><code>__init__(self, ...)</code></div>
+  <p>Initialize output directory and config.</p>
+</div>
+<div class="func-block" id="ResultWriter.write">
+  <h3>write</h3>
+  <div class="sig"><code>write(self, state: SpectroState)</code></div>
+  <p>Main entry: dispatches to appropriate write_* methods based on state.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_qualitative_analysis">
+  <h3>write_qualitative_analysis</h3>
+  <div class="sig"><code>write_qualitative_analysis(self, state)</code></div>
+  <p>Write qualitative line description report.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_preliminary_classification">
+  <h3>write_preliminary_classification</h3>
+  <div class="sig"><code>write_preliminary_classification(self, state)</code></div>
+  <p>Write preliminary classification result.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_brute_force_matching">
+  <h3>write_brute_force_matching</h3>
+  <div class="sig"><code>write_brute_force_matching(self, state)</code></div>
+  <p>Write brute-force matching candidate hypothesis list.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_hypothesis_results">
+  <h3>write_hypothesis_results</h3>
+  <div class="sig"><code>write_hypothesis_results(self, state)</code></div>
+  <p>Write per-hypothesis LLM evaluation reports.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_ranked_hypotheses">
+  <h3>write_ranked_hypotheses</h3>
+  <div class="sig"><code>write_ranked_hypotheses(self, state)</code></div>
+  <p>Write sorted hypothesis list.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_verdict">
+  <h3>write_verdict</h3>
+  <div class="sig"><code>write_verdict(self, state)</code></div>
+  <p>Write final synthesis verdict.</p>
+</div>
+<div class="func-block" id="ResultWriter.write_final_report">
+  <h3>write_final_report</h3>
+  <div class="sig"><code>write_final_report(self, state)</code></div>
+  <p>Write ReportWriter-generated final Markdown report.</p>
+</div>
+<div class="func-block" id="ResultWriter._resolve_output_dir">
+  <h3>_resolve_output_dir</h3>
+  <div class="sig"><code>_resolve_output_dir(self, state -> str)</code></div>
+  <p>Resolve output directory path.</p>
+</div>
+<div class="func-block" id="ResultWriter._write_text">
+  <h3>_write_text</h3>
+  <div class="sig"><code>_write_text(self, path, content)</code></div>
+  <p>Write plain text file.</p>
+</div>
+<div class="func-block" id="ResultWriter._write_json">
+  <h3>_write_json</h3>
+  <div class="sig"><code>_write_json(self, path, obj)</code></div>
+  <p>Write JSON file.</p>
+</div>
+
+
+<div class="prev-next">
+  <a href="state.html">&larr; Previous</a>
+  <span style="color:var(--text-faint)">·</span>
+  <a href="llm.html">Next &rarr;</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

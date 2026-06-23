@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AllConfig — LLM-Spectro-Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../common.css">
+</head>
+<body>
+<div class="container">
+
+<div class="breadcrumb">
+  <a href="../index.html">Home</a> / <a href="../index.html#core">Core</a> / <a href="config_overview.html">Config</a> / AllConfig
+</div>
+
+<h1><span class="section-label">Core · Config</span>AllConfig</h1>
+
+<div class="overview-box">
+  <p><strong>Path:</strong> <code>src/AstroAgent/core/config/all_config.py</code></p>
+  <p><strong>Class:</strong> <code>AllConfig(BaseModel)</code> — top-level configuration aggregator. Composes all sub-config models (BatchConfig, IOConfig, ModelConfig, ParamsConfig) plus retry parameters. The single <code>from_env()</code> factory chains all sub-config factories and is the primary entry point for configuration throughout the system.</p>
+  <p><strong>Dependencies:</strong> <a href="config_batch.html">BatchConfig</a> · <a href="config_io.html">IOConfig</a> · <a href="config_model.html">ModelConfig</a> · <a href="config_params.html">ParamsConfig</a></p>
+  <div class="tag-row"><span class="tag">core</span> <span class="tag">config</span> <span class="tag">aggregation</span> <span class="tag">Pydantic</span></div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Function Tree</h2>
+
+<div class="file-tree">
+  <ul class="tree">
+    <li>
+      <span class="tree-label">class AllConfig</span>
+      <ul>
+        <li class="file">batch: BatchConfig <span class="comment">← batch mode &amp; file ID generation</span></li>
+        <li class="file">io: IOConfig <span class="comment">← input/output paths &amp; run mode</span></li>
+        <li class="file">model: ModelConfig <span class="comment">← LLM + VLM client parameters</span></li>
+        <li class="file">params: ParamsConfig <span class="comment">← science &amp; pipeline parameters</span></li>
+        <li class="file">retry_delay: int <span class="comment">← seconds between retries (default 180)</span></li>
+        <li class="file">max_tries: int <span class="comment">← max connection/timeout retries (default 3)</span></li>
+        <li class="file"><a href="#from_env">from_env()</a> <span class="comment">← classmethod: chain all sub-config factories</span></li>
+      </ul>
+    </li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>Contents</h2>
+<ol class="toc">
+  <li><a href="#AllConfig">class AllConfig</a></li>
+  <li><a href="#from_env">from_env() — aggregate all config from env</a></li>
+</ol>
+
+<!-- ============================================================ -->
+<div class="func-block" id="AllConfig">
+  <h3>class AllConfig</h3>
+  <div class="sig"><code>class AllConfig(BaseModel)</code></div>
+  <p>Top-level Pydantic model with six fields:</p>
+  <ul>
+    <li><strong>batch</strong> <code>: BatchConfig</code> — batch range &amp; file ID generation</li>
+    <li><strong>io</strong> <code>: IOConfig</code> — input/output directories, run mode (<code>s</code> / <code>b</code>), file name</li>
+    <li><strong>model</strong> <code>: ModelConfig</code> — LLM and VLM API parameters (key, url, model, temperature, thinking, stream)</li>
+    <li><strong>params</strong> <code>: ParamsConfig</code> — science parameters (spectral arms, CWT thresholds, Redrock config, concurrency, SelfEvolve flags)</li>
+    <li><strong>retry_delay</strong> <code>: int</code> — seconds to wait between connection/timeout retries (env: <code>RETRY_DELAY</code>, default <code>180</code>)</li>
+    <li><strong>max_tries</strong> <code>: int</code> — maximum retry attempts for connection/timeout errors (env: <code>MAX_TRIES</code>, default <code>3</code>)</li>
+  </ul>
+</div>
+
+<div class="func-block" id="from_env">
+  <h3>from_env</h3>
+  <div class="sig"><code>@classmethod from_env() -> AllConfig</code></div>
+  <p>The single entry point for configuration. Chains all sub-config factories:</p>
+  <p>
+    1. <code>BatchConfig.from_env()</code> → <code>batch</code><br>
+    2. <code>IOConfig.from_env()</code> → <code>io</code><br>
+    3. <code>ModelConfig.from_env()</code> → <code>model</code><br>
+    4. <code>ParamsConfig.from_env()</code> → <code>params</code><br>
+    5. <code>RETRY_DELAY</code> env var (default <code>180</code>) → <code>retry_delay</code><br>
+    6. <code>MAX_TRIES</code> env var (default <code>3</code>) → <code>max_tries</code>
+  </p>
+  <p>Each sub-config factory performs its own validation (field-level + cross-field). Any validation error propagates up to prevent the system from starting with invalid configuration.</p>
+  <div class="return-type">→ AllConfig instance (fully validated)</div>
+</div>
+
+<!-- ============================================================ -->
+<div class="note">
+  <strong>Why aggregate into one class?</strong> The entire configuration tree is a single object passed through the system. <code>scripts/main.py</code> calls <code>AllConfig.from_env()</code> once, then passes it to <code>RuntimeContainer</code>, <code>WorkflowOrchestrator</code>, and every agent. This ensures all components share a consistent, validated configuration without scattered env-var reads.
+</div>
+
+<div class="prev-next">
+  <a href="config_params.html">&larr; ParamsConfig</a>
+  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+</div>
+
+<div class="footer">
+  <p><a href="../index.html">Home</a> &middot; LLM-Spectro-Agent &middot; 2026-06-11</p>
+</div>
+
+</div>
+  <script src="../common.js"></script>
+</body>
+</html>

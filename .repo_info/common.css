@@ -1,0 +1,473 @@
+/* ============================================================
+   LLM-Spectro-Agent — shared styles for all documentation pages
+   ============================================================ */
+
+:root {
+  /* ---- dark theme (default) ---- */
+  --space: #070710;
+  --void: #101022;
+  --surface: #1c1c32;
+  --surface2: #242440;
+  --amber: #eccd70;
+  --amber-dim: #c8a870;
+  --emission: #ff8868;
+  --emission-dim: #a85848;
+  --absorption: #6ebeff;
+  --blue-dim: #70a0d0;
+  --text: #e8e2da;
+  --text-dim: #c0b8a8;
+  --text-faint: #a09888;
+  --rule: #3a3a52;
+
+  /* semi-transparent utility vars (dark defaults) */
+  --tag-bg: rgba(74,158,255,0.08);
+  --tag-border: rgba(74,158,255,0.15);
+  --tag-primary-bg: rgba(255,107,74,0.12);
+  --tag-primary-border: rgba(255,107,74,0.2);
+  --tag-green-bg: rgba(100,200,120,0.1);
+  --tag-green-border: rgba(100,200,120,0.2);
+  --note-bg: rgba(74,158,255,0.04);
+  --row-hover-bg: rgba(255,255,255,0.012);
+  --li-hover-bg: rgba(255,255,255,0.018);
+  --class-badge-bg: rgba(255,107,74,0.1);
+  --badge-done-bg: rgba(100,200,120,0.1);
+  --badge-skel-bg: rgba(200,180,100,0.1);
+  --arena-bg: rgba(22,22,42,0.4);
+  --green-accent: #7cd89a;
+  --link-hover: var(--amber);
+}
+
+/* ---- light theme ---- */
+[data-theme="light"] {
+  --space: #f2f1f5;
+  --void: #e8e7ed;
+  --surface: #dcdbe3;
+  --surface2: #d0cfd8;
+  --amber: #8b3a3a;
+  --amber-dim: #7a4848;
+  --emission: #3a7ec8;
+  --emission-dim: #2a5a90;
+  --absorption: #3465a8;
+  --blue-dim: #5078a0;
+  --text: #181a20;
+  --text-dim: #3d3f47;
+  --text-faint: #6a6c74;
+  --rule: #c6c5ce;
+
+  /* semi-transparent overlays (light) */
+  --tag-bg: rgba(52,101,168,0.08);
+  --tag-border: rgba(52,101,168,0.15);
+  --tag-primary-bg: rgba(58,126,200,0.1);
+  --tag-primary-border: rgba(58,126,200,0.18);
+  --tag-green-bg: rgba(74,138,92,0.1);
+  --tag-green-border: rgba(74,138,92,0.18);
+  --note-bg: rgba(52,101,168,0.06);
+  --row-hover-bg: rgba(0,0,0,0.02);
+  --li-hover-bg: rgba(0,0,0,0.025);
+  --class-badge-bg: rgba(58,126,200,0.1);
+  --badge-done-bg: rgba(74,138,92,0.1);
+  --badge-skel-bg: rgba(139,58,58,0.1);
+  --arena-bg: rgba(0,0,0,0.03);
+  --green-accent: #4a8a5c;
+  --link-hover: #4a90d8;
+}
+
+/* ---------- reset ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  background: var(--space);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 17px;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 36px 0 32px;
+}
+
+/* ---------- breadcrumb ---------- */
+.breadcrumb {
+  font-size: 0.78em;
+  color: var(--text-faint);
+  margin: 32px 0 24px;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.breadcrumb a { color: var(--blue-dim); text-decoration: none; }
+.breadcrumb a:hover { color: var(--absorption); }
+
+/* ---------- headings ---------- */
+h1 {
+  font-family: 'EB Garamond', 'Georgia', serif;
+  font-size: 2.2em;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+h1 .section-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.28em;
+  font-weight: 400;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+h2 {
+  font-family: 'EB Garamond', 'Georgia', serif;
+  font-size: 1.4em;
+  font-weight: 500;
+  color: var(--amber);
+  margin: 40px 0 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--emission-dim);
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 24px 0 8px;
+}
+
+/* ---------- overview box ---------- */
+.overview-box {
+  background: var(--void);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--absorption);
+  padding: 16px 20px;
+  margin: 14px 0;
+  font-size: 0.9em;
+}
+.overview-box p { margin: 3px 0; font-size: 0.9em; color: var(--text-dim); }
+.overview-box strong { color: var(--text); }
+.overview-box code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  color: var(--amber-dim);
+}
+
+/* ---------- tags ---------- */
+.tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7em;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: var(--tag-bg);
+  color: var(--absorption);
+  border: 1px solid var(--tag-border);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- file tree ---------- */
+.file-tree {
+  background: var(--void);
+  border: 1px solid var(--rule);
+  padding: 18px 20px;
+  margin: 12px 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78em;
+  line-height: 2.0;
+  color: var(--text-dim);
+  overflow-x: auto;
+}
+.file-tree .tree, .file-tree .tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.file-tree .tree ul {
+  margin-left: 0.5em;
+  padding-left: 1.1em;
+  border-left: 1px solid var(--rule);
+}
+.file-tree .tree li {
+  position: relative;
+  padding: 1px 0 1px 0.55em;
+}
+.file-tree .tree ul li::before {
+  content: '';
+  position: absolute;
+  left: -1.1em;
+  top: 1em;
+  width: 0.75em;
+  border-top: 1px solid var(--rule);
+}
+.file-tree .tree ul li:last-child::after {
+  content: '';
+  position: absolute;
+  left: calc(-1.1em - 1px);
+  top: 1em;
+  bottom: -1px;
+  width: 2px;
+  background: var(--void);
+}
+
+/* directory toggle */
+.file-tree details > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--amber);
+  font-weight: 500;
+  outline: none;
+  padding: 1px 0;
+  transition: color 0.12s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.file-tree details > summary::-webkit-details-marker { display: none; }
+.file-tree details > summary::marker { display: none; content: ''; }
+.file-tree details > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+  margin-right: 0;
+  padding: 2px 5px 2px 2px;
+  margin-left: -2px;
+  font-size: 0.7em;
+  color: var(--text-faint);
+  transition: transform 0.12s;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+  line-height: 1;
+}
+.file-tree details[open] > summary::before { content: '▾'; }
+.file-tree details > summary:hover { color: var(--emission); }
+.file-tree details > summary a {
+  color: inherit;
+  text-decoration: none;
+}
+.file-tree details > summary a:hover { color: var(--emission); }
+
+.file-tree .tree-label { color: var(--amber); font-weight: 500; }
+.file-tree .file { padding: 1px 0; color: var(--text-dim); }
+.file-tree .file a {
+  color: var(--amber);
+  text-decoration: none;
+  transition: color 0.12s;
+}
+.file-tree .file a:hover { color: var(--emission); }
+.file-tree .file-dir {
+  color: var(--amber);
+  font-weight: 500;
+  transition: color 0.12s;
+}
+.file-tree .file-dir:hover { color: var(--emission); }
+.file-tree .comment {
+  color: var(--text-faint);
+  font-style: italic;
+  font-size: 0.9em;
+}
+.file-tree .tree li:hover {
+  background: var(--li-hover-bg);
+  border-radius: 2px;
+}
+
+/* ---------- func-block ---------- */
+.func-block {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 16px 20px;
+  margin: 10px 0;
+}
+.func-block h3 {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--amber);
+  margin: 0 0 6px 0;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+.func-block .sig {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78em;
+  color: var(--absorption);
+  margin-bottom: 6px;
+}
+.func-block p { font-size: 0.85em; color: var(--text-dim); }
+.func-block ul { margin: 6px 0 0 18px; font-size: 0.85em; color: var(--text-dim); }
+.func-block ul li { margin: 2px 0; }
+.func-block .return-type {
+  font-size: 0.72em;
+  color: var(--text-faint);
+  margin-top: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ---------- inline code ---------- */
+code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  color: var(--amber-dim);
+}
+
+/* ---------- tables ---------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 0.84em;
+}
+th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72em;
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--amber-dim);
+  background: var(--surface);
+  border-bottom: 2px solid var(--rule);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+td { padding: 7px 12px; border-bottom: 1px solid var(--rule); color: var(--text-dim); }
+tr:hover td { background: var(--row-hover-bg); }
+
+/* ---------- prev / next ---------- */
+.prev-next {
+  margin-top: 40px;
+  font-size: 0.82em;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  display: flex;
+  gap: 16px;
+}
+.prev-next a { color: var(--blue-dim); text-decoration: none; }
+.prev-next a:hover { color: var(--absorption); }
+
+/* ---------- note ---------- */
+.note {
+  border-left: 2px solid var(--absorption);
+  background: var(--note-bg);
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 0.82em;
+  color: var(--text-dim);
+}
+.note strong { color: var(--text); }
+
+/* ---------- misc ---------- */
+.desc { color: var(--text-dim); font-size: 0.88em; margin: 6px 0; }
+hr { border: none; border-top: 1px solid var(--rule); margin: 28px 0; }
+
+a { color: var(--absorption); text-decoration: none; transition: color 0.15s; }
+a:hover { color: var(--link-hover); }
+
+/* ---------- footer ---------- */
+.footer {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 0.68em;
+  margin: 50px 0 30px;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.footer a { color: var(--blue-dim); }
+
+/* ---------- toc ---------- */
+ol.toc {
+  columns: 2;
+  column-gap: 32px;
+  list-style: none;
+  background: var(--void);
+  border: 1px solid var(--rule);
+  padding: 14px 20px;
+  margin: 12px 0;
+  font-size: 0.84em;
+}
+ol.toc li { margin: 4px 0; break-inside: avoid; }
+ol.toc a { color: var(--absorption); }
+ol.toc a:hover { color: var(--link-hover); }
+
+/* ---------- class badge ---------- */
+.class-badge {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65em;
+  padding: 2px 8px;
+  background: var(--class-badge-bg);
+  color: var(--emission);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 768px) {
+  .container { padding: 0 18px; }
+  h1 { font-size: 1.6em; }
+  ol.toc { columns: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+/* ---------- a11y ---------- */
+:focus-visible {
+  outline: 2px solid var(--emission);
+  outline-offset: 3px;
+}
+
+/* ---------- theme transition ---------- */
+body, .file-tree, .overview-box, .func-block, .note, .card,
+.tag, .class-badge, table, th, td, .graph, .breadcrumb,
+.pipeline-stage-inner, .sub-block, .arena-ha, .arena-aa-col,
+.stat-card, .footer, hr {
+  transition: background-color 0.25s, border-color 0.25s, color 0.25s;
+}
+
+/* ---------- theme toggle button ---------- */
+.theme-toggle {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--amber);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: background 0.25s, border-color 0.25s, color 0.25s, transform 0.15s, box-shadow 0.25s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  line-height: 1;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+[data-theme="light"] .theme-toggle {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.theme-toggle:hover {
+  background: var(--surface2);
+  border-color: var(--amber-dim);
+  transform: scale(1.1);
+}
+.theme-toggle:active {
+  transform: scale(0.92);
+}

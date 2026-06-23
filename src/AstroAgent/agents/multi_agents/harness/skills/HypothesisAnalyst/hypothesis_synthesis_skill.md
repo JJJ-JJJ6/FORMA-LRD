@@ -181,6 +181,14 @@ Call `write_synthesis_csv` with ONE ROW PER EVALUATED LINE from the **confirmed 
 
 If no hypothesis is confirmed (redshift=null), write an empty CSV (header only).
 
+**MASKED vs NOT_FOUND — critical rule**: MASKED and NOT_FOUND are NOT interchangeable. You must understand and respect the distinction:
+
+1. **MASKED can ONLY be inherited** from the upstream single-hypothesis line CSVs. You MUST NOT assign MASKED status to any line yourself. If a single-hypothesis CSV row has `status=MASKED`, you may carry it forward as-is into `write_synthesis_csv` if you choose to include it — but never change a non-MASKED status to MASKED, and never add a new row with MASKED status.
+
+2. **Use NOT_FOUND to express absence.** If a line is absent, use NOT_FOUND. This covers two scenarios:
+   - The line was never in the hypothesis's line catalog (e.g. the single-hypothesis agent did not evaluate it, or it is a reference line you expect to see but is missing).
+   - The line was originally LIKELY or MARGINAL in the upstream CSV, but you have decided to **remove** it during synthesis — e.g. Filter 1 (FA advisory override: noise, composite profile contradiction, O II morphology, Lyα forest) or Filter 2 (classification-aware pruning: AGN line in Galaxy classification). In this case, write the row with `status=NOT_FOUND`, so downstream agents (Auditor) can see that the line was considered and deliberately excluded.
+
 ### 3b. Synthesis Report
 
 Call `write_report`. Required sections (in order, exact headings):
