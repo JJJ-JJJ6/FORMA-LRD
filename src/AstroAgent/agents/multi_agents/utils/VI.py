@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cv2
 import numpy as np
 from astropy.io import fits
-from scipy.ndimage import gaussian_filter1d
+# from scipy.ndimage import gaussian_filter1d
 import pandas as pd
 import pytesseract
 from collections import defaultdict
@@ -747,7 +747,7 @@ def _load_spectrum_from_fits(fits_path: str,
             effective_snr = np.full_like(weighted_flux, 5.0, dtype=np.float64)
 
         # smooth the spectrum
-        weighted_flux = gaussian_filter1d(weighted_flux, sigma=2)
+        # weighted_flux = gaussian_filter1d(weighted_flux, sigma=2)
 
         # 构建 spectrum_dict
         spectrum_dict = {
