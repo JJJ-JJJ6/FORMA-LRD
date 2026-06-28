@@ -1,7 +1,7 @@
 """
 Synthesis Host — Final Report Writing.
 
-Runs AFTER the Analysis Auditor.  Calls the new harness
+Runs AFTER the Result Auditor.  Calls the new harness
 (``harness/report_writer.py``) to produce a structured 6-section final
 report.  The LLM writes the report via ``write_report`` tool and outputs a
 JSON comprehensive assessment block — no separate extraction step needed.

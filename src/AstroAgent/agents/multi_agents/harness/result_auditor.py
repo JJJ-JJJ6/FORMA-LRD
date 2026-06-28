@@ -1,8 +1,8 @@
 """
 Report Writer — Final Report Writing Harness.
 
-Runs AFTER the Analysis Auditor.  Takes all upstream outputs (synthesis
-verdict, AA verdict, FA structured verdicts, continuum description, cleaned
+Runs AFTER the Result Auditor.  Takes all upstream outputs (synthesis
+verdict, RA verdict, FA structured verdicts, continuum description, cleaned
 line tables) and produces a structured 6-section final report + a JSON
 comprehensive assessment block.
 """
@@ -91,7 +91,7 @@ def _format_confirmed_lines_with_errors(
 ) -> str:
     """Format confirmed lines with their wavelength errors.
 
-    confirmed_lines: list of [line_name, wavelength] from AA.
+    confirmed_lines: list of [line_name, wavelength] from RA.
     wavelength_errors: {int(wavelength): error} from _lookup_wavelength_errors.
     """
     if not confirmed_lines:
@@ -168,8 +168,8 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
                 parts.append(f"  - H{exc.get('idx')} (z={exc.get('z')}): {exc.get('reason', '')}")
         parts.append("")
 
-    # ── AA verdict ──
-    parts.append("## Analysis Auditor Verdict")
+    # ── RA verdict ──
+    parts.append("## Result Auditor Verdict")
     parts.append("")
     parts.append(f"- Verdict: {auditor_json.get('verdict', '?')}")
     parts.append(f"- Calibrated confidence: {auditor_json.get('calibrated_confidence', '?')}")
