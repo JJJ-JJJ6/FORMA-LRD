@@ -8,7 +8,7 @@ Stage A — FeatureAuditor (pre-synthesis):
     feature is physically real or a noise artifact.  Writes cleaned
     ``{idx}_lines_cleaned.csv`` files that the synthesis step consumes.
 
-Stage B — SynthesisAudit (post-synthesis):
+Stage B — ResultAuditor (post-synthesis):
     Adversarial second review of the synthesis verdict.  Takes the synthesis
     output (winning hypothesis + line catalog) and independently stress-tests
     every key claim by reading the raw spectrum.  Outputs a calibrated
@@ -71,7 +71,7 @@ def _build_continuation_prompt(messages: list, json_keys: List[str] = None) -> s
 
     Uses *json_keys* to detect which output schema is expected:
     - ``["feature_verdicts"]`` → FeatureAuditor schema (counts wl_obs entries)
-    - ``["verdict"]`` → SynthesisAudit schema (tracks completed top-level keys)
+    - ``["verdict"]`` → ResultAuditor schema (tracks completed top-level keys)
     - otherwise → generic prompt
 
     Uses ``_find_last_content_ai_message`` to skip pure tool-call messages and
@@ -128,7 +128,7 @@ def _build_continuation_prompt(messages: list, json_keys: List[str] = None) -> s
             )
 
     elif "verdict" in json_keys:
-        # ── SynthesisAudit schema: track which top-level keys are done ──
+        # ── ResultAuditor schema: track which top-level keys are done ──
         _AUDIT_KEYS = [
             "verdict", "calibrated_confidence", "spectrum_quality",
             "key_issues", "doublet_issues", "line_inventory_issues",

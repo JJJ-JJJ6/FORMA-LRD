@@ -949,8 +949,7 @@ async def arun(
 
     agent = create_agent(
         model=llm,
-        tools=[read_spectrum_region, grep_kb, write_report, write_synthesis_csv,
-               detect_oii_slope_change],
+        tools=[read_spectrum_region, grep_kb, write_report, write_synthesis_csv],
         system_prompt=system_prompt,
     )
 
