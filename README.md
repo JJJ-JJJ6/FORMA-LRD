@@ -20,9 +20,10 @@ The system mimics the cognitive workflow of a human astronomer:
 3. **Multi-agent debate** between an auditor and refinement assistant to improve robustness
 4. **Synthesis** of a final report with confidence assessment
 
-The pipeline is currently configured to use the following Qwen models via API:
-- **Text reasoning**: `qwen3-max-2025-09-23`
-- **Visual understanding**: `qwen-vl-max-2025-08-13`
+The pipeline is currently configured to use the following model via API:
+- **Text reasoning**: `deepseek-v4-pro`
+
+> ⚠️ Note: VLM (vision-language model) is temporarily disabled.
 
 > ⚠️ Note: Other LLMs have not been tested and may require adaptation.
 
