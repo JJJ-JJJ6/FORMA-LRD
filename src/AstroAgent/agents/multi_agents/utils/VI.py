@@ -8,9 +8,13 @@ import numpy as np
 from astropy.io import fits
 # from scipy.ndimage import gaussian_filter1d
 import pandas as pd
-import pytesseract
+# ═══════════════════════════════════════════════════════════════════════════
+# PNG 通道已注释（2026-06-30）：PaddleOCR / Tesseract 安装繁琐，测试阶段不启用。
+# 如需恢复 PNG 输入通道，请取消以下导入及对应 OCR 函数的注释。
+# ═══════════════════════════════════════════════════════════════════════════
+# import pytesseract
 from collections import defaultdict
-from paddleocr import PaddleOCR
+# from paddleocr import PaddleOCR
 from typing import Any, Dict, List, Tuple
 from scipy.optimize import curve_fit
 
@@ -18,75 +22,77 @@ from AstroAgent.agents.common.state import SpectroState
 from AstroAgent.agents.multi_agents.utils.usage import find_overlap_regions
 
 
-# ===========================================================
+# ═══════════════════════════════════════════════════════════════════════════
 # Step 1.2: OCR / Axis Tick Detection
-# ===========================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# PNG 通道已注释（2026-06-30）：PaddleOCR / Tesseract 安装繁琐，测试阶段不启用。
+# 如需恢复，取消下面两个函数及文件顶部对应 import 的注释即可。
 
-def _detect_axis_ticks_tesseract(state: SpectroState, config=None):
-    # Tesseract is not good. I prefer paddle.
-    if config is None:
-        # config = r'--oem 3 --psm 5 -c tessedit_char_whitelist=0123456789.-eE+ '
-        config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789.-eE+ '
-        # config = r'--oem 3 --psm 11 -c tessedit_char_whitelist=0123456789.-eE+ '
-    image_path = state['file_path']
-    img = cv2.imread(image_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-    sharpened = cv2.addWeighted(gray, 1.5, blurred, -0.5, 0)
-    # # _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
-    thresh = cv2.adaptiveThreshold(sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-
-    data = pytesseract.image_to_data(
-        thresh, config=config, output_type=pytesseract.Output.DICT
-    )
-
-    tick_values = []
-    for i in range(len(data['text'])):
-        text = data['text'][i].strip()
-        if text != "":
-            try:
-                value = float(text)
-                (x, y, w, h) = (data['left'][i], data['top'][i],
-                                data['width'][i], data['height'][i])
-                cx, cy = x + w//2, y + h//2
-                tick_values.append({
-                    "value": value,
-                    "position": [cx, cy],
-                    "bounding-box-scale": [w, h]
-                })
-            except ValueError:
-                pass
-
-    return tick_values
-
-
-def _detect_axis_ticks_paddle(state: SpectroState):
-    ocr = PaddleOCR(
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False
-    )
-    result = ocr.predict(state['file_path'])
-    for res in result:
-        # res.print()
-        res.save_to_img(state['output_dir'])
-        res.save_to_json(state['output_dir'])
-    data = []
-    for i in range(len(result[-1]['rec_texts'])):
-        pos = result[-1]['rec_polys'][i]
-        center = [
-            int((pos[0][0] + pos[2][0]) / 2),
-            int((pos[0][1] + pos[2][1]) / 2),
-        ]
-        width = int((pos[1][0] - pos[0][0] + pos[2][0] - pos[3][0]) / 2)
-        height = int((pos[3][1] - pos[0][1] + pos[2][1] - pos[1][1]) / 2)
-        info = {
-            'value': result[-1]['rec_texts'][i],
-            'position': center,
-            'bounding-box-scale': [width, height]
-        }
-        data.append(info)
-    return data
+# def _detect_axis_ticks_tesseract(state: SpectroState, config=None):
+#     # Tesseract is not good. I prefer paddle.
+#     if config is None:
+#         # config = r'--oem 3 --psm 5 -c tessedit_char_whitelist=0123456789.-eE+ '
+#         config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789.-eE+ '
+#         # config = r'--oem 3 --psm 11 -c tessedit_char_whitelist=0123456789.-eE+ '
+#     image_path = state['file_path']
+#     img = cv2.imread(image_path)
+#     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+#     sharpened = cv2.addWeighted(gray, 1.5, blurred, -0.5, 0)
+#     # # _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+#     thresh = cv2.adaptiveThreshold(sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+#
+#     data = pytesseract.image_to_data(
+#         thresh, config=config, output_type=pytesseract.Output.DICT
+#     )
+#
+#     tick_values = []
+#     for i in range(len(data['text'])):
+#         text = data['text'][i].strip()
+#         if text != "":
+#             try:
+#                 value = float(text)
+#                 (x, y, w, h) = (data['left'][i], data['top'][i],
+#                                 data['width'][i], data['height'][i])
+#                 cx, cy = x + w//2, y + h//2
+#                 tick_values.append({
+#                     "value": value,
+#                     "position": [cx, cy],
+#                     "bounding-box-scale": [w, h]
+#                 })
+#             except ValueError:
+#                 pass
+#
+#     return tick_values
+#
+#
+# def _detect_axis_ticks_paddle(state: SpectroState):
+#     ocr = PaddleOCR(
+#         use_doc_orientation_classify=False,
+#         use_doc_unwarping=False,
+#         use_textline_orientation=False
+#     )
+#     result = ocr.predict(state['file_path'])
+#     for res in result:
+#         # res.print()
+#         res.save_to_img(state['output_dir'])
+#         res.save_to_json(state['output_dir'])
+#     data = []
+#     for i in range(len(result[-1]['rec_texts'])):
+#         pos = result[-1]['rec_polys'][i]
+#         center = [
+#             int((pos[0][0] + pos[2][0]) / 2),
+#             int((pos[0][1] + pos[2][1]) / 2),
+#         ]
+#         width = int((pos[1][0] - pos[0][0] + pos[2][0] - pos[3][0]) / 2)
+#         height = int((pos[3][1] - pos[0][1] + pos[2][1] - pos[1][1]) / 2)
+#         info = {
+#             'value': result[-1]['rec_texts'][i],
+#             'position': center,
+#             'bounding-box-scale': [width, height]
+#         }
+#         data.append(info)
+#     return data
 
 
 # ===========================================================

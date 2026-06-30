@@ -44,8 +44,12 @@ class ModelConfig(BaseModel):
             "stream": stream,
         }
 
-        if not all([llm['api_key'], llm['model'], llm["base_url"], vlm['api_key'], vlm['model'], vlm["base_url"]]):
-            raise ValueError("LLM/VLM 配置不完整")
+        # ── LLM 配置校验（必填）──────────────────────────────────
+        if not all([llm['api_key'], llm['model'], llm["base_url"]]):
+            raise ValueError("LLM 配置不完整（LLM_API_KEY / LLM_MODEL / LLM_BASE_URL 必填）")
+
+        # ── VLM 配置（可选，PNG 通道已注释暂不需要）────────────────
+        # 如果 VLM 未配置，vlm 字典保留空值，base_agent 会在首次调用时跳过
 
         return cls(llm=llm, vlm=vlm)
 

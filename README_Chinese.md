@@ -43,6 +43,8 @@
 
 ### 1. OCR 引擎
 
+> ⚠️ **注意（2026-06-30）：** PNG 输入通道（依赖 PaddleOCR / Tesseract）已在源码中**注释掉**。当前项目仅支持 `INPUT_FORMAT=fits`。你可以**跳过下方整个 OCR 安装环节**，直接进入 [Python 依赖](#2-python-依赖)。
+
 项目支持两种 OCR（光学字符识别）后端：
 
 - **PaddleOCR（默认）**
@@ -182,6 +184,41 @@ cp .env_example .env
 * `REDROCK`：设为 `true` 以启用 Redrock 红移假设生成
 * `RR_TEMPLATE_DIR`：Redrock 模板目录
 * 以及其他控制参数（详见 `.env_example`）
+
+### 4. Redrock 安装（可选，用于红移假设生成）
+
+如果在 `.env` 中设置 `REDROCK=true`，需要安装 Redrock —— DESI 官方红移拟合器。
+
+#### 4.1 安装 Redrock
+
+```bash
+git clone https://github.com/desihub/redrock
+cd redrock
+git clone https://github.com/desihub/redrock-templates py/redrock/templates
+pip install -e .
+pip install desiutil
+pip install desispec
+```
+
+模板将随代码一起安装。也可以将模板放在其他位置，并在 `.env` 中设置 `RR_TEMPLATE_DIR` 指向该路径。
+
+#### 4.2 （可选）Archetypes 模式
+
+如果 `USE_ARCHETYPES=true`，克隆 archetype 仓库：
+
+```bash
+git clone https://github.com/abhi0395/new-archetypes.git
+# 或
+git clone https://github.com/desihub/redrock-archetypes.git
+```
+
+在 `.env` 中设置 `ARCHETYPE_DIR` 为克隆目录的路径。
+
+验证安装：
+
+```bash
+rrdesi --help
+```
 
 ---
 

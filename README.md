@@ -6,7 +6,7 @@
 
 An LLM-powered agent for human-like analysis of one-dimensional astronomical spectra.
 
-> ⚠️ **Currently supported mode:** FITS input + Redrock redshift hypothesis generation. The PNG input pipeline is not yet fully developed.
+> ⚠️ **Currently supported mode:** FITS input + Redrock redshift hypothesis generation. The PNG input pipeline code has been commented out (2026-06-30) — see OCR section for details.
 
 ## Overview
 
@@ -30,6 +30,8 @@ The pipeline is currently configured to use the following Qwen models via API:
 
 ## Dependencies & Installation
 ### 1. OCR Engine
+
+> ⚠️ **Note (2026-06-30):** The PNG input channel (which depends on PaddleOCR / Tesseract) has been **commented out** in the source code. The project currently only supports `INPUT_FORMAT=fits`. You may **skip the entire OCR installation section below** and proceed directly to [Python Dependencies](#2-python-dependencies).
 
 This project supports two OCR (Optical Character Recognition) backends: PaddleOCR and Tesseract OCR.
 By default, PaddleOCR is used because it generally offers higher accuracy—especially for chart axis labels—but requires a more involved installation process.
@@ -134,6 +136,41 @@ Edit `.env` to specify:
 - `REDROCK`: Set to `true` to enable Redrock hypothesis generation
 - `RR_TEMPLATE_DIR`: Redrock template directory
 - and other parameters (see `.env_example` for full list)
+
+### 4. Redrock Installation (optional, for redshift hypothesis generation)
+
+If you set `REDROCK=true` in `.env`, you need to install Redrock — DESI's official redshift fitter.
+
+#### 4.1 Install Redrock
+
+```bash
+git clone https://github.com/desihub/redrock
+cd redrock
+git clone https://github.com/desihub/redrock-templates py/redrock/templates
+pip install -e .
+pip install desiutil
+pip install desispec
+```
+
+The templates will be installed with the code. Alternatively, you can place the templates elsewhere and set `RR_TEMPLATE_DIR` in `.env` to that location.
+
+#### 4.2 (Optional) Archetypes Mode
+
+If `USE_ARCHETYPES=true`, clone the archetype repository:
+
+```bash
+git clone https://github.com/abhi0395/new-archetypes.git
+# or
+git clone https://github.com/desihub/redrock-archetypes.git
+```
+
+Set `ARCHETYPE_DIR` in `.env` to the cloned directory path.
+
+Verify the installation:
+
+```bash
+rrdesi --help
+```
 
 ---
 

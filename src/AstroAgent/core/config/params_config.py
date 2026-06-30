@@ -15,7 +15,6 @@ class ParamsConfig(BaseModel):
     arm_wavelength_range: Optional[List[List[float]]]
     ocr: str
     tol_wavelength: int
-    discussion_rounds: int
     harness_concurrency: int
     self_evolve: bool
     redrock: bool
@@ -59,7 +58,6 @@ class ParamsConfig(BaseModel):
             arm_wavelength_range=arm_wavelength_range,
             ocr=os.getenv("OCR") or "paddle",
             tol_wavelength=getenv_int("TOL_WAVELENGTH", 80),
-            discussion_rounds=getenv_int("DISCUSSION_ROUNDS", 1),
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
             redrock=os.getenv("REDROCK", "false").lower() in ("true", "1", "yes"),

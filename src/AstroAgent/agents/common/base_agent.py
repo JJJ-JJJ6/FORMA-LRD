@@ -71,7 +71,12 @@ class BaseAgent:
         self.runtime = runtime
 
         self._text_model = runtime.get_model("llm")
-        self._vis_model = runtime.get_model("vlm")
+
+        # ── VLM 惰性加载（PNG 通道已注释，VLM 可选）───────────────
+        self._vis_model = None
+        vlm_cfg = runtime.configs.model.vlm
+        if vlm_cfg.get('api_key') and vlm_cfg.get('model') and vlm_cfg.get('base_url'):
+            self._vis_model = runtime.get_model("vlm")
 
         # thinking mode config ('none' = parameter not supported by this provider)
         self._llm_thinking = runtime.configs.model.llm.get('thinking', 'disabled')
@@ -159,6 +164,11 @@ class BaseAgent:
                 )
 
                 if image_path:
+                    if self._vis_model is None:
+                        raise RuntimeError(
+                            "VLM 未配置（VLM_API_KEY / VLM_MODEL / VLM_BASE_URL 为空）。"
+                            "PNG 通道已注释，当前仅支持 FITS 输入。"
+                        )
                     vlm = self._apply_thinking(self._vis_model, self._vlm_thinking, self._vlm_vendor, want_tools=False)
                     if self._stream:
                         raw_content = await self._stream_invoke(vlm, messages)
