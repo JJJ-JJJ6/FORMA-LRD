@@ -10,6 +10,19 @@
 <link rel="stylesheet" href="../common.css">
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#function-tree" class="sidebar-link" data-label="Function tree">Tree</a>
+  <div class="sidebar-section" id="sidebar-section-contents">
+    <a href="#contents" class="sidebar-link sidebar-section-toggle" data-label="Contents">Contents</a>
+    <div class="sidebar-sublist" id="sidebar-sublist-contents">
+      <a href="#main" class="sidebar-link sidebar-sublink" data-label="main()">main</a>
+    </div>
+  </div>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <div class="breadcrumb">
@@ -31,7 +44,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>Function Tree</h2>
+<h2 id="function-tree">Function Tree</h2>
 
 <div class="file-tree">
   <ul class="tree">
@@ -43,7 +56,7 @@
             <summary>main()</summary>
             <ul>
               <li class="file">load_dotenv() + AllConfig.from_env() <span class="comment">← config bootstrap</span></li>
-              <li class="file">SpectroStateFactory + ResultWriter <span class="comment">← init factories</span></li>
+              <li class="file">SpectroStateFactory + ResultWriter <span class="comment">← init factories (ResultWriter, not ReportWriter)</span></li>
               <li class="file">resolve file_ids <span class="comment">← single or batch mode</span></li>
               <li class="file">WorkflowOrchestrator(configs) <span class="comment">← build agent pipeline</span></li>
               <li class="file">CSV header init <span class="comment">← in_brief.csv columns</span></li>
@@ -55,27 +68,25 @@
                     <li class="file">orchestrator.run_analysis_single(state) <span class="comment">← invoke pipeline</span></li>
                     <li class="file">writer.write(result) <span class="comment">← persist to disk</span></li>
                     <li class="file">CSV row append <span class="comment">← incremental write</span></li>
-                    <li class="file">batch failure analysis <span class="comment">← if self_evolve enabled</span></li>
+                    <li class="file">SelfEvolve batch analysis <span class="comment">← when failure threshold reached</span></li>
                   </ul>
                 </details>
               </li>
-              <li class="file">final batch flush <span class="comment">← remaining pending failures</span></li>
+              <li class="file">SelfEvolve final flush <span class="comment">← process remaining pending failures</span></li>
             </ul>
           </details>
         </li>
-        <li class="file"><a href="#safe_str">safe_str(x)</a> <span class="comment">← nested: None/NaN/Inf → "N/A"</span></li>
-        <li class="file"><a href="#__main__">if __name__ == "__main__"</a> <span class="comment">← logging + asyncio.run(main())</span></li>
+        <li class="file">safe_str(x) <span class="comment">← nested: str conversion, None/NaN/Inf → "N/A"</span></li>
+        <li class="file">if __name__ == "__main__" <span class="comment">← logging + asyncio.run(main())</span></li>
       </ul>
     </li>
   </ul>
 </div>
 
 <!-- ============================================================ -->
-<h2>Contents</h2>
+<h2 id="contents">Contents</h2>
 <ol class="toc">
   <li><a href="#main">main()</a> — async entry, full processing pipeline</li>
-  <li><a href="#safe_str">safe_str(x)</a> — nested helper</li>
-  <li><a href="#__main__">if __name__ == "__main__"</a> — launch</li>
 </ol>
 
 <!-- ============================================================ -->
@@ -94,18 +105,6 @@
   </ul>
 </div>
 
-<div class="func-block" id="safe_str">
-  <h3>safe_str</h3>
-  <div class="sig"><code>safe_str(x) -> str</code></div>
-  <p>Nested helper inside <code>main()</code>. Converts <code>None</code>, <code>NaN</code>, or <code>Inf</code> to the string <code>"N/A"</code>; all other values pass through <code>str(x)</code>. Used when building CSV rows to avoid broken numeric literals.</p>
-</div>
-
-<div class="func-block" id="__main__">
-  <h3>if __name__ == "__main__"</h3>
-  <div class="sig"><code>logging.basicConfig(…) + asyncio.run(main())</code></div>
-  <p>Configures root logger with timestamped <code>[LEVEL]</code> format at <code>INFO</code> level, then launches the async <code>main()</code> coroutine via <code>asyncio.run()</code>.</p>
-</div>
-
 <!-- ============================================================ -->
 <div class="note">
   <strong>Batch failure analysis</strong> (SelfEvolve): When <code>params.self_evolve</code> is enabled and a pipeline run records a failure, the pending failure count is checked against <code>params.failure_batch_size</code>. Once the threshold is met, <code>analyze_failure_batch()</code> from <code>utils/HA.py</code> is invoked asynchronously to perform root-cause analysis across the failure batch.
@@ -121,6 +120,116 @@
 </div>
 
 </div>
-  <script src="../common.js"></script>
+<script src="../common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var sidebar = document.getElementById('sidebar');
+  var toggle = document.getElementById('sidebar-toggle');
+  var overlay = document.getElementById('sidebar-overlay');
+  var links = sidebar.querySelectorAll('.sidebar-link');
+  var topLink = document.getElementById('sidebar-link-top');
+  var sublistContents = document.getElementById('sidebar-sublist-contents');
+  var contentsSubIds = ['contents', 'main'];
+
+  /* ---- scroll-spy ---- */
+  var sections = [];
+  links.forEach(function (link) {
+    var href = link.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    var target = document.getElementById(href.slice(1));
+    if (target) sections.push({ link: link, target: target });
+  });
+
+  var ticking = false;
+  function updateActiveHeading() {
+    var activeLink = null;
+    var activeId = null;
+    var atBottom = (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    for (var i = sections.length - 1; i >= 0; i--) {
+      var top = sections[i].target.getBoundingClientRect().top;
+      if (top <= 120 || (atBottom && top < window.innerHeight)) {
+        activeLink = sections[i].link;
+        activeId = sections[i].target.id;
+        break;
+      }
+    }
+    if (!activeLink) activeLink = topLink;
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (activeLink) activeLink.classList.add('active');
+
+    /* expand Contents sublist when inside its sub-sections */
+    if (activeId && contentsSubIds.indexOf(activeId) !== -1) {
+      sublistContents.classList.add('expanded');
+    } else {
+      sublistContents.classList.remove('expanded');
+    }
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      requestAnimationFrame(function () {
+        updateActiveHeading();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  updateActiveHeading();
+
+  /* ---- mobile toggle ---- */
+  function openSidebar() {
+    links.forEach(function (link) {
+      var full = link.getAttribute('data-label');
+      if (full && !link._short) link._short = link.textContent;
+      if (full) link.textContent = full;
+    });
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    links.forEach(function (link) {
+      if (link._short) link.textContent = link._short;
+    });
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', function () {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (window.innerWidth <= 768) closeSidebar();
+      setTimeout(updateActiveHeading, 120);
+      setTimeout(updateActiveHeading, 400);
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+
+  /* ---- expand Contents on toggle click ---- */
+  var contentsToggle = sidebar.querySelector('.sidebar-section-toggle');
+  if (contentsToggle) {
+    contentsToggle.addEventListener('click', function () {
+      sublistContents.classList.add('expanded');
+    });
+  }
+
+  /* ---- external links → new tab ---- */
+  document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function (a) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+})();
+</script>
 </body>
 </html>

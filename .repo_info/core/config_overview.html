@@ -10,6 +10,18 @@
 <link rel="stylesheet" href="../common.css">
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#AllConfig" class="sidebar-link" data-label="AllConfig">All</a>
+  <a href="#BatchConfig" class="sidebar-link" data-label="BatchConfig">Batch</a>
+  <a href="#IOConfig" class="sidebar-link" data-label="IOConfig">IO</a>
+  <a href="#ModelConfig" class="sidebar-link" data-label="ModelConfig">Model</a>
+  <a href="#ParamsConfig" class="sidebar-link" data-label="ParamsConfig">Params</a>
+  <a href="#utils" class="sidebar-link" data-label="_utils">utils</a>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <div class="breadcrumb">
@@ -19,7 +31,7 @@
 <h1><span class="section-label">Core</span>Config Overview</h1>
 
 <div class="overview-box">
-  <p><strong>Path:</strong> <code>src/AstroAgent/core/config/ (6 files, 5 Pydantic models + _utils)</code></p>
+  <p><strong>Path:</strong> <code>src/FORMA/core/config/ (6 files, 5 Pydantic models + _utils)</code></p>
   <p>Configuration system — aggregates all runtime parameters via Pydantic models loaded from environment variables. Each model has a <code>from_env()</code> classmethod factory with field-level and cross-field validation.</p>
   <p><strong>Classes:</strong> <a href="config_all.html">AllConfig</a> · <a href="config_batch.html">BatchConfig</a> · <a href="config_io.html">IOConfig</a> · <a href="config_model.html">ModelConfig</a> · <a href="config_params.html">ParamsConfig</a> · <a href="config_utils.html">_utils</a> (helpers)</p>
   <div class="tag-row"><span class="tag">core</span> <span class="tag">config</span> <span class="tag">Pydantic</span></div>
@@ -69,6 +81,23 @@
 </div>
 
 </div>
-  <script src="../common.js"></script>
+<script src="../common.js"></script>
+<script>
+(function(){'use strict';
+var s=document.getElementById('sidebar'),t=document.getElementById('sidebar-toggle'),o=document.getElementById('sidebar-overlay'),
+l=s.querySelectorAll('.sidebar-link'),top=document.getElementById('sidebar-link-top');
+var sec=[];l.forEach(function(a){var h=a.getAttribute('href');if(!h||!h.startsWith('#'))return;var e=document.getElementById(h.slice(1));if(e)sec.push({link:a,target:e});});
+var tick=false;function upd(){var a=null,atB=(window.innerHeight+window.scrollY)>=document.documentElement.scrollHeight-10;
+for(var i=sec.length-1;i>=0;i--){var tp=sec[i].target.getBoundingClientRect().top;if(tp<=120||(atB&&tp<window.innerHeight)){a=sec[i].link;break;}}
+if(!a)a=top;l.forEach(function(x){x.classList.remove('active');});if(a)a.classList.add('active');}
+window.addEventListener('scroll',function(){if(!tick){requestAnimationFrame(function(){upd();tick=false;});tick=true;}},{passive:true});upd();
+function open(){l.forEach(function(a){var f=a.getAttribute('data-label');if(f&&!a._s)a._s=a.textContent;if(f)a.textContent=f;});s.classList.add('open');o.classList.add('open');t.setAttribute('aria-expanded','true');document.body.style.overflow='hidden';}
+function close(){l.forEach(function(a){if(a._s)a.textContent=a._s;});s.classList.remove('open');o.classList.remove('open');t.setAttribute('aria-expanded','false');document.body.style.overflow='';}
+t.addEventListener('click',function(){s.classList.contains('open')?close():open();});o.addEventListener('click',close);
+l.forEach(function(a){a.addEventListener('click',function(){if(window.innerWidth<=768)close();setTimeout(upd,120);setTimeout(upd,400);});});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&s.classList.contains('open'))close();});
+document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function(a){a.setAttribute('target','_blank');a.setAttribute('rel','noopener noreferrer');});
+})();
+</script>
 </body>
 </html>

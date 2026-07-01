@@ -10,6 +10,20 @@
 <link rel="stylesheet" href="../common.css">
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#function-tree" class="sidebar-link" data-label="Function tree">Tree</a>
+  <div class="sidebar-section" id="sidebar-section-contents">
+    <a href="#contents" class="sidebar-link sidebar-section-toggle" data-label="Contents">Contents</a>
+    <div class="sidebar-sublist" id="sidebar-sublist-contents">
+      <a href="#__init__" class="sidebar-link sidebar-sublink" data-label="__init__()">__init__</a>
+      <a href="#get_model" class="sidebar-link sidebar-sublink" data-label="get_model()">get_model</a>
+    </div>
+  </div>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <div class="breadcrumb">
@@ -19,14 +33,14 @@
 <h1><span class="section-label">Core</span>RuntimeContainer</h1>
 
 <div class="overview-box">
-  <p><strong>Path:</strong> <code>src/AstroAgent/core/runtime/runtime_container.py</code></p>
+  <p><strong>Path:</strong> <code>src/FORMA/core/runtime/runtime_container.py</code></p>
   <p><strong>Class:</strong> <code>RuntimeContainer</code> — lightweight DI container. Lazy-initializes and caches LLM/VLM client instances keyed by type string. Each agent receives the same container and calls <code>get_model(type)</code> to obtain a shared or on-demand <code>ChatOpenAI</code> client.</p>
   <p><strong>Dependencies:</strong> <a href="llm.html">ThisIsModel</a> · <a href="config_overview.html">AllConfig</a></p>
   <div class="tag-row"><span class="tag">core</span> <span class="tag">DI</span> <span class="tag">runtime</span></div>
 </div>
 
 <!-- ============================================================ -->
-<h2>Function Tree</h2>
+<h2 id="function-tree">Function Tree</h2>
 
 <div class="file-tree">
   <ul class="tree">
@@ -41,7 +55,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>Contents</h2>
+<h2 id="contents">Contents</h2>
 <ol class="toc">
   <li><a href="#__init__">__init__(configs)</a></li>
   <li><a href="#get_model">get_model(type -> ChatOpenAI)</a></li>
@@ -86,6 +100,97 @@
 </div>
 
 </div>
-  <script src="../common.js"></script>
+<script src="../common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var sidebar = document.getElementById('sidebar');
+  var toggle = document.getElementById('sidebar-toggle');
+  var overlay = document.getElementById('sidebar-overlay');
+  var links = sidebar.querySelectorAll('.sidebar-link');
+  var topLink = document.getElementById('sidebar-link-top');
+  var sublistContents = document.getElementById('sidebar-sublist-contents');
+  var contentsSubIds = ['contents', '__init__', 'get_model'];
+
+  var sections = [];
+  links.forEach(function (link) {
+    var href = link.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    var target = document.getElementById(href.slice(1));
+    if (target) sections.push({ link: link, target: target });
+  });
+
+  var ticking = false;
+  function updateActiveHeading() {
+    var activeLink = null;
+    var activeId = null;
+    var atBottom = (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    for (var i = sections.length - 1; i >= 0; i--) {
+      var top = sections[i].target.getBoundingClientRect().top;
+      if (top <= 120 || (atBottom && top < window.innerHeight)) {
+        activeLink = sections[i].link;
+        activeId = sections[i].target.id;
+        break;
+      }
+    }
+    if (!activeLink) activeLink = topLink;
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (activeLink) activeLink.classList.add('active');
+    if (activeId && contentsSubIds.indexOf(activeId) !== -1) {
+      sublistContents.classList.add('expanded');
+    } else {
+      sublistContents.classList.remove('expanded');
+    }
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      requestAnimationFrame(function () { updateActiveHeading(); ticking = false; });
+      ticking = true;
+    }
+  }, { passive: true });
+  updateActiveHeading();
+
+  function openSidebar() {
+    links.forEach(function (link) {
+      var full = link.getAttribute('data-label');
+      if (full && !link._short) link._short = link.textContent;
+      if (full) link.textContent = full;
+    });
+    sidebar.classList.add('open'); overlay.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    links.forEach(function (link) { if (link._short) link.textContent = link._short; });
+    sidebar.classList.remove('open'); overlay.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+  toggle.addEventListener('click', function () {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (window.innerWidth <= 768) closeSidebar();
+      setTimeout(updateActiveHeading, 120);
+      setTimeout(updateActiveHeading, 400);
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+  var contentsToggle = sidebar.querySelector('.sidebar-section-toggle');
+  if (contentsToggle) {
+    contentsToggle.addEventListener('click', function () { sublistContents.classList.add('expanded'); });
+  }
+  document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function (a) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+})();
+</script>
 </body>
 </html>

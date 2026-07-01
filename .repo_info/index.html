@@ -3,48 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LLM-Spectro-Agent</title>
+<title>FORMA: Formalized Observational Reasoning with Auditable Decisions</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="common.css">
 <style>
-  :root {
-    --lyman: #2a4a8a;
-    --balmer: #4a8a6a;
-    --paschen: #8a6a3a;
-  }
-  html { scroll-behavior: smooth; }
   body {
     font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
     background: var(--space);
     color: var(--text);
     line-height: 1.65;
     font-size: 18px;
-  }
-  /* ---------- spectral edge ---------- */
-  .spectral-edge {
-    position: fixed;
-    left: 0; top: 0; bottom: 0;
-    width: 5px;
-    z-index: 100;
-    background: linear-gradient(
-      to bottom,
-      #1a3a6a 0%,
-      #2a5a9a 8%,
-      #3a7acc 16%,
-      #4a9eff 24%,
-      #5ac0c0 32%,
-      #6ad88a 40%,
-      #8ad860 48%,
-      #c0c040 56%,
-      #e8a830 64%,
-      #e87030 72%,
-      #e85028 80%,
-      #c03020 88%,
-      #8a1a1a 96%,
-      #4a0a0a 100%
-    );
   }
   .container {
     max-width: 1100px;
@@ -102,35 +72,6 @@
     text-transform: uppercase;
     margin: 28px 0 10px;
   }
-  /* ---------- hero ---------- */
-  .hero-stats {
-    display: flex;
-    gap: 32px;
-    margin: 18px 0 36px;
-    flex-wrap: wrap;
-  }
-  .hero-stat {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-  }
-  .hero-stat .num {
-    font-family: 'EB Garamond', serif;
-    font-size: 2.4em;
-    color: var(--emission);
-    line-height: 1;
-  }
-  .hero-stat .unit {
-    font-size: 0.85em;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  .hero-stat .note {
-    display: block;
-    font-size: 0.7em;
-    color: var(--text-faint);
-  }
   /* ---------- overview ---------- */
   .overview-box {
     background: var(--void);
@@ -157,10 +98,6 @@
     border-radius: 3px;
     letter-spacing: 0.02em;
   }
-  .tag.primary { background: var(--tag-primary-bg); color: var(--emission); border: 1px solid var(--tag-primary-border); }
-  .tag.secondary { background: var(--tag-bg); color: var(--absorption); border: 1px solid var(--tag-border); }
-  .tag.muted { background: transparent; color: var(--text-faint); border: 1px solid var(--rule); }
-  .tag.green { background: var(--tag-green-bg); color: var(--green-accent); border: 1px solid var(--tag-green-border); }
   /* ---------- toc ---------- */
   .toc {
     columns: 2;
@@ -182,35 +119,6 @@
     transition: color 0.15s;
   }
   .toc a:hover { color: var(--link-hover); }
-  .toc .toc-num {
-    display: inline-block;
-    width: 20px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72em;
-    color: var(--text-faint);
-  }
-  /* ---------- graph (code blocks) ---------- */
-  .graph {
-    background: var(--void);
-    border: 1px solid var(--rule);
-    padding: 24px 28px;
-    margin: 16px 0;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.76em;
-    line-height: 1.9;
-    white-space: pre;
-    overflow-x: auto;
-    color: var(--text-dim);
-    position: relative;
-  }
-  .graph::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0; bottom: 0;
-    width: 3px;
-    background: linear-gradient(to bottom, var(--absorption), var(--emission));
-    opacity: 0.3;
-  }
   /* ---------- pipeline ---------- */
   .pipeline {
     margin: 24px 0;
@@ -226,17 +134,19 @@
     padding: 16px 20px;
   }
   .pipeline-stage-inner .stage-head {
+    position: relative;
     display: flex;
     align-items: baseline;
-    gap: 10px;
     margin-bottom: 6px;
   }
   .pipeline-stage-inner .stage-label {
+    flex-shrink: 0;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.68em;
+    font-size: 0.62em;
     color: var(--text-faint);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    margin-right: 14px;
   }
   .pipeline-stage-inner .stage-name {
     font-family: 'EB Garamond', serif;
@@ -258,6 +168,16 @@
   .pipeline-stage.optional .pipeline-stage-inner {
     border-style: dashed;
     border-color: var(--text-faint);
+  }
+  /* ---------- two-col grid ---------- */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin: 0 0 20px;
+  }
+  @media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; }
   }
   /* ---------- arena: interleaved two-column layout ---------- */
   .pipeline-arena {
@@ -299,6 +219,7 @@
     justify-content: space-between;
   }
   .arena-ha .arena-head {
+    position: relative;
     font-family: 'EB Garamond', serif;
     font-size: 1.15em;
     font-weight: 600;
@@ -309,6 +230,18 @@
   }
   .arena-ha .arena-head a { color: var(--amber); text-decoration: none; }
   .arena-ha .arena-head a:hover { color: var(--emission); }
+  .arena-head .module-label {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.55em;
+    font-weight: 400;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
   /* AA column: two blocks, space-between */
   .arena-aa-col {
     grid-column: 2;
@@ -323,6 +256,7 @@
     background: var(--arena-bg);
   }
   .arena-aa-col .arena-head {
+    position: relative;
     font-family: 'EB Garamond', serif;
     font-size: 1.15em;
     font-weight: 600;
@@ -407,64 +341,6 @@
     .arena-ha .sub-block .connector-line,
     .arena-aa-col .sub-block .connector-line { left: -22px; right: auto; width: 22px; }
   }
-  /* ---------- card grid ---------- */
-  .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 14px;
-    margin: 16px 0;
-  }
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--rule);
-    padding: 18px 20px;
-    transition: border-color 0.15s, background 0.15s;
-  }
-  .card:hover {
-    border-color: var(--surface2);
-    background: var(--surface2);
-  }
-  .card h4 {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.82em;
-    font-weight: 500;
-    color: var(--amber);
-    margin-bottom: 4px;
-    letter-spacing: 0.02em;
-  }
-  .card h4 a { color: var(--amber); text-decoration: none; }
-  .card h4 a:hover { color: var(--emission); }
-  .card .path {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.66em;
-    color: var(--text-faint);
-    margin-bottom: 8px;
-    letter-spacing: 0.01em;
-  }
-  .card .desc {
-    font-size: 0.84em;
-    color: var(--text-dim);
-    line-height: 1.5;
-  }
-  .card .deps {
-    font-size: 0.72em;
-    color: var(--text-faint);
-    margin-top: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .card .deps a { color: var(--blue-dim); text-decoration: none; }
-  .card .deps a:hover { color: var(--absorption); }
-  .card .badge {
-    display: inline-block;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.6em;
-    padding: 2px 6px;
-    margin-bottom: 6px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-  }
-  .badge.done { background: var(--badge-done-bg); color: var(--green-accent); }
-  .badge.skel { background: var(--badge-skel-bg); color: var(--amber-dim); }
   /* ---------- tables ---------- */
   table {
     width: 100%;
@@ -490,32 +366,6 @@
     color: var(--text-dim);
   }
   tr:hover td { background: var(--row-hover-bg); }
-  /* ---------- stat grid ---------- */
-  .stat-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 10px;
-    margin: 16px 0;
-  }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--rule);
-    padding: 20px 18px;
-    text-align: center;
-  }
-  .stat-card .num {
-    font-family: 'EB Garamond', serif;
-    font-size: 2.2em;
-    color: var(--emission);
-    line-height: 1.1;
-  }
-  .stat-card .label {
-    font-size: 0.72em;
-    color: var(--text-dim);
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    margin-top: 4px;
-  }
   /* ---------- note ---------- */
   .note {
     border-left: 3px solid var(--absorption);
@@ -526,25 +376,6 @@
     color: var(--text-dim);
   }
   .note strong { color: var(--text); }
-  /* ---------- section header ---------- */
-  .section-header {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-  }
-  .section-header .count {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7em;
-    color: var(--text-faint);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .section-intro {
-    font-size: 0.85em;
-    color: var(--text-faint);
-    margin-bottom: 14px;
-    max-width: 620px;
-  }
   /* ---------- links ---------- */
   a { color: var(--absorption); text-decoration: none; transition: color 0.15s; }
   a:hover { color: var(--amber); }
@@ -574,35 +405,44 @@
   /* ---------- responsive ---------- */
   @media (max-width: 768px) {
     .container { padding: 0 20px 0 20px; }
-    .spectral-edge { width: 3px; }
     h1 { font-size: 2em; margin-top: 30px; }
     h2 { font-size: 1.3em; }
     h2::before { left: -16px; width: 2px; }
     .toc { columns: 1; }
-    .card-grid { grid-template-columns: 1fr; }
-    .hero-stats { gap: 16px; }
-    .stat-grid { grid-template-columns: repeat(3, 1fr); }
   }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
   }
-  :focus-visible {
-    outline: 2px solid var(--emission);
-    outline-offset: 3px;
-  }
 </style>
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#pipeline" class="sidebar-link" data-label="Pipeline">Pipeline</a>
+  <a href="#dir-tree" class="sidebar-link" data-label="Source tree">Source tree</a>
+  <a href="#agents" class="sidebar-link" data-label="Agents">Agents</a>
+  <a href="#harness" class="sidebar-link" data-label="Harness">Harness</a>
+  <a href="#utils" class="sidebar-link" data-label="Utils">Utils</a>
+  <a href="#core" class="sidebar-link" data-label="Core">Core</a>
+  <a href="#entry" class="sidebar-link" data-label="Entry">Entry</a>
+  <a href="#base-agent" class="sidebar-link" data-label="BaseAgent flow">BaseAgent</a>
+  <a href="#error" class="sidebar-link" data-label="Error resilience">Error</a>
+  <a href="#features" class="sidebar-link" data-label="Feature detection">Feature</a>
+  <a href="#brute-force" class="sidebar-link" data-label="Line matching">Line</a>
+  <a href="#stats" class="sidebar-link" data-label="Stats">Stats</a>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
 <div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <!-- ============================================================ -->
 <h1>
-  <span class="sub">DESI · Multi-Agent Spectroscopy</span>
-  LLM-Spectro-Agent
+  <span class="sub">Multi-Agent Spectroscopy</span>
+  FORMA
 </h1>
 
-<div class="hero-stats">
+<!-- <div class="hero-stats">
   <div class="hero-stat">
     <span class="num">5</span>
     <span class="unit">Agent stages<span class="note">Serial pipeline</span></span>
@@ -619,19 +459,20 @@
     <span class="num">60+</span>
     <span class="unit">State fields<span class="note">SpectroState</span></span>
   </div>
-</div>
+</div> -->
 
 <div class="overview-box">
-  <p><strong>An LLM-powered multi-agent system that reads astronomical spectra the way a human astronomer does.</strong> From a spectral image (PNG or FITS), it digitizes the trace, detects emission and absorption features, generates redshift hypotheses through brute-force line matching, evaluates each hypothesis with independent LLM agents, cross-verifies them through adversarial review, and delivers a structured final report with calibrated confidence.</p>
-  <p>Scientific targets: <strong>source classification</strong> (QSO / GALAXY) and <strong>redshift measurement</strong> for DESI and CSST survey spectra.</p>
+  <p><strong>An LLM-powered multi-agent system that reads astronomical spectra the way a human astronomer does.</strong> From a spectral FITS file, it digitizes the trace, detects emission and absorption features, generates redshift hypotheses through <code>redrock</code>, evaluates each hypothesis with independent LLM agents, cross-verifies them through adversarial review, and delivers a structured final report with calibrated confidence.</p>
+  <p>Scientific targets: <strong>source classification</strong> (QSO / GALAXY) and <strong>redshift measurement</strong> for survey spectra like DESI's.</p>
   <div class="tag-row">
     <span class="tag primary">Python 3.12</span>
     <span class="tag primary">LangGraph</span>
     <span class="tag primary">LangChain</span>
-    <span class="tag secondary">MCP</span>
-    <span class="tag secondary">Qwen3-max</span>
-    <span class="tag secondary">OpenCV</span>
-    <span class="tag muted">PaddleOCR</span>
+    <!-- <span class="tag secondary">MCP</span> -->
+    <span class="tag secondary">DeepSeek-V4-Pro</span>
+    <!-- <span class="tag secondary">OpenCV</span> -->
+    <!-- <span class="tag muted">PaddleOCR</span> -->
+    <span class="tag muted">redrock</span>
     <span class="tag muted">PyWavelets</span>
     <span class="tag muted">CWT</span>
   </div>
@@ -662,8 +503,8 @@
   <div class="pipeline-stage">
     <div class="pipeline-stage-inner">
       <div class="stage-head">
-        <span class="stage-label">Stage 1</span>
-        <span class="stage-name"><a href="agents/VisualInterpreter.html">VisualInterpreter</a></span>
+        <span class="stage-label">Module 1, Step 1</span>
+        <span class="stage-name"><a href="agents/VisualInterpreter.html">Visual Interpreter</a></span>
       </div>
       <div class="stage-flow">
         <p><strong>FITS channel.</strong></p>
@@ -673,7 +514,7 @@
           <li>Fits a Chebyshev continuum.</li>
           <li>Uses <code>redrock</code> to generate redshift hypotheses.</li>
         </ul>
-        <p style="color:var(--text-faint);font-style:italic;">PNG channel — to be documented.</p>
+        <p style="color:var(--text-faint);font-style:italic;">PNG channel — in design.</p>
       </div>
     </div>
   </div>
@@ -681,19 +522,19 @@
   <div class="pipeline-arena">
 
     <div class="arena-ha">
-      <div class="arena-head"><a href="agents/HypothesisAnalyst.html">HypothesisAnalyst</a></div>
+      <div class="arena-head"><span class="module-label">Module 2</span><a href="agents/HypothesisAnalyst.html">Hypothesis Analyst</a></div>
 
       <div class="sub-block">
         <div class="connector-dot"></div>
         <div class="connector-line"></div>
         <div class="stage-head">
-          <span class="stage-label">Step 2a</span>
+          <span class="stage-label">Step 2</span>
           <span class="stage-name"><a href="agents/HypothesisAnalyst.html">Single-Hypothesis Evaluation</a></span>
         </div>
         <div class="stage-flow">
           <ul style="margin:0 0 0 20px;line-height:1.6;">
-            <li>Each redshift hypothesis gets an independent LLM agent.</li>
-            <li>Each agent searches features around its predicted lines, queries the knowledge base via <code>grep_kb</code>, and produces a per-hypothesis confidence report.</li>
+            <li>Analyse each hypothesis.</li>
+            <li>Produce a per-hypothesis report and an adopted feature catalog.</li>
           </ul>
         </div>
       </div>
@@ -702,36 +543,32 @@
         <div class="connector-dot"></div>
         <div class="connector-line"></div>
         <div class="stage-head">
-          <span class="stage-label">Step 2b</span>
+          <span class="stage-label">Step 4</span>
           <span class="stage-name"><a href="agents/HypothesisAnalyst.html">Hypothesis Synthesis</a></span>
         </div>
         <div class="stage-flow">
           <ul style="margin:0 0 0 20px;line-height:1.6;">
-            <li>Compares all per-hypothesis reports side by side, building contradiction matrix across hypotheses.</li>
-            <li>LLM reads raw spectrum regions to resolve conflicts.</li>
-            <li>Delivers a structured verdict with the best hypothesis and supporting evidence.</li>
+            <li>Compare all per-hypothesis reports.</li>
+            <li>Deliver a structured verdict with the best hypothesis and supporting evidence.</li>
           </ul>
         </div>
       </div>
     </div>
 
     <div class="arena-aa-col">
-      <div class="arena-head"><a href="agents/AnalysisAuditor.html">AnalysisAuditor</a></div>
+      <div class="arena-head"><span class="module-label">Module 3</span><a href="agents/AnalysisAuditor.html">Analysis Auditor</a></div>
 
       <div class="sub-block">
         <div class="connector-dot"></div>
         <div class="connector-line"></div>
         <div class="stage-head">
-          <span class="stage-label">Step 3a</span>
+          <span class="stage-label">Step 3</span>
           <span class="stage-name"><a href="agents/AnalysisAuditor.html">Feature Auditor</a></span>
         </div>
         <div class="stage-flow">
           <ul style="margin:0 0 0 20px;line-height:1.6;">
-            <li>Build feature contradiction matrix across hypotheses.</li>
-            <li>Read spectrum at each claimed wavelength; judge real vs. noise.</li>
-            <li>Check [O II] and Lyα forest morphology.</li>
-            <li>Verify doublet ratios and orphan components.</li>
-            <li>Identify emission–absorption composite profiles.</li>
+            <li>Read spectrum, check adopted features, tell real features from noise.</li>
+            <li>Check doublet morphology, as well as other characteristics.</li>
           </ul>
         </div>
       </div>
@@ -740,15 +577,13 @@
         <div class="connector-dot"></div>
         <div class="connector-line"></div>
         <div class="stage-head">
-          <span class="stage-label">Step 3b</span>
+          <span class="stage-label">Step 5</span>
           <span class="stage-name"><a href="agents/AnalysisAuditor.html">Result Auditor</a></span>
         </div>
         <div class="stage-flow">
           <ul style="margin:0 0 0 20px;line-height:1.6;">
-            <li>Independent adversarial second review of the synthesis verdict.</li>
-            <li>Auditor LLM re-examines the evidence without access to the original synthesis reasoning.</li>
-            <li>Outputs a calibrated confidence: CONFIRM, DOWNGRADE, REJECT, or UNCERTAIN.</li>
-          </ul>
+            <li>Conduct independent review of the Step 4 verdict.</li>
+            <li>Output a calibrated confidence: HIGH, MEDIUM or LOW, and a verdict: CONFIRM, NEEDS_REVISION, or UNCERTAIN. Raise possible issues.</li>
         </div>
       </div>
     </div>
@@ -758,13 +593,13 @@
   <div class="pipeline-stage">
     <div class="pipeline-stage-inner">
       <div class="stage-head">
-        <span class="stage-label">Stage 4</span>
-        <span class="stage-name"><a href="agents/ReportWriter.html">ReportWriter</a></span>
+        <span class="stage-label">Module 4, Step 6</span>
+        <span class="stage-name"><a href="agents/ReportWriter.html">Report Writer</a></span>
       </div>
       <div class="stage-flow">
         <ul style="margin:0 0 0 20px;line-height:1.6;">
-          <li>Generates a structured report with six sections: source classification, redshift estimate, confidence assessment, spectral line evidence, uncertainty analysis, and recommendations.</li>
-          <li>Produces both a human-readable Markdown document and a structured JSON summary (<code>in_brief</code>) for downstream cataloguing and batch analysis.</li>
+          <li>Generate a structured report.</li>
+          <li>Produce a human-readable Markdown document for further analysis.</li>
         </ul>
       </div>
     </div>
@@ -773,8 +608,8 @@
   <div class="pipeline-stage optional">
     <div class="pipeline-stage-inner">
       <div class="stage-head">
-        <span class="stage-label">Stage 5 · optional</span>
-        <span class="stage-name"><a href="agents/SelfEvolve.html">SelfEvolve</a></span>
+        <span class="stage-label">Module X, Step X · in design</span>
+        <span class="stage-name"><a href="agents/SelfEvolve.html">Self Evolve</a></span>
       </div>
       <div class="stage-flow">
         <ul style="margin:0 0 0 20px;line-height:1.6;">
@@ -782,6 +617,32 @@
           <li>Compares the synthesis verdict against ground truth; if they disagree, runs a two-round LLM analysis.</li>
           <li>First round: blind review of the discrepancy without revealing which answer is correct. Second round: root-cause identification that pinpoints what went wrong.</li>
           <li>Structured failure records are saved for batch analysis to identify systematic weaknesses across many spectra.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="pipeline-stage-inner">
+      <div class="stage-head">
+        <span class="stage-name">Tools</span>
+      </div>
+      <div class="stage-flow">
+        <ul style="margin:0 0 0 20px;line-height:1.6;">
+          <li>Supply tools for agents.</li>
+          <li>Focus on spectrum reading, calculating and knowledge searching in the knowledge base.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="pipeline-stage-inner">
+      <div class="stage-head">
+        <span class="stage-name">Knowledge Base</span>
+      </div>
+      <div class="stage-flow">
+        <ul style="margin:0 0 0 20px;line-height:1.6;">
+          <li>Contain knowledge used in inference and auditing, written in markdown files.</li>
+          <li>Accessed by agents through tools.</li>
+          <li>Knowledge can be modified and updated.</li>
         </ul>
       </div>
     </div>
@@ -796,7 +657,7 @@
   <ul class="tree">
     <li class="file"><a href="entry/main.html">scripts/main.py</a> <span class="comment">← CLI entry: config, loop, CSV, batch failure analysis</span></li>
     <li>
-      <span class="tree-label">src/AstroAgent/</span>
+      <span class="tree-label">src/FORMA/</span>
       <ul>
         <li class="file"><a href="entry/workflow_orchestrator.html">workflow_orchestrator.py</a> <span class="comment">← LangGraph StateGraph builder</span></li>
         <li>
@@ -908,7 +769,7 @@
   <div class="card">
     <span class="badge done">Complete</span>
     <h4><a href="agents/VisualInterpreter.html">VisualInterpreter</a></h4>
-    <div class="path">src/AstroAgent/agents/multi_agents/VisualInterpreter.py</div>
+    <div class="path">src/FORMA/agents/multi_agents/VisualInterpreter.py</div>
     <div class="desc">Stage 1 — Spectrum digitization. Dual FITS/PNG input, axis detection (VLM+OCR), border cropping (OpenCV), spectrum reconstruction, CWT peak/trough detection, Chebyshev continuum fit, unified brute-force line matching with Union-Find dedup. Outputs redshift hypothesis list.</div>
     <div class="deps">VI · cwt_feature_finder · plot · usage</div>
   </div>
@@ -916,7 +777,7 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="agents/HypothesisAnalyst.html">HypothesisAnalyst</a></h4>
-    <div class="path">src/AstroAgent/agents/multi_agents/HypothesisAnalyst.py</div>
+    <div class="path">src/FORMA/agents/multi_agents/HypothesisAnalyst.py</div>
     <div class="desc">Stage 2 — Parallel hypothesis verification. Collects BFM hypotheses, runs first serially (KV-cache warm), then remainder concurrently (Semaphore). Each hypothesis gets an independent LLM agent; results feed into Hypothesis Synthesis.</div>
     <div class="deps">single_hypothesis · hypothesis_synthesis · HA</div>
   </div>
@@ -924,7 +785,7 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="agents/AnalysisAuditor.html">Result Auditor</a></h4>
-    <div class="path">src/AstroAgent/agents/multi_agents/Result Auditor.py</div>
+    <div class="path">src/FORMA/agents/multi_agents/Result Auditor.py</div>
     <div class="desc">Stage 3 — Two-stage adversarial review. Feature Auditor builds a cross-hypothesis contradiction matrix and has the LLM verify each feature's reality via read_spectrum_region. Result Auditor then performs an adversarial second review of the synthesis conclusion.</div>
     <div class="deps">tools · hypothesis_synthesis · continuation</div>
   </div>
@@ -932,7 +793,7 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="agents/ReportWriter.html">ReportWriter</a></h4>
-    <div class="path">src/AstroAgent/agents/multi_agents/ReportWriter.py</div>
+    <div class="path">src/FORMA/agents/multi_agents/ReportWriter.py</div>
     <div class="desc">Stage 4 — Final report. LLM harness generates a 6-section structured report (classification, redshift, confidence, line evidence, uncertainties, recommendations). Outputs both Markdown and JSON summary.</div>
     <div class="deps">harness report_writer · ResultWriter</div>
   </div>
@@ -940,7 +801,7 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="agents/SelfEvolve.html">SelfEvolve</a></h4>
-    <div class="path">src/AstroAgent/agents/multi_agents/SelfEvolve.py</div>
+    <div class="path">src/FORMA/agents/multi_agents/SelfEvolve.py</div>
     <div class="desc">Stage 5 (optional) — Failure analysis. Compares synthesis verdict against ground truth, runs two-round LLM root-cause analysis (blind review → cause identification), records structured failure records for batch study.</div>
     <div class="deps">SE · SpectroState</div>
   </div>
@@ -1079,42 +940,42 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="core/base_agent.html">BaseAgent</a></h4>
-    <div class="path">src/AstroAgent/agents/common/base_agent.py</div>
+    <div class="path">src/FORMA/agents/common/base_agent.py</div>
     <div class="desc">Abstract agent base class. call_llm_with_context with auto-retry &amp; error classification, thinking mode management (extended/moderate/minimal), skill prompt loading with Jinja2 rendering.</div>
   </div>
 
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="core/state.html">SpectroState</a></h4>
-    <div class="path">src/AstroAgent/agents/common/state.py (+ factory + messages)</div>
+    <div class="path">src/FORMA/agents/common/state.py (+ factory + messages)</div>
     <div class="desc">LangGraph state (60+ fields). Extends MessagesState: input paths → axis mapping → spectrum data → CWT features → BFM hypotheses → LLM results → audit verdicts → final output.</div>
   </div>
 
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="core/result_writer.html">ResultWriter</a></h4>
-    <div class="path">src/AstroAgent/agents/common/result_writer.py</div>
+    <div class="path">src/FORMA/agents/common/result_writer.py</div>
     <div class="desc">Result persistence layer. 20+ write_* methods: report text, verdict JSON, brute-force matching files, CSV catalogs, visualization figures.</div>
   </div>
 
   <div class="card">
     <span class="badge done">Complete</span>
     <h4><a href="core/llm.html">llm.py</a></h4>
-    <div class="path">src/AstroAgent/core/llm.py</div>
+    <div class="path">src/FORMA/core/llm.py</div>
     <div class="desc">ChatOpenAI factory with vendor auto-detection (DeepSeek / Qwen3), thinking-mode parameter construction per vendor, DeepSeek max_tokens preservation patch against langchain-openai rename.</div>
   </div>
 
   <div class="card">
     <span class="badge done">Complete</span>
     <h4><a href="core/runtime_container.html">RuntimeContainer</a></h4>
-    <div class="path">src/AstroAgent/core/runtime/runtime_container.py</div>
+    <div class="path">src/FORMA/core/runtime/runtime_container.py</div>
     <div class="desc">Lightweight DI container. Lazy-initializes and caches ChatOpenAI clients by type key (llm/vlm). Agents receive the shared container at construction; get_model() defers creation to first access.</div>
   </div>
 
   <div class="card">
     <span class="badge done">Complete</span>
     <h4><a href="core/config_overview.html">Config System</a></h4>
-    <div class="path">src/AstroAgent/core/config/ (6 files, 5 Pydantic models + _utils)</div>
+    <div class="path">src/FORMA/core/config/ (6 files, 5 Pydantic models + _utils)</div>
     <div class="desc">Configuration system — AllConfig aggregates BatchConfig, IOConfig, ModelConfig, ParamsConfig plus retry params. Each model loads from env vars via from_env() with Pydantic validation.</div>
     <div class="deps"><a href="core/config_all.html">AllConfig</a> · <a href="core/config_batch.html">BatchConfig</a> · <a href="core/config_io.html">IOConfig</a> · <a href="core/config_model.html">ModelConfig</a> · <a href="core/config_params.html">ParamsConfig</a> · <a href="core/config_utils.html">_utils</a></div>
   </div>
@@ -1140,7 +1001,7 @@
   <div class="card">
     <span class="badge skel">Skeleton</span>
     <h4><a href="entry/workflow_orchestrator.html">WorkflowOrchestrator</a></h4>
-    <div class="path">src/AstroAgent/workflow_orchestrator.py</div>
+    <div class="path">src/FORMA/workflow_orchestrator.py</div>
     <div class="desc">LangGraph StateGraph builder. Initializes 6 agents, wires 7 nodes into a conditional pipeline (Stage 1–6), retry loop with connection/timeout recovery, cancel-check before every stage.</div>
   </div>
 
@@ -1228,10 +1089,114 @@ call_llm_with_context(system_prompt, user_prompt, image_path?, parse_json?, want
 
 <!-- ============================================================ -->
 <div class="footer">
-  LLM-Spectro-Agent &middot; 2026-06-11
+  FORMA &middot; 2026-06-11
 </div>
 
 </div>
 <script src="common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var sidebar = document.getElementById('sidebar');
+  var toggle = document.getElementById('sidebar-toggle');
+  var overlay = document.getElementById('sidebar-overlay');
+  var links = sidebar.querySelectorAll('.sidebar-link');
+  var topLink = document.getElementById('sidebar-link-top');
+
+  /* ---- scroll-spy ---- */
+  var sections = [];
+  links.forEach(function (link) {
+    var href = link.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    var target = document.getElementById(href.slice(1));
+    if (target) sections.push({ link: link, target: target });
+  });
+
+  var ticking = false;
+  function updateActiveHeading() {
+    var activeLink = null;
+    // Walk bottom-up: first heading whose top is at or above the 120px threshold
+    var atBottom = (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    for (var i = sections.length - 1; i >= 0; i--) {
+      var top = sections[i].target.getBoundingClientRect().top;
+      if (top <= 120 || (atBottom && top < window.innerHeight)) {
+        activeLink = sections[i].link;
+        break;
+      }
+    }
+    // Fallback: all headings below threshold — we're at the page top
+    if (!activeLink) {
+      activeLink = topLink;
+    }
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (activeLink) activeLink.classList.add('active');
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      requestAnimationFrame(function () {
+        updateActiveHeading();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  updateActiveHeading();
+  window.addEventListener('hashchange', function () {
+    setTimeout(updateActiveHeading, 150);
+  });
+
+  /* ---- mobile toggle ---- */
+  function openSidebar() {
+    /* swap abbreviated labels for full names on mobile */
+    links.forEach(function (link) {
+      var full = link.getAttribute('data-label');
+      if (full && !link._short) link._short = link.textContent;
+      if (full) link.textContent = full;
+    });
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    /* restore abbreviated labels */
+    links.forEach(function (link) {
+      if (link._short) link.textContent = link._short;
+    });
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', function () {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+
+  overlay.addEventListener('click', closeSidebar);
+
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (window.innerWidth <= 768) closeSidebar();
+      // Re-check after scroll settles (instant jump or smooth)
+      setTimeout(updateActiveHeading, 120);
+      setTimeout(updateActiveHeading, 400);
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+
+  /* ---- external links → new tab ---- */
+  document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function (a) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+})();
+</script>
 </body>
 </html>

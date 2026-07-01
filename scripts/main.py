@@ -11,10 +11,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 
-from AstroAgent.core.config.all_config import AllConfig
-from AstroAgent.workflow_orchestrator import WorkflowOrchestrator
-from AstroAgent.agents.common.state_factory import SpectroStateFactory
-from AstroAgent.agents.common.result_writer import ResultWriter
+from FORMA.core.config.all_config import AllConfig
+from FORMA.workflow_orchestrator import WorkflowOrchestrator
+from FORMA.agents.common.state_factory import SpectroStateFactory
+from FORMA.agents.common.result_writer import ResultWriter
 
 
 async def main():
@@ -153,7 +153,7 @@ async def main():
 
                 # ── Batch failure analysis trigger ──────────────────
                 if configs.params.self_evolve and result.get("_failure_recorded"):
-                    from AstroAgent.agents.multi_agents.utils.HA import (
+                    from FORMA.agents.multi_agents.utils.HA import (
                         _read_pending_failures,
                         analyze_failure_batch,
                     )
@@ -193,7 +193,7 @@ async def main():
 
         # ── Final batch flush: process any remaining pending failures ──
         if configs.params.self_evolve:
-            from AstroAgent.agents.multi_agents.utils.HA import (
+            from FORMA.agents.multi_agents.utils.HA import (
                 _read_pending_failures,
                 analyze_failure_batch,
             )

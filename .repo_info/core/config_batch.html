@@ -10,6 +10,24 @@
 <link rel="stylesheet" href="../common.css">
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#function-tree" class="sidebar-link" data-label="Function tree">Tree</a>
+  <div class="sidebar-section" id="sidebar-section-contents">
+    <a href="#contents" class="sidebar-link sidebar-section-toggle" data-label="Contents">Contents</a>
+    <div class="sidebar-sublist" id="sidebar-sublist-contents">
+      <a href="#parse_batch_range" class="sidebar-link sidebar-sublink" data-label="parse_batch_range()">parse_batch_range</a>
+      <a href="#BatchConfig" class="sidebar-link sidebar-sublink" data-label="BatchConfig">BatchConfig</a>
+      <a href="#from_env" class="sidebar-link sidebar-sublink" data-label="from_env()">from_env</a>
+      <a href="#validate_digit" class="sidebar-link sidebar-sublink" data-label="validate_digit()">validate_digit</a>
+      <a href="#is_batch_mode" class="sidebar-link sidebar-sublink" data-label="is_batch_mode()">is_batch_mode</a>
+      <a href="#generate_ids" class="sidebar-link sidebar-sublink" data-label="generate_ids()">generate_ids</a>
+    </div>
+  </div>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <div class="breadcrumb">
@@ -19,14 +37,14 @@
 <h1><span class="section-label">Core · Config</span>BatchConfig</h1>
 
 <div class="overview-box">
-  <p><strong>Path:</strong> <code>src/AstroAgent/core/config/batch_config.py</code></p>
+  <p><strong>Path:</strong> <code>src/FORMA/core/config/batch_config.py</code></p>
   <p><strong>Class:</strong> <code>BatchConfig(BaseModel)</code> — batch processing configuration. Defines a numeric index range and optional header prefix; generates the full list of file IDs for batch mode execution.</p>
   <p><strong>Dependencies:</strong> <a href="config_utils.html">_utils</a> · Pydantic</p>
   <div class="tag-row"><span class="tag">core</span> <span class="tag">config</span> <span class="tag">batch</span> <span class="tag">Pydantic</span></div>
 </div>
 
 <!-- ============================================================ -->
-<h2>Function Tree</h2>
+<h2 id="function-tree">Function Tree</h2>
 
 <div class="file-tree">
   <ul class="tree">
@@ -45,7 +63,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>Contents</h2>
+<h2 id="contents">Contents</h2>
 <ol class="toc">
   <li><a href="#parse_batch_range">parse_batch_range(start, end → List[str])</a></li>
   <li><a href="#BatchConfig">class BatchConfig</a></li>
@@ -68,12 +86,14 @@
   <div class="return-type">→ List[str] — ordered list of numeric ID strings</div>
 </div>
 
-<div class="func-block" id="BatchConfig">
-  <h3>class BatchConfig</h3>
-  <div class="sig"><code>class BatchConfig(BaseModel)</code></div>
-  <p>Pydantic model with three fields: <code>header: str</code> (optional prefix, e.g. <code>"spec-"</code>), <code>start: Optional[str]</code>, <code>end: Optional[str]</code>. Both start/end are validated via <code>@field_validator</code> to be numeric digits if non-None.</p>
-  <p>Agents use this config to determine whether the system is in single-file or batch mode — if both start and end are set, <code>generate_ids()</code> produces the full file ID list.</p>
-</div>
+<h2 id="BatchConfig"><span class="class-badge">class</span> BatchConfig</h2>
+<p class="desc">Pydantic model with three fields. Agents use this config to determine whether the system is in single-file or batch mode — if both start and end are set, <code>generate_ids()</code> produces the full file ID list.</p>
+<table>
+  <tr><th>Key</th><th>Type</th><th>Env Var</th><th>Description</th></tr>
+  <tr><td><code>header</code></td><td><code>str</code></td><td><code>FILE_BATCH_HEADER</code></td><td>optional prefix for generated file IDs (default <code>""</code>)</td></tr>
+  <tr><td><code>start</code></td><td><code>Optional[str]</code></td><td><code>FILE_BATCH_START</code></td><td>start of numeric index range, validated as digits</td></tr>
+  <tr><td><code>end</code></td><td><code>Optional[str]</code></td><td><code>FILE_BATCH_END</code></td><td>end of numeric index range, validated as digits</td></tr>
+</table>
 
 <div class="func-block" id="from_env">
   <h3>from_env</h3>
@@ -115,5 +135,115 @@
 
 </div>
   <script src="../common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var sidebar = document.getElementById('sidebar');
+  var toggle = document.getElementById('sidebar-toggle');
+  var overlay = document.getElementById('sidebar-overlay');
+  var links = sidebar.querySelectorAll('.sidebar-link');
+  var topLink = document.getElementById('sidebar-link-top');
+  var sublistContents = document.getElementById('sidebar-sublist-contents');
+  var contentsSubIds = ['contents','parse_batch_range','BatchConfig','from_env','validate_digit','is_batch_mode','generate_ids'];
+
+  var sections = [];
+  links.forEach(function (link) {
+    var href = link.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    var target = document.getElementById(href.slice(1));
+    if (target) sections.push({ link: link, target: target });
+  });
+
+  var ticking = false;
+  function updateActiveHeading() {
+    var activeLink = null;
+    var activeId = null;
+    var atBottom = (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    for (var i = sections.length - 1; i >= 0; i--) {
+      var top = sections[i].target.getBoundingClientRect().top;
+      if (top <= 120 || (atBottom && top < window.innerHeight)) {
+        activeLink = sections[i].link;
+        activeId = sections[i].target.id;
+        break;
+      }
+    }
+    if (!activeLink) activeLink = topLink;
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (activeLink) activeLink.classList.add('active');
+    if (activeId && contentsSubIds.indexOf(activeId) !== -1) {
+      sublistContents.classList.add('expanded');
+    } else {
+      sublistContents.classList.remove('expanded');
+    }
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      requestAnimationFrame(function () {
+        updateActiveHeading();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  updateActiveHeading();
+
+  /* ---- mobile toggle ---- */
+  function openSidebar() {
+    links.forEach(function (link) {
+      var full = link.getAttribute('data-label');
+      if (full && !link._short) link._short = link.textContent;
+      if (full) link.textContent = full;
+    });
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    links.forEach(function (link) {
+      if (link._short) link.textContent = link._short;
+    });
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', function () {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+
+  overlay.addEventListener('click', closeSidebar);
+
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (window.innerWidth <= 768) closeSidebar();
+      setTimeout(updateActiveHeading, 120);
+      setTimeout(updateActiveHeading, 400);
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+
+  /* ---- expand Contents on toggle click ---- */
+  var contentsToggle = sidebar.querySelector('.sidebar-section-toggle');
+  if (contentsToggle) {
+    contentsToggle.addEventListener('click', function () {
+      sublistContents.classList.add('expanded');
+    });
+  }
+
+  /* ---- external links => new tab ---- */
+  document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function (a) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+})();
+</script>
 </body>
 </html>

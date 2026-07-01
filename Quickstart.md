@@ -50,7 +50,7 @@ and the results will be saved to the output directory.
 ## File Structure
 The project is structured as follows:
 ```txt
-AstroAgent
+FORMA
 ├── .env_example
 ├── .gitignore
 ├── pyproject.toml
@@ -73,7 +73,7 @@ AstroAgent
 ├── scripts
 │   └── main.py
 ├── src
-│   └── AstroAgent
+│   └── FORMA
 │       ├── agents
 │       │   ├── common
 │       │   │   ├── base_agent.py
@@ -107,12 +107,12 @@ AstroAgent
 
 ## Program Structure
 
-The entry point of the program is `scripts/main.py`. In this file, we use `AllConfig` from `src/AstroAgent/core/configs/all_config.py` to load all the environment variables in `.env`. 
+The entry point of the program is `scripts/main.py`. In this file, we use `AllConfig` from `src/FORMA/core/configs/all_config.py` to load all the environment variables in `.env`. 
 
-After that, `scripts/main.py` initailizes the `RuntimeContainer` from `src/AstroAgent/core/runtime/runtime_container.py`. It is responsible for loading the model and creating the prompt manager.
+After that, `scripts/main.py` initailizes the `RuntimeContainer` from `src/FORMA/core/runtime/runtime_container.py`. It is responsible for loading the model and creating the prompt manager.
 
-The program then initializes the `WorkflowOrchestrator` from `src/AstroAgent/workflow_orchestrator.py`. This class is responsible for orchestrating the workflow of the program. Since we use `langgraph` to build the agent, it require a `langgraph state` class to transfer the state between agents. The initial state is created by the `PromptManager` from `src/AstroAgent/manager/prompt.py`.
+The program then initializes the `WorkflowOrchestrator` from `src/FORMA/workflow_orchestrator.py`. This class is responsible for orchestrating the workflow of the program. Since we use `langgraph` to build the agent, it require a `langgraph state` class to transfer the state between agents. The initial state is created by the `PromptManager` from `src/FORMA/manager/prompt.py`.
 
 Then the `WorkflowOrchestrator` calls the `run` method, which starts the workflow. The workflow steps is defined in its `_create_workflow()` function.
 
-All the corresponding agents are defined in `src/AstroAgent/agents/`.
+All the corresponding agents are defined in `src/FORMA/agents/`.

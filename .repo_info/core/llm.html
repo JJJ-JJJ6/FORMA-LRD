@@ -10,6 +10,23 @@
 <link rel="stylesheet" href="../common.css">
 </head>
 <body>
+<nav class="sidebar" id="sidebar">
+  <a href="#" class="sidebar-link" data-label="Page top" id="sidebar-link-top">TOP</a>
+  <a href="#function-tree" class="sidebar-link" data-label="Function tree">Tree</a>
+  <div class="sidebar-section" id="sidebar-section-contents">
+    <a href="#contents" class="sidebar-link sidebar-section-toggle" data-label="Contents">Contents</a>
+    <div class="sidebar-sublist" id="sidebar-sublist-contents">
+      <a href="#_detect_vendor" class="sidebar-link sidebar-sublink" data-label="_detect_vendor()">_detect_vendor</a>
+      <a href="#_build_thinking_extra_body" class="sidebar-link sidebar-sublink" data-label="_build_thinking_extra_body()">_build_thinking_extra_body</a>
+      <a href="#_create_chat_openai" class="sidebar-link sidebar-sublink" data-label="_create_chat_openai()">_create_chat_openai</a>
+      <a href="#BaseLLM" class="sidebar-link sidebar-sublink" data-label="BaseLLM">BaseLLM</a>
+      <a href="#ThisIsModel.create_client" class="sidebar-link sidebar-sublink" data-label="create_client()">ThisIsModel</a>
+    </div>
+  </div>
+</nav>
+<button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay"></div>
+<div class="spectral-edge" aria-hidden="true"></div>
 <div class="container">
 
 <div class="breadcrumb">
@@ -28,7 +45,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>Function Tree</h2>
+<h2 id="function-tree">Function Tree</h2>
 
 <div class="file-tree">
   <ul class="tree">
@@ -60,7 +77,7 @@
 </div>
 
 <!-- ============================================================ -->
-<h2>Contents</h2>
+<h2 id="contents">Contents</h2>
 <ol class="toc">
   <li><a href="#_detect_vendor">_detect_vendor(base_url -> str)</a></li>
   <li><a href="#_build_thinking_extra_body">_build_thinking_extra_body(mode, vendor -> dict|None)</a></li>
@@ -94,7 +111,7 @@
   <h3>_create_chat_openai</h3>
   <div class="sig"><code>_create_chat_openai(model, api_key, base_url, temperature=0.1, max_tokens=None, streaming=False, extra_body=None) -> ChatOpenAI</code></div>
   <p>Create a <code>ChatOpenAI</code> instance with vendor-specific patches:</p>
-  <p><strong>DeepSeek max_tokens patch</strong> — langchain-openai ≥1.x unconditionally renames <code>max_tokens</code> → <code>max_completion_tokens</code> for OpenAI API compat. DeepSeek only recognises <code>max_tokens</code> and silently falls back to its default (8192) when it receives <code>max_completion_tokens</code>. This function monkey-patches <code>_get_request_payload</code> on the instance to reverse the rename before the request is sent.</p>
+  <p><strong>DeepSeek max_tokens patch</strong> — langchain-openai ≥1.x renames <code>max_tokens</code> → <code>max_completion_tokens</code> for OpenAI API compat. DeepSeek only recognises <code>max_tokens</code> and silently falls back to its default (8192) when it receives <code>max_completion_tokens</code>. This function monkey-patches <code>_get_request_payload</code> on the instance to reverse the rename before the request is sent.</p>
   <div class="return-type">→ ChatOpenAI instance (possibly patched)</div>
 </div>
 
@@ -141,6 +158,116 @@
 </div>
 
 </div>
-  <script src="../common.js"></script>
+<script src="../common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var sidebar = document.getElementById('sidebar');
+  var toggle = document.getElementById('sidebar-toggle');
+  var overlay = document.getElementById('sidebar-overlay');
+  var links = sidebar.querySelectorAll('.sidebar-link');
+  var topLink = document.getElementById('sidebar-link-top');
+  var sublistContents = document.getElementById('sidebar-sublist-contents');
+  var contentsSubIds = ['contents', '_detect_vendor', '_build_thinking_extra_body', '_create_chat_openai', 'BaseLLM', 'ThisIsModel.create_client'];
+
+  /* ---- scroll-spy ---- */
+  var sections = [];
+  links.forEach(function (link) {
+    var href = link.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    var target = document.getElementById(href.slice(1));
+    if (target) sections.push({ link: link, target: target });
+  });
+
+  var ticking = false;
+  function updateActiveHeading() {
+    var activeLink = null;
+    var activeId = null;
+    var atBottom = (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 10;
+    for (var i = sections.length - 1; i >= 0; i--) {
+      var top = sections[i].target.getBoundingClientRect().top;
+      // normal threshold, but at bottom accept any heading still on screen
+      if (top <= 120 || (atBottom && top < window.innerHeight)) {
+        activeLink = sections[i].link;
+        activeId = sections[i].target.id;
+        break;
+      }
+    }
+    if (!activeLink) activeLink = topLink;
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (activeLink) activeLink.classList.add('active');
+
+    if (activeId && contentsSubIds.indexOf(activeId) !== -1) {
+      sublistContents.classList.add('expanded');
+    } else {
+      sublistContents.classList.remove('expanded');
+    }
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      requestAnimationFrame(function () {
+        updateActiveHeading();
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }, { passive: true });
+
+  updateActiveHeading();
+
+  /* ---- mobile toggle ---- */
+  function openSidebar() {
+    links.forEach(function (link) {
+      var full = link.getAttribute('data-label');
+      if (full && !link._short) link._short = link.textContent;
+      if (full) link.textContent = full;
+    });
+    sidebar.classList.add('open');
+    overlay.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSidebar() {
+    links.forEach(function (link) {
+      if (link._short) link.textContent = link._short;
+    });
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  toggle.addEventListener('click', function () {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (window.innerWidth <= 768) closeSidebar();
+      setTimeout(updateActiveHeading, 120);
+      setTimeout(updateActiveHeading, 400);
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+
+  /* ---- expand Contents on toggle click ---- */
+  var contentsToggle = sidebar.querySelector('.sidebar-section-toggle');
+  if (contentsToggle) {
+    contentsToggle.addEventListener('click', function () {
+      sublistContents.classList.add('expanded');
+    });
+  }
+
+  /* ---- external links → new tab ---- */
+  document.querySelectorAll('a[href]:not([href^="#"]):not([target])').forEach(function (a) {
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+})();
+</script>
 </body>
 </html>
