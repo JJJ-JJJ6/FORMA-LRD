@@ -60,7 +60,7 @@ class ParamsConfig(BaseModel):
             tol_wavelength=getenv_int("TOL_WAVELENGTH", 80),
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
-            redrock=os.getenv("REDROCK", "false").lower() in ("true", "1", "yes"),
+            redrock=os.getenv("REDROCK", "true").lower() in ("true", "1", "yes"),
             failure_batch_size=getenv_int("FAILURE_BATCH_SIZE", 5),
             z_tolerance=getenv_float("Z_TOLERANCE", 0.005),
 

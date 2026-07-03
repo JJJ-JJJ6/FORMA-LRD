@@ -102,7 +102,7 @@
   <tr><td><code>tol_wavelength</code></td><td><code>int</code></td><td><code>TOL_WAVELENGTH</code></td><td><code>80</code></td><td>Wavelength matching tolerance in Å for brute-force line matching</td></tr>
   <tr><td><code>harness_concurrency</code></td><td><code>int</code></td><td><code>HARNESS_CONCURRENCY</code></td><td><code>3</code></td><td>Max concurrent hypothesis evaluations (Semaphore limit)</td></tr>
   <tr><td><code>self_evolve</code></td><td><code>bool</code></td><td><code>SELF_EVOLVE</code></td><td><code>False</code></td><td>Enable SelfEvolve failure analysis loop</td></tr>
-  <tr><td><code>redrock</code></td><td><code>bool</code></td><td><code>REDROCK</code></td><td><code>False</code></td><td>Enable Redrock redshift engine as fallback</td></tr>
+  <tr><td><code>redrock</code></td><td><code>bool</code></td><td><code>REDROCK</code></td><td><code>True</code></td><td>Enable Redrock redshift engine (default). Set to false for brute-force matching.</td></tr>
   <tr><td><code>failure_batch_size</code></td><td><code>int</code></td><td><code>FAILURE_BATCH_SIZE</code></td><td><code>5</code></td><td>Pending failure threshold to trigger batch SelfEvolve analysis</td></tr>
   <tr><td><code>z_tolerance</code></td><td><code>float</code></td><td><code>Z_TOLERANCE</code></td><td><code>0.005</code></td><td>Redshift agreement tolerance for acceptance</td></tr>
 </table>
