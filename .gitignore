@@ -8,6 +8,7 @@ llm-spectro-agent-old-master/
 
 # agent
 .agents/
+.qoder/
 
 skills-lock.json
 node_modules/

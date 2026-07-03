@@ -43,7 +43,7 @@ class ReportWriter(BaseAgent):
         # ── Build LLM kwargs from runtime config ──
         llm_cfg = self.runtime.configs.model.llm
         llm_kwargs = {
-            "model": llm_cfg.get("model", "sonnet"),
+            "model": llm_cfg.get("model", "deepseek-v4-pro"),
             "api_key": llm_cfg.get("api_key"),
             "base_url": llm_cfg.get("base_url"),
             "temperature": 0.3,

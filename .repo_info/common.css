@@ -380,6 +380,28 @@ th {
 td { padding: 7px 12px; border-bottom: 1px solid var(--rule); color: var(--text-dim); }
 tr:hover td { background: var(--row-hover-bg); }
 
+/* ---------- table variants: header colour schemes ---------- */
+.table-keys th {
+  color: var(--absorption);
+  border-bottom-color: var(--absorption);
+}
+.table-params th {
+  color: var(--amber);
+  border-bottom-color: var(--emission-dim);
+}
+.table-output th {
+  color: var(--green-accent);
+  border-bottom-color: var(--green-accent);
+}
+
+/* ---------- <col> width presets ---------- */
+.col-name   { width: 20%; }
+.col-type   { width: 14%; }
+.col-env    { width: 22%; }
+.col-def    { width: 12%; }
+.col-source { width: 18%; }
+.col-out    { width: 26%; }
+
 /* ---------- prev / next ---------- */
 .prev-next {
   margin-top: 40px;

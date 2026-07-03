@@ -17,7 +17,7 @@
     if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
       return LIGHT;
     }
-    return 'dark';
+    return LIGHT;
   }
 
   /* ---- apply ---- */

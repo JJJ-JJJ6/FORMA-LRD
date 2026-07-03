@@ -93,26 +93,55 @@
   <h3>_detect_vendor</h3>
   <div class="sig"><code>_detect_vendor(base_url: str) -> str</code></div>
   <p>Inspect the API base URL to determine the LLM vendor. Used by downstream functions to emit vendor-specific API parameters.</p>
-  <div class="return-type">→ <span class="vendor-tag">'deepseek'</span> if url contains 'deepseek' · <span class="vendor-tag">'qwen'</span> if url contains 'aliyuncs' / 'dashscope' / 'qwen' · <span class="vendor-tag">'unknown'</span> otherwise</div>
+  <table class="table-params">
+  <colgroup><col class="col-name"><col class="col-type"><col class="col-def"><col></colgroup>
+    <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>base_url</code></td><td><code>str</code></td><td>—</td><td>API endpoint URL to inspect</td></tr>
+  </table>
+  <table class="table-output">
+  <colgroup><col class="col-name"><col class="col-out"><col></colgroup>
+    <tr><th>Output</th><th>Type</th><th>Description</th></tr>
+    <tr><td>vendor</td><td><code>str</code></td><td><span class="vendor-tag">'deepseek'</span> if url contains 'deepseek'<br><span class="vendor-tag">'qwen'</span> if url contains 'aliyuncs' / 'dashscope' / 'qwen'<br><span class="vendor-tag">'unknown'</span> otherwise</td></tr>
+  </table>
 </div>
 
 <div class="func-block" id="_build_thinking_extra_body">
   <h3>_build_thinking_extra_body</h3>
   <div class="sig"><code>_build_thinking_extra_body(mode: str, vendor: str) -> dict | None</code></div>
-  <p>Build the thinking/reasoning parameter payload for the target vendor:</p>
-  <p>
-    <span class="vendor-tag">deepseek</span> → <code>{"thinking": {"type": mode}}</code> (mode = 'enabled' | 'disabled')<br>
-    <span class="vendor-tag">qwen</span> → <code>{"enable_thinking": True/False}</code><br>
-    <span class="vendor-tag">unknown</span> → <code>None</code> (skip to avoid parameter rejection)
-  </p>
+  <p>Build the thinking/reasoning parameter payload for the target vendor.</p>
+  <table class="table-params">
+  <colgroup><col class="col-name"><col class="col-type"><col class="col-def"><col></colgroup>
+    <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>mode</code></td><td><code>str</code></td><td>—</td><td><code>'enabled'</code> or <code>'disabled'</code></td></tr>
+    <tr><td><code>vendor</code></td><td><code>str</code></td><td>—</td><td><code>'deepseek'</code> | <code>'qwen'</code> | <code>'unknown'</code></td></tr>
+  </table>
+  <table class="table-output">
+  <colgroup><col class="col-name"><col class="col-out"><col></colgroup>
+    <tr><th>Output</th><th>Type</th><th>Description</th></tr>
+    <tr><td>extra_body</td><td><code>dict | None</code></td><td><span class="vendor-tag">deepseek</span> → <code>{"thinking": {"type": mode}}</code><br><span class="vendor-tag">qwen</span> → <code>{"enable_thinking": True/False}</code><br><span class="vendor-tag">unknown</span> → <code>None</code></td></tr>
+  </table>
 </div>
 
 <div class="func-block" id="_create_chat_openai">
   <h3>_create_chat_openai</h3>
   <div class="sig"><code>_create_chat_openai(model, api_key, base_url, temperature=0.1, max_tokens=None, streaming=False, extra_body=None) -> ChatOpenAI</code></div>
-  <p>Create a <code>ChatOpenAI</code> instance with vendor-specific patches:</p>
-  <p><strong>DeepSeek max_tokens patch</strong> — langchain-openai ≥1.x renames <code>max_tokens</code> → <code>max_completion_tokens</code> for OpenAI API compat. DeepSeek only recognises <code>max_tokens</code> and silently falls back to its default (8192) when it receives <code>max_completion_tokens</code>. This function monkey-patches <code>_get_request_payload</code> on the instance to reverse the rename before the request is sent.</p>
-  <div class="return-type">→ ChatOpenAI instance (possibly patched)</div>
+  <p>Create a <code>ChatOpenAI</code> instance with vendor-specific patches.</p>
+  <table class="table-params">
+  <colgroup><col class="col-name"><col class="col-type"><col class="col-def"><col></colgroup>
+    <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>model</code></td><td><code>str</code></td><td>—</td><td>Model name string (e.g. <code>"deepseek-chat"</code>)</td></tr>
+    <tr><td><code>api_key</code></td><td><code>str</code></td><td>—</td><td>API authentication key</td></tr>
+    <tr><td><code>base_url</code></td><td><code>str</code></td><td>—</td><td>API endpoint URL</td></tr>
+    <tr><td><code>temperature</code></td><td><code>float</code></td><td><code>0.1</code></td><td>Sampling temperature</td></tr>
+    <tr><td><code>max_tokens</code></td><td><code>int | None</code></td><td><code>None</code></td><td>Max output tokens; <code>None</code> = model default</td></tr>
+    <tr><td><code>streaming</code></td><td><code>bool</code></td><td><code>False</code></td><td>Enable token-level streaming</td></tr>
+    <tr><td><code>extra_body</code></td><td><code>dict | None</code></td><td><code>None</code></td><td>Additional request body fields (e.g. thinking params)</td></tr>
+  </table>
+  <table class="table-output">
+  <colgroup><col class="col-name"><col class="col-out"><col></colgroup>
+    <tr><th>Output</th><th>Type</th><th>Description</th></tr>
+    <tr><td>llm</td><td><code>ChatOpenAI</code></td><td>Configured ChatOpenAI instance. For DeepSeek with <code>max_tokens</code> set, <code>_get_request_payload</code> is monkey-patched to preserve <code>max_tokens</code> in the API request (langchain-openai otherwise renames it to <code>max_completion_tokens</code>, which DeepSeek ignores).</td></tr>
+  </table>
 </div>
 
 <!-- ============================================================ -->
@@ -124,6 +153,11 @@
   <h3>__init__</h3>
   <div class="sig"><code>__init__(self, model_config: Dict[str, Any])</code></div>
   <p>Store <code>model_config</code> dict (model name, api_key, base_url, temperature, max_tokens, stream, thinking). No client creation — that responsibility belongs to <code>ThisIsModel</code>.</p>
+  <table class="table-params">
+  <colgroup><col class="col-name"><col class="col-type"><col class="col-def"><col></colgroup>
+    <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>model_config</code></td><td><code>Dict[str, Any]</code></td><td>—</td><td>Dictionary with keys: <code>model</code>, <code>api_key</code>, <code>base_url</code>, <code>temperature</code>, <code>max_tokens</code>, <code>stream</code>, <code>thinking</code></td></tr>
+  </table>
 </div>
 
 <h2 id="ThisIsModel"><span class="class-badge">class</span> ThisIsModel(BaseLLM)</h2>
@@ -138,7 +172,11 @@
     <code>'disabled'</code> — explicitly disable; <code>base_agent</code> may later bind-override to 'enabled' when <code>want_tools=False</code><br>
     <code>'enabled'</code> — enable thinking; <code>base_agent</code> will bind-override to 'disabled' when <code>want_tools=True</code> (preserving multi-turn tool-call safety)
   </p>
-  <div class="return-type">→ ChatOpenAI instance, ready for LangChain agent binding</div>
+  <table class="table-output">
+  <colgroup><col class="col-name"><col class="col-out"><col></colgroup>
+    <tr><th>Output</th><th>Type</th><th>Description</th></tr>
+    <tr><td>client</td><td><code>ChatOpenAI</code></td><td>Configured ChatOpenAI instance, ready for LangChain agent binding. Reads all params from <code>self.model_config</code>; delegates to <code>_create_chat_openai</code>.</td></tr>
+  </table>
 </div>
 
 <!-- ============================================================ -->
@@ -147,10 +185,7 @@
 </div>
 
 <div class="prev-next">
-  <a href="result_writer.html">&larr; Previous</a>
-  <span style="color:var(--text-faint)">·</span>
-  <a href="config_overview.html">Next &rarr;</a>
-  <span style="margin-left:auto;"><a href="../index.html#core">All Core</a></span>
+  <span style="margin-left:auto;"><a href="../index.html#dir-tree">Source tree</a></span>
 </div>
 
 <div class="footer">

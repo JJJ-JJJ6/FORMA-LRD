@@ -16,17 +16,6 @@ import numpy as np
 # Hypothesis collection
 # =========================================================================
 
-def collect_hypotheses(scoring: dict) -> list:
-    """Merge low_z / high_z from scoring into a flat list sorted by score."""
-    hypotheses = []
-    for cat_key in ('low_z', 'high_z'):
-        cat_label = cat_key.rstrip('_z')
-        for h in scoring.get(cat_key, []):
-            hypotheses.append({**h, 'category': cat_label})
-    hypotheses.sort(key=lambda h: -h['score'])
-    return hypotheses
-
-
 def collect_redshift_hypotheses(data: dict) -> list:
     """Extract hypotheses from redshift_hypotheses output (Redrock or brute-force).
 
@@ -524,35 +513,6 @@ def _parse_extraction_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
     return None
-
-
-# =========================================================================
-# Formatting helpers
-# =========================================================================
-
-def format_summaries(summaries: list) -> str:
-    lines = []
-    for s in summaries:
-        lines.append(
-            f"- **H{s['idx']}** (z={s['z_tested']:.4f}): "
-            f"verdict={s['verdict']}, class={s['classification']}, "
-            f"n_features={s['n_features']}"
-            + (f", ERROR={s['error']}" if s.get('error') else "")
-        )
-    return "\n".join(lines) if lines else "(none)"
-
-
-def format_ranked(ranked: list) -> str:
-    if not ranked:
-        return "(ranking unavailable)"
-    lines = []
-    for i, r in enumerate(ranked):
-        lines.append(
-            f"{i+1}. H{r['hypothesis_idx']}: "
-            f"Δχ²={r['delta_chi2']}, "
-            f"n_lines={r['n_lines_used']}"
-        )
-    return "\n".join(lines)
 
 
 # =========================================================================

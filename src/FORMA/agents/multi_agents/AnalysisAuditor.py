@@ -31,7 +31,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from FORMA.agents.common.state import SpectroState
 from FORMA.agents.common.base_agent import BaseAgent
-from FORMA.agents.common.result_writer import ResultWriter
+
 from FORMA.core.runtime.runtime_container import RuntimeContainer
 from FORMA.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from FORMA.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
@@ -1752,7 +1752,7 @@ class AnalysisAuditor(BaseAgent):
 
     def __init__(self, runtime: RuntimeContainer):
         super().__init__(runtime)
-        self._writer = ResultWriter()
+
 
     # ========================================================================
     # Public entry point

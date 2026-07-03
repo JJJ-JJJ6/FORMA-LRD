@@ -282,7 +282,7 @@ async def arun(
     state: SpectroState,
     harness_dir: str,
     *,
-    model: str = "sonnet",
+    model: str = "deepseek-v4-pro",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     temperature: float = 0.3,

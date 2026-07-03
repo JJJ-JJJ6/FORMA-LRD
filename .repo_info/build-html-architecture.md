@@ -162,6 +162,26 @@
 
 ---
 
+## 5b. 函数与类的 Input/Output 表格规范
+
+每个 `func-block` 必须配有结构化的 Input/Output 表格，取代纯文本描述参数和返回值。具体 header 模式、`<colgroup>` 模板和适用场景见**第 8 节**。
+
+### 5b.1 func-block 内元素顺序
+
+1. `<h3>` 函数名
+2. `<div class="sig"><code>…</code></div>` 签名
+3. `<p>` 一句话概述
+4. `<table class="table-params">` 参数表（有参数时写入）
+5. `<table class="table-output">` 返回值表（有返回值时写入；`-> None` 则省略）
+
+嵌套在 func-block 内的表格会自然继承 func-block 的内边距和背景，无需额外包裹。
+
+### 5b.2 类字段 / 配置项
+
+类级别的字段、配置项等结构化键值文档使用 `table-keys`，按实际列数选择模板（见第 8.2 节）。
+
+---
+
 ## 6. 主题
 
 色彩变量定义在 `common.css` 的 `:root`（暗色）和 `[data-theme="light"]`（亮色）。页面内用 `var(--xxx)` 引用，不硬编码色值。
@@ -182,3 +202,64 @@
 | `tag secondary` | 暖琥珀底 + amber-dim 金字 | 淡蓝底 + absorption 蓝字 |
 | `tag muted` | 极淡金底 + faint 灰字 | 极淡灰底 + faint 灰字 |
 | `tag green` | green 底 + green 字 | green 底 + green 字 |
+
+---
+
+## 8. 表格列宽比例
+
+三类表格通过 `<colgroup>` + CSS class 控制列宽。最后一栏（Description）不设宽度，自动填充剩余空间。
+
+以下为所有合法 header 模式。**新增页面的表格 header 必须从这些模式中选择，不得自创变体。**
+
+### 8.1 CSS 预设（定义在 `common.css`）
+
+| class | 宽度 | 用途 |
+|---|---|---|
+| `.col-name` | 20% | Key / Field / Parameter / Method 名称 |
+| `.col-type` | 14% | Type 类型标注 |
+| `.col-env` | 22% | Env Var 环境变量名 |
+| `.col-def` | 12% | Default 默认值 |
+| `.col-source` | 18% | Source 来源（仅 table-params） |
+| `.col-out` | 26% | Output 输出类型（仅 table-output，对齐 params 的 Default 位置） |
+
+### 8.2 table-keys（蓝 header）— 字段 / 配置项
+
+用于类字段、配置项、State 字段等结构化键值文档。
+
+| # | 合法 header | `<colgroup>` | 适用场景 |
+|---|---|---|---|
+| K3 | `Key \| Type \| Description` | `<col class="col-name"><col class="col-type"><col>` | 简单字段表（State 字段等） |
+| K4a | `Key \| Type \| Env Var \| Description` | `<col class="col-name"><col class="col-type"><col class="col-env"><col>` | 配置项（有环境变量映射） |
+| K4b | `Field \| Type \| Default \| Description` | `<col class="col-name"><col class="col-type"><col class="col-def"><col>` | 类变量（有默认值，无环境变量） |
+| K5 | `Field \| Type \| Env Var \| Default \| Description` | `<col class="col-name"><col class="col-type"><col class="col-env"><col class="col-def"><col>` | 完整配置项（环境变量 + 默认值） |
+
+> **规则**：K4a/K5 的第一栏也可写 `Field`（类变量语境）或 `Key`（配置语境），含义相同。**不得**出现 `Key \| Type \| Default \| Description` 这种缺少 Env Var 的 4 栏模式——那属于 K4b。
+
+### 8.3 table-params（琥珀 header）— 函数参数
+
+统一 4 栏。用于 func-block 内的函数/方法参数文档。
+
+| # | 合法 header | `<colgroup>` | 适用场景 |
+|---|---|---|---|
+| P4a | `Parameter \| Type \| Default \| Description` | `<col class="col-name"><col class="col-type"><col class="col-def"><col>` | 普通函数参数，有默认值写值，无则填 `—` |
+| P4b | `Parameter \| Type \| Source \| Description` | `<col class="col-name"><col class="col-type"><col class="col-source"><col>` | 构造函数参数，值来自外部注入（如 DI 容器） |
+
+> **规则**：不再使用 3 栏模式。所有 params 表统一 4 栏。P4a 是默认选择；P4b 仅用于构造注入场景，Source 栏填写注入来源（如 `AllConfig`、`Injected`）。
+
+### 8.4 table-output（绿 header）— 返回值
+
+用于 func-block 内的函数返回值文档。无返回值的函数不写此表。
+
+| # | 合法 header | `<colgroup>` | 适用场景 |
+|---|---|---|---|
+| O2 | `Method \| Description` | `<col class="col-name"><col>` | 仅列方法名和说明（内部 helper 列表等） |
+| O3a | `Output \| Type \| Description` | `<col class="col-name"><col class="col-out"><col>` | 单个返回值（绝大多数函数的默认选择） |
+| O3b | `Method \| Output \| Description` | `<col class="col-name"><col class="col-out"><col>` | 方法列表 + 输出格式（如 ResultWriter 的 write 方法一览） |
+
+### 8.5 快速对照
+
+```
+table-keys  ──  K3  K4a  K4b  K5   （蓝 header）
+table-params──            P4a  P4b  （琥珀 header，统一 4 栏）
+table-output──  O2  O3a  O3b        （绿 header）
+```
