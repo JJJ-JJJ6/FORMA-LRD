@@ -27,6 +27,8 @@ The pipeline is currently configured to use the following model via API:
 
 > ⚠️ Note: Other LLMs have not been tested and may require adaptation.
 
+> For detailed module documentation, architecture diagrams, and pipeline topology, see [`.repo_info/index.html`](.repo_info/index.html).
+
 ---
 
 ## Dependencies & Installation

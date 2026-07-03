@@ -26,6 +26,8 @@
 4. **综合总结输出**  
    生成最终分析报告，并给出置信度评估
 
+> 详细的模块文档、架构图和 Pipeline 拓扑见 [`.repo_info/index.html`](.repo_info/index.html)。
+
 ---
 
 ## 使用的模型（Models）
