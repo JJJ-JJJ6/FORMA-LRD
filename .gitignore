@@ -49,3 +49,18 @@ env/
 ENV/
 
 wxyv46kb.pdf
+
+# ====================
+# lrd_adapt: no data in git (see CLAUDE.md hard rules)
+# ====================
+*.fits
+*.npz
+*.h5
+**/visual_interpreter/
+**/single_hypothesis/
+**/hypothesis_synthesis/
+**/feature_auditor/
+**/result_auditor/
+**/report_writer/
+**/*_redrock/
+*.egg-info/
