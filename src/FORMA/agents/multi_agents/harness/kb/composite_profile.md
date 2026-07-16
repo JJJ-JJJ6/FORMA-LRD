@@ -48,25 +48,35 @@ When an emission and absorption line of the same species are detected:
 
 ## Examples
 
-### Mg II + Mg II_abs (2800 Å rest)
+### He I + Paγ blend (10833 / 10941 Å rest, LRD domain)
 
-The most common and important composite case. Mg II can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM, FWHM < 1000 km/s). When BOTH are claimed near the same observed wavelength:
+**Not a composite in the emission+absorption sense above** — these are two
+*separate* emission lines from different species, 108 Å apart rest-frame,
+well resolved at R~1600 (~7 Å instrumental FWHM). Unlike Mg II/Hα/Hβ below,
+expect two distinguishable peaks, not one blended "M" profile. Use
+`fit_doublet` (or two `fit_peak` calls) to measure both independently. The
+diagnostic quantity here is the He I/Paγ **amplitude ratio itself**
+(Kapoor+26 §4.4: >2.3 → classical AGN) — this is a Stage B input, not a
+Stage A reality check; see `kb/classification.md`'s scope note. At Stage A,
+just confirm both components are real, independent, in-window detections.
 
-**Center coincidence check**: If |λ_em − λ_abs| > max(FWHM_em, FWHM_abs), the two features are physically unrelated — one is a misidentification.
+**Shared kinematics check (§4.2)**: If both broad and narrow components are
+fit for He I and Paγ, their velocity offsets should agree between the two
+species (±300 km/s), since both trace the same gas system. See
+`kb/ionization.md`.
 
-**Absorption-dominant false emission**: If the CWT feature at the predicted Mg II position is NARROW and in ABSORPTION (FWHM < 1000 km/s), the nearby broad "Mg II emission" is likely a CWT artifact from overfitting the continuum between absorption troughs, broad noise on the absorption wings, or poor baseline subtraction.
+### Blueshifted He I absorption (rare — do not expect by default)
 
-**Default to absorption in ambiguous cases**: Mg II ISM absorption is ubiquitous; Mg II BLR emission requires a genuine QSO. The emission claim requires POSITIVE morphological evidence: clearly broad profile (FWHM > 2000 km/s), clearly distinct from the absorption feature, and supported by at least one other AGN indicator ([Ne V], C III], C IV).
-
-**Composite verdict**: A genuine broad, symmetric "M" shape with smooth wings supports both the emission AND absorption claims as a single linked physical system. Spike–valley–spike or asymmetric noise does NOT support either claim. Default to Galaxy classification if the only AGN evidence is a dubious Mg II composite.
-
-### Hα + Hα_abs (6564.6 Å rest)
-
-Broad or narrow Hα emission with stellar or interstellar absorption near the center. Common in galaxy spectra containing mixed stellar and nebular components. The same criteria and morphological test apply.
-
-### Hβ + Hβ_abs (4862.7 Å rest)
-
-Common in post-starburst galaxies and stellar-dominated systems. The underlying Balmer absorption may partially remove the nebular emission core, producing a composite profile. Same criteria as Mg II.
+A minority of sources (2 of 19 in Kapoor+26) show a blueshifted He I
+absorption component, modeled as a **negative Gaussian** superposed on the
+He I emission — a genuine emission-plus-absorption composite in the sense
+of this document's general methodology above. Apply the same morphological
+tests (center consistency, wing broadness, symmetry) to judge whether a
+claimed absorption dip is a real outflow signature or a spike/noise
+artifact riding on the emission profile. Requires ΔBIC > 10 (via
+`_fit_broadline_lsf_bic` or a dedicated negative-Gaussian fit) to accept —
+do not accept a visually suggestive dip without that check, and do not
+treat its absence as unusual (most sources don't show it).
 
 ## General Principle
 

@@ -1,54 +1,84 @@
-# Ionization & Velocity Rules
+# Redshift Anchoring & Consistency Rules (LRD domain)
+
+LRD domain (Kapoor+26 EIGER F356W survey). Draft source:
+`lrd_adapt/kb_drafts/lrd_line_identity_rules.md`.
 
 ## Related Knowledge
 
-- Classification diagnostics (what to DO with ionization violations, fatal problems per class): see `kb/classification.md`
-- Line rest wavelengths and doublet spacings: see `kb/lines.md`
+- Line-identity fatal problems and the redshift-window exclusion rule: see `kb/classification.md`
+- Line rest wavelengths, redshift windows, width classes: see `kb/lines.md`
 
-## Systemic Redshift Anchoring Priority
+## Why this domain anchors differently than the optical DESI case
 
-Use the lowest-ionization LIKELY line to anchor systemic z. Priority from lowest to highest ionization:
+The original (optical) ionization-priority table ranked lines by ionization
+potential because a typical DESI spectrum shows *many* lines at once, and
+the lowest-ionization one is the most reliable systemic-z anchor. This
+sample is different: each source is a single dominant broad-line detection
+(Kapoor+26 Table 1), usually with at most one or two companion lines in
+band. There usually isn't a choice of anchor line — the detected line IS
+the anchor, and the open question is *which rest-frame line it is*, not
+*which of several detected lines to trust*.
 
-| Priority | Lines | Ionization | Notes |
-|----------|-------|------------|-------|
-| 1 | Ca K/H_abs, G-band_abs, Mg I_abs, Na D_abs | Neutral | Stellar absorption — most reliable |
-| 2 | [O II] 3727 | O⁺ (~13.6 eV) | Best emission anchor for ELG |
-| 3 | [S II]a/b 6718/6733 | S⁺ | |
-| 4 | [N II]a/b 6550/6585 | N⁺ | |
-| 5 | Hα/Hβ/Hγ/Hδ/Hε | H (~13.6 eV) | |
-| 6 | Mg II 2800 | Mg⁺ (~15.0 eV) | May show outflow blueshift |
-| 7 | [O III]a/b 4960/5008 | O⁺⁺ (~35.1 eV) | Weakest anchor, often blueshifted |
+## The redshift-window constraint (primary anchoring rule)
 
-**Excluded** (must NOT anchor systemic z): He II (He⁺, 54.4 eV), C III] (C⁺⁺, 47.9 eV), C IV (C⁺⁺⁺, 64.5 eV), [Ne V] (Ne⁺⁺⁺⁺, 97.1 eV), Lyα (1216). These high-ionization lines are routinely blueshifted by AGN outflows (hundreds of km/s). If only excluded lines are available, flag the redshift as potentially biased.
+Each candidate identity carries a hard F356W redshift window (`kb/lines.md`).
+An implied z outside that window is not weak evidence against a hypothesis —
+it is a redshift-arithmetic impossibility, since the line's rest wavelength
+could not have produced the observed wavelength at that z. Apply this before
+any other consistency check. See `kb/classification.md` for the exclusion
+procedure.
 
-**Perceptual guidance**: Prioritize visual signal clarity over strict priority ordering. A visually dominant, unmistakable [O II] at Priority 2 is a better anchor than a marginal, barely-visible Ca K/H at Priority 1. The table is a tiebreaker, not a substitute for your visual judgment of which line is most convincingly detected.
+## Broad-line-reality as a consistency check
 
-## Ionization Consistency Rule
+Before treating an apparent line width as evidence of anything (real BLR
+gas, outflow, disqualifying a narrow-only hypothesis), confirm it with the
+`_fit_broadline_lsf_bic` tool. It compares:
 
-Higher-ionization lines of a given element imply the presence of lower-ionization lines of the same element. If a line requiring a higher ionization state is detected, the lower-ionization lines of that element MUST also be present (unless masked or at the spectrum edge).
+- `narrow_extended_lsf` — the null: apparent width is spatial-extent
+  smearing, not real velocity structure.
+- `narrow_broad_point_lsf` / `mixed` — real broad component, ΔBIC > 10 over
+  the null required to accept.
 
-The most important case for ELG classification:
+Extended-source LSF effectively softens the resolving power from R~1600
+(point source) to R~400-600 (Kapoor+26's quoted effective range) — enough
+that a spatially-extended source's narrow line alone can *look* broadened
+without any real velocity structure. This is the LRD-domain analog of the
+old "width mismatch" check, but it requires a model comparison, not a
+visual width estimate.
 
-| If detected | Then MUST also detect | Why |
-|-------------|----------------------|-----|
-| [O III] 4960/5008 (O⁺⁺, 35.1 eV) | [O II] 3727 (O⁺, 13.6 eV) | O⁺⁺ requires passing through O⁺ — an ionizing source strong enough to produce [O III] MUST produce abundant [O II] |
+## Velocity-offset consistency (Kapoor+26 SS4.2)
 
-**[O III] without [O II] in clean, unmasked spectral regions is a physical contradiction.** Either:
-- The [O III] identification is wrong (wrong z, wrong line ID, or OH skylines mimicking the doublet spacing), or
-- [O II] is hiding in a masked/low-SNR region (check before rejecting).
+When both a narrow and a broad component are fit for the same line (or
+for He I and Pa-gamma together — see `kb/composite_profile.md`), their
+velocity offsets should be consistent, bounded to +/-300 km/s. He I and
+Pa-gamma's broad components (and separately their narrow components)
+should share offsets, since they arise from the same kinematic gas system.
+A broad component with an offset far outside this range, or offsets that
+disagree wildly between He I and Pa-gamma, is a red flag for the
+identification (possibly a different line entirely, or a fitting
+degeneracy) — but as with everything else in this domain, verify with the
+BIC tool rather than eyeballing a plot.
 
-This principle extends beyond oxygen to other elements: C IV (C⁺⁺⁺) requires C III] (C⁺⁺); [Ne V] (Ne⁺⁺⁺⁺) requires [Ne IV] and lower neon lines. Always check for lower-ionization counterparts of the same element before accepting a high-ionization line identification.
+## Blueshifted He I absorption (rare, do not expect by default)
 
-## Outflow Blueshift Rule
+A subset of sources show blueshifted He I absorption (outflow-like,
+P-Cygni-style), modeled as a negative Gaussian component. Kapoor+26 find
+this in only 2 of 19 sources — treat it as a real but uncommon feature,
+requiring its own ΔBIC > 10 to accept, not something every He I detection
+should be checked for by default. See `kb/composite_profile.md`.
 
-High-ionization lines blueshifted relative to low-ionization by 0–1000 km/s is physically normal.
-Velocity offset: Δv = (z_high − z_low) / (1 + z_low) × c. Negative Δv = blueshift.
-If a high-ionization line gives a LOWER z than a low-ionization line, suspect misidentification (not outflow reversal).
+## What is explicitly NOT a Stage A consistency rule
 
-## Width Mismatch Policy
+The He I/Pa-gamma amplitude ratio, Balmer-break strength, template fits,
+compactness (r_circ), and X-ray coverage are all Stage B (LRD-vs-classical-
+AGN) inputs, not Stage A (line-identity/redshift) consistency checks. Do
+not use them to accept or reject a line-identity hypothesis here — see
+`kb/classification.md`'s scope note and `kb_drafts/lrd_line_identity_rules.md`
+for why this boundary matters (build order keeps classification-with-
+external-evidence as a separate, later stage, deliberately).
 
-- A `narrow` feature matching a `broad` line (Lyα, C IV, C III], Mg II) → flag, do not use for systemic z
-- A `broad` feature matching a `narrow` line ([O II], [O III], [N II], [S II]) → flag, suspect spurious CWT feature
-- Balmer lines (Hα–Hδ) and He II are `both` class → width checks do not apply
-- Flag mismatches but do not veto an entire hypothesis on one width mismatch alone
-- Use your visual judgment: a feature that **looks** broad (spanning tens of pixels, smooth wings) carries more weight than the exact FWHM value
+## Grism contamination
+
+See `kb/classification.md`'s "Grism contamination" section. A detected
+feature in a masked/contaminated pixel region is not automatically
+unreliable — real signal can and does appear under contamination.
