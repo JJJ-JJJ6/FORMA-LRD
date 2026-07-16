@@ -157,10 +157,42 @@ def _build_tools(mode: str = "nomad", npz_path: str = None) -> list:
                                    line_type, width_3sigma, window_half,
                                    separation_rest, separation_tolerance, amp_ratio_expected)
 
+        # lrd_adapt/tools: extended-source-LSF vs real-velocity-broadening
+        # check (CLAUDE.md change budget, new code #3). Imported lazily so
+        # the upstream tool belt has no hard dependency on lrd_adapt.
+        from lrd_adapt.tools.broadline_lsf_bic import fit_broadline_lsf_bic
+
+        @tool
+        def _fit_broadline_lsf_bic(
+            line_rest_ang: float,
+            z_guess: float,
+            r_circ_mas: float = None,
+        ) -> dict:
+            """Test whether a line's apparent width is real velocity broadening
+            or spatial-extent smearing (Kapoor+26 SS3.1/4.2). Compares three
+            profile models via BIC: narrow line (x) extended-source LSF (null),
+            narrow+broad (x) point-source LSF, and a mixed model. Requires
+            ΔBIC > 10 over the null to call the broad component real.
+
+            Parameters
+            ----------
+            line_rest_ang : float
+                Rest-frame wavelength of the line to test (Å), e.g. 10833.0
+                for He I.
+            z_guess : float
+                Redshift hypothesis under audit.
+            r_circ_mas : float, optional
+                Measured circularized half-light radius (mas), if available,
+                to refine the extended-source LSF; otherwise a fixed
+                effective resolving power is used.
+            """
+            return fit_broadline_lsf_bic(_wl, _fl, line_rest_ang, z_guess, r_circ_mas=r_circ_mas)
+
         return [
             write_report, write_lines_csv,
             _fit_peak, _fit_doublet,
             compute_redshift,
+            _fit_broadline_lsf_bic,
         ]
     return [write_report, write_lines_csv]
 
