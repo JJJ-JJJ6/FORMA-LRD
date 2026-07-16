@@ -50,7 +50,11 @@ class HypothesisAnalyst(BaseAgent):
         to cross-compare the (possibly cleaned) results.
         """
         params = self.runtime.configs.params
-        mode = "redrock" if params.redrock else "nomad"
+        # "redrock" mode really means "use the quantitative fitting tool
+        # belt" (fit_peak/fit_doublet/compute_redshift/LSF-BIC), not
+        # literally "Redrock ran". The LRD hypothesis provider also needs
+        # that tool belt, so route it the same way (CLAUDE.md new code #2/#3).
+        mode = "redrock" if (params.redrock or params.hypothesis_provider == "lrd") else "nomad"
         state['_hypothesis_mode'] = mode  # stash for synthesize later
 
         hypotheses = collect_redshift_hypotheses(
