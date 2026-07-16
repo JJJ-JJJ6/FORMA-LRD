@@ -18,6 +18,7 @@ class ParamsConfig(BaseModel):
     harness_concurrency: int
     self_evolve: bool
     redrock: bool
+    hypothesis_provider: str
     failure_batch_size: int
     z_tolerance: float
 
@@ -61,6 +62,10 @@ class ParamsConfig(BaseModel):
             harness_concurrency=getenv_int("HARNESS_CONCURRENCY", 3),
             self_evolve=os.getenv("SELF_EVOLVE", "false").lower() in ("true", "1", "yes"),
             redrock=os.getenv("REDROCK", "true").lower() in ("true", "1", "yes"),
+            # "lrd" routes hypothesis generation to lrd_adapt/hypothesis instead
+            # of Redrock/brute-force line matching (default "auto" = unchanged
+            # upstream behavior). See CLAUDE.md change budget, new code #2.
+            hypothesis_provider=os.getenv("HYPOTHESIS_PROVIDER", "auto").strip().lower(),
             failure_batch_size=getenv_int("FAILURE_BATCH_SIZE", 5),
             z_tolerance=getenv_float("Z_TOLERANCE", 0.005),
 

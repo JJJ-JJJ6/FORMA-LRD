@@ -64,3 +64,5 @@ wxyv46kb.pdf
 **/report_writer/
 **/*_redrock/
 *.egg-info/
+lrd_adapt/eval/_demo_output/
+

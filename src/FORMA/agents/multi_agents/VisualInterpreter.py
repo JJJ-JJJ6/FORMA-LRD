@@ -366,7 +366,16 @@ class VisualInterpreter(BaseAgent):
             tol_wavelength = self.runtime.configs.params.tol_wavelength
 
             print(params.redrock)
-            if params.redrock:
+            if params.hypothesis_provider == "lrd":
+                # ── LRD path: paper's line ID + z_spec vs. rival identities,
+                # see lrd_adapt/hypothesis (CLAUDE.md change budget, new code #2) ──
+                from lrd_adapt.hypothesis.lrd_hypothesis_provider import (
+                    generate_lrd_hypotheses_for_state,
+                )
+                state['redshift_hypotheses'] = generate_lrd_hypotheses_for_state(
+                    state, params,
+                )
+            elif params.redrock:
                 # ── Redrock 路径：运行 rrdesi 替代 brute-force line matching ──
                 if params.rr_template_dir is None:
                     raise ValueError(

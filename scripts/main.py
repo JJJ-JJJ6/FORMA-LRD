@@ -10,6 +10,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'src'))
+sys.path.insert(0, str(PROJECT_ROOT))  # for lrd_adapt/ (sibling of src/, see CLAUDE.md)
 
 from FORMA.core.config.all_config import AllConfig
 from FORMA.workflow_orchestrator import WorkflowOrchestrator
