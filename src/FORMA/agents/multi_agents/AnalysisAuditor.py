@@ -368,13 +368,30 @@ def build_contradiction_matrix(
     hypothesis_dir: str,
     wl_min: float,
     wl_max: float,
+    masked_regions: List[Tuple[float, float]] = None,
+    use_wavelength_edge_zones: bool = True,
 ) -> Tuple[List[dict], List[dict], dict]:
     """Build the Feature Contradiction Matrix from all hypotheses' lines.csv.
+
+    Parameters
+    ----------
+    masked_regions : list of (lo, hi), optional
+        Wavelength intervals (Å) with no usable data — multi-arm overlap in
+        the optical/DESI domain, or grism-contamination-flagged pixels in
+        the LRD domain (see lrd_adapt/converter's mask bit 4, threaded
+        through VisualInterpreter.py's state['spectrum']['overlap_regions']).
+        Rows falling in one of these get is_contaminated=True.
+    use_wavelength_edge_zones : bool
+        The 4000/7800 Å blue-edge/OH-zone thresholds are DESI-specific
+        (ground-based throughput/airglow). Set False for domains without
+        that physical basis (e.g. JWST NIRCam, no atmosphere) so every row
+        isn't nonsensically marked "red edge" just for being >7800 Å.
 
     Returns
     -------
     matrix_rows : list of dict
-        Each dict has keys: wl_obs, cells, n_hypotheses, is_edge_blue, is_edge_red.
+        Each dict has keys: wl_obs, cells, n_hypotheses, is_edge_blue,
+        is_edge_red, is_contaminated.
     doublet_annotations : list of dict
     stats : dict
         n_rows, n_total_features, n_edge_blue, n_edge_red, median_amplitude,
@@ -436,7 +453,8 @@ def build_contradiction_matrix(
 
     if not all_features:
         return [], [], {"n_rows": 0, "n_total_features": 0, "n_edge_blue": 0,
-                        "n_edge_red": 0, "median_amplitude": 0, "top_quartile_amplitude": 0}
+                        "n_edge_red": 0, "n_contaminated": 0, "median_amplitude": 0,
+                        "top_quartile_amplitude": 0}
 
     # Group by (int(wl_obs), amp_sign).  Features at nearly the same wavelength
     # with the same amplitude sign are the same CWT-detected peak/trough.
@@ -467,8 +485,11 @@ def build_contradiction_matrix(
             "group_key": group_key,
             "cells": cells,
             "n_hypotheses": len(cells),
-            "is_edge_blue": rep_wl < 4000.0,
-            "is_edge_red": rep_wl > 7800.0,
+            "is_edge_blue": use_wavelength_edge_zones and rep_wl < 4000.0,
+            "is_edge_red": use_wavelength_edge_zones and rep_wl > 7800.0,
+            "is_contaminated": bool(
+                masked_regions and any(lo <= rep_wl <= hi for lo, hi in masked_regions)
+            ),
             "row_type": first["line_type"],
             "row_amp": first["amplitude"],
             "row_width": first["width_class"],
@@ -491,9 +512,11 @@ def build_contradiction_matrix(
         "n_total_features": len(all_features),
         "n_edge_blue": sum(1 for r in matrix_rows if r["is_edge_blue"]),
         "n_edge_red": sum(1 for r in matrix_rows if r["is_edge_red"]),
+        "n_contaminated": sum(1 for r in matrix_rows if r["is_contaminated"]),
         "median_amplitude": round(median_amp, 4),
         "top_quartile_amplitude": round(top_q, 4),
         "hypothesis_indices": hyp_indices,
+        "use_wavelength_edge_zones": use_wavelength_edge_zones,
     }
 
     return matrix_rows, doublet_annotations, stats
@@ -631,15 +654,24 @@ def _build_feature_audit_user_message(
     # ── Spectrum metadata ──
     parts.append("## Spectrum")
     parts.append(f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å")
-    parts.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
-    parts.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
+    if stats.get("use_wavelength_edge_zones", True):
+        parts.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
+        parts.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
+    else:
+        parts.append(
+            "- No atmospheric blue/red edge in this domain (space-based). "
+            f"{stats['n_contaminated']} feature row(s) fall in a grism-contamination-flagged region instead."
+        )
     parts.append("")
 
     # ── Statistics ──
     parts.append("## Feature Statistics")
     parts.append(f"- Total features (LIKELY + MARGINAL): {stats['n_total_features']}")
     parts.append(f"- Unique wavelength rows in matrix: {stats['n_rows']}")
-    parts.append(f"- Edge zone features: {stats['n_edge_blue']} blue + {stats['n_edge_red']} red")
+    if stats.get("use_wavelength_edge_zones", True):
+        parts.append(f"- Edge zone features: {stats['n_edge_blue']} blue + {stats['n_edge_red']} red")
+    else:
+        parts.append(f"- Contamination-flagged features: {stats['n_contaminated']}")
     parts.append(f"- Median |amplitude|: {stats['median_amplitude']:.4f} (features near/below this are at noise floor)")
     parts.append(f"- Top quartile |amplitude|: {stats['top_quartile_amplitude']:.4f}")
     parts.append("")
@@ -654,16 +686,21 @@ def _build_feature_audit_user_message(
     # ── Contradiction matrix ──
     parts.append("## Feature Contradiction Matrix")
     parts.append("")
+    if stats.get("use_wavelength_edge_zones", True):
+        edge_legend = "`🔵` = blue edge, `🔴` = red edge. "
+    else:
+        edge_legend = "`🟠` = grism-contamination-flagged region. "
     parts.append(
         "Each row is a unique observed wavelength where ≥1 hypothesis claims a "
         "feature (LIKELY or MARGINAL). Cells show `✓` if the hypothesis claims "
         "a feature at this wavelength, `—` if it does not. "
-        "`🔵` = blue edge, `🔴` = red edge. "
+        + edge_legend +
         "Type, Amp, and Width are properties of the CWT-detected feature itself. "
         "Width: broad > 2000 km/s, narrow < 2000 km/s. "
         "**Line identifications are NOT shown here** — see the Doublet Pairs, "
         "Composite Profile, [O II] Morphology, and Lyα Forest blocks below for "
-        "structured line-identification verdicts."
+        "structured line-identification verdicts (some of these blocks may be "
+        "empty depending on the domain)."
     )
     parts.append("")
 
@@ -683,6 +720,8 @@ def _build_feature_audit_user_message(
             edge_prefix = "🔵 "
         elif row["is_edge_red"]:
             edge_prefix = "🔴 "
+        elif row.get("is_contaminated"):
+            edge_prefix = "🟠 "
 
         vals = [
             f"{edge_prefix}{wl_obs:.1f}",
@@ -1607,8 +1646,15 @@ class FeatureAuditor(BaseAgent):
         wl_min = float(spec["wavelength"][0])
         wl_max = float(spec["wavelength"][-1])
 
+        # LRD domain: no atmosphere, so the 4000/7800 A blue/red-edge
+        # thresholds (DESI-specific) don't apply; grism contamination
+        # (state['spectrum']['overlap_regions'], see VisualInterpreter.py)
+        # is this domain's analogous data-quality hazard instead.
+        is_lrd = self.runtime.configs.params.hypothesis_provider == "lrd"
         matrix_rows, doublet_annotations, stats = build_contradiction_matrix(
             hypothesis_results, hypothesis_dir, wl_min, wl_max,
+            masked_regions=spec.get("overlap_regions"),
+            use_wavelength_edge_zones=not is_lrd,
         )
 
         if not matrix_rows:
@@ -1624,7 +1670,8 @@ class FeatureAuditor(BaseAgent):
             f"[FeatureAuditor] Matrix: {stats['n_rows']} rows, "
             f"{stats['n_total_features']} features across "
             f"{len(stats['hypothesis_indices'])} hypotheses. "
-            f"Edge: {stats['n_edge_blue']}B + {stats['n_edge_red']}R. "
+            f"Edge: {stats['n_edge_blue']}B + {stats['n_edge_red']}R, "
+            f"contaminated: {stats.get('n_contaminated', 0)}. "
             f"Median |amp|: {stats['median_amplitude']:.4f}"
         )
 

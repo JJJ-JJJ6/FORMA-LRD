@@ -290,6 +290,20 @@ class VisualInterpreter(BaseAgent):
             if overlap:
                 state['spectrum']['overlap_regions'] = list(overlap.values())
 
+            # LRD domain: also surface grism-contamination-masked ranges
+            # (lrd_adapt/converter's mask bit 4) through the same channel —
+            # single-arm F356W data has no arm overlap to speak of, so
+            # without this the LLM-facing pipeline never learns a gap in
+            # the spectrum was contamination, not just "no data here".
+            if params.hypothesis_provider == "lrd" and params.arm_name:
+                from lrd_adapt.converter.masked_regions import masked_wavelength_intervals
+                contamination_intervals = masked_wavelength_intervals(
+                    state['file_path'], params.arm_name[0],
+                )
+                if contamination_intervals:
+                    existing = state['spectrum'].get('overlap_regions') or []
+                    state['spectrum']['overlap_regions'] = existing + contamination_intervals
+
             plot_spec_extract(state)
             plot_spectrum_snr(state)
 
