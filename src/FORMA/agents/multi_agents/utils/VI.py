@@ -991,82 +991,15 @@ def run_continuum_fitting_masked(
 # Brute-Force Line Matching
 # ============================================================
 
-# 静止系谱线表
-EMISSION_LINES = {
-    # 高电离 / AGN 特征线
-    "Lyα":       1216.0,
-    "C IV":      1549.0,
-    "He II":     1640.4,
-    "C III]":    1909.0,
-    "Mg II":     2800.0,
-    "[Ne V]":    3426.0,
-    "[O II]":    3727.0,
-    # Balmer 系列
-    "Hε":        3970.1,
-    "Hδ":        4102.9,
-    "Hγ":        4341.7,
-    "Hβ":        4862.7,
-    # 窄线区
-    "[O III]a":  4960.3,
-    "[O III]b":  5008.2,
-    "[N II]a":   6549.8,
-    "Hα":        6564.6,
-    "[N II]b":   6585.3,
-    "[S II]a":   6718.3,
-    "[S II]b":   6732.7,
-}
-
-# 发射线宽窄分类：broad = 宽线区 (BLR) 允许的宽线，narrow = 窄线区 (NLR) 典型窄线
-# both = BLR+NLR 均可产生，宽窄皆合理（Balmer 系在 QSO 中有 broad+narrow 叠加，
-#        在 galaxy 中仅 narrow），宽度校验对 both 类跳过
-# 用于匹配时检查寻峰宽度与物理期望是否一致
-EMISSION_LINE_WIDTHS = {
-    # BLR 宽线
-    "Lyα":       "broad",
-    "C IV":      "broad",
-    "C III]":    "broad",
-    "He II":     "both", # 在 QSO 中可以表现为 BLR 宽线，在低电离 AGN 或 Galaxy 中也可以是较窄的线
-    "Mg II":     "broad",
-    # Balmer 系列：QSO 中 broad+narrow 叠加，galaxy 中仅 narrow
-    "Hε":        "both",
-    "Hδ":        "both",
-    "Hγ":        "both",
-    "Hβ":        "both",
-    "Hα":        "both",
-    # NLR 窄线
-    "[Ne V]":    "narrow",
-    "[O II]":    "narrow",
-    "[O III]a":  "narrow",
-    "[O III]b":  "narrow",
-    "[N II]a":   "narrow",
-    "[N II]b":   "narrow",
-    "[S II]a":   "narrow",
-    "[S II]b":   "narrow",
-}
-
-ABSORPTION_LINES = {
-    "Ca K_abs":      3934.8,
-    "Ca H_abs":      3969.6,
-    "G-band_abs":    4305.6,
-    "Mg I_abs":        5176.7,
-    "Mg II_abs":     2800.0,
-    "Na D_abs":      5895.6,
-    "CaT1_abs":      8498.0,
-    "CaT2_abs":      8542.0,
-    "CaT3_abs":      8662.0,
-    # Balmer 吸收
-    "Hε_abs":    3970.1,
-    "Hδ_abs":    4102.9,
-    "Hγ_abs":    4341.7,
-    "Hβ_abs":    4862.7,
-    "Hα_abs":    6564.6,
-}
-
-# Mg II_abs ≈ BLR 宽吸收线；其余为恒星/ISM 窄吸收
-ABSORPTION_LINE_WIDTHS = {
-    "Mg II_abs": "broad",
-    # 其余默认 "absorption"（窄），不在表中列出
-}
+# 静止系谱线表 —— single source of truth is line_tables.py (CLAUDE.md
+# finding #4: previously triplicated across this file, harness/tools.py,
+# and harness/kb/lines.md).
+from FORMA.agents.multi_agents.utils.line_tables import (
+    EMISSION_LINES,
+    EMISSION_LINE_WIDTHS,
+    ABSORPTION_LINES,
+    ABSORPTION_LINE_WIDTHS,
+)
 
 # 锚定时只用发射线假设
 # Mg II 2800 / H 系列既可发射也可吸收，但锚定时统一按发射线处理

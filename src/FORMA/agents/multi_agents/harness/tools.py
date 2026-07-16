@@ -4,67 +4,17 @@ from scipy.optimize import curve_fit
 from langchain_core.tools import tool
 
 # ---------------------------------------------------------------------------
-# Rest-frame line tables (single source of truth — keep in sync with VI.py)
+# Rest-frame line tables — single source of truth is
+# agents/multi_agents/utils/line_tables.py (CLAUDE.md finding #4: previously
+# duplicated here and in VI.py; harness/kb/lines.md is the separate
+# LLM-facing Markdown copy, still kept in sync by hand).
 # ---------------------------------------------------------------------------
 
-EMISSION_LINES = {
-    "Lyα":       1216.0,
-    "C IV":      1549.0,
-    "He II":     1640.4,
-    "C III]":    1909.0,
-    "Mg II":     2800.0,
-    "[Ne V]":    3426.0,
-    "[O II]":    3727.0,
-    "Hε":        3970.1,
-    "Hδ":        4102.9,
-    "Hγ":        4341.7,
-    "Hβ":        4862.7,
-    "[O III]a":  4960.3,
-    "[O III]b":  5008.2,
-    "[N II]a":   6549.8,
-    "Hα":        6564.6,
-    "[N II]b":   6585.3,
-    "[S II]a":   6718.3,
-    "[S II]b":   6732.7,
-}
-
-EMISSION_LINE_WIDTHS = {
-    "Lyα":       "broad",
-    "C IV":      "broad",
-    "C III]":    "broad",
-    "He II":     "both",
-    "Mg II":     "broad",
-    "Hε":        "both",
-    "Hδ":        "both",
-    "Hγ":        "both",
-    "Hβ":        "both",
-    "Hα":        "both",
-    "[Ne V]":    "narrow",
-    "[O II]":    "narrow",
-    "[O III]a":  "narrow",
-    "[O III]b":  "narrow",
-    "[N II]a":   "narrow",
-    "[N II]b":   "narrow",
-    "[S II]a":   "narrow",
-    "[S II]b":   "narrow",
-}
-
-ABSORPTION_LINES = {
-    "Ca K_abs":      3934.8,
-    "Ca H_abs":      3969.6,
-    "G-band_abs":    4305.6,
-    "Mg I_abs":      5176.7,
-    "Mg II_abs":     2800.0,
-    "Na D_abs":      5895.6,
-    "CaT1_abs":      8498.0,
-    "CaT2_abs":      8542.0,
-    "CaT3_abs":      8662.0,
-    "Hε_abs":        3970.1,
-    "Hδ_abs":        4102.9,
-    "Hγ_abs":        4341.7,
-    "Hβ_abs":        4862.7,
-    "Hα_abs":        6564.6,
-}
+from FORMA.agents.multi_agents.utils.line_tables import (
+    EMISSION_LINES,
+    EMISSION_LINE_WIDTHS,
+    ABSORPTION_LINES,
+)
 
 _WIDTH_3SIGMA_MAP = {
     "broad":     90.0,

@@ -39,9 +39,29 @@
 | [N II]b | 6585.3 | em | narrow |
 | [S II]a | 6718.3 | em | narrow |
 | [S II]b | 6732.7 | em | narrow |
+| O I 8446 | 8448.7 | em | both |
 | CaT1_abs | 8498.0 | abs | absorption |
 | CaT2_abs | 8542.0 | abs | absorption |
 | CaT3_abs | 8662.0 | abs | absorption |
+| Pa12 | 8753.0 | em | both |
+| Pa11 | 8865.0 | em | both |
+| Pa10 | 9017.0 | em | both |
+| [S III]a | 9071.0 | em | narrow |
+| [Fe II] | 9179.0 | em | narrow |
+| Pa9 | 9232.0 | em | both |
+| [S III]b | 9533.0 | em | narrow |
+| Paδ | 10052.0 | em | both |
+| He I | 10833.0 | em | both |
+| Paγ | 10941.0 | em | both |
+| Paβ | 12822.0 | em | both |
+| Paα | 18756.0 | em | both |
+
+⚠ Rest-NIR rows above (LRD domain, Kapoor+26 EIGER F356W survey) are working
+values — verify against NIST/SDSS vacuum wavelengths before the KB freeze.
+O I 8446 and He I 10833 are marked "both" (not purely narrow/broad) because
+Kapoor+26 finds both narrow and BLR-broad components across the sample —
+see `kb/classification.md` / `kb/ionization.md` once the LRD-specific KB
+content lands (CLAUDE.md build order A4).
 
 ## Doublet Rules
 
