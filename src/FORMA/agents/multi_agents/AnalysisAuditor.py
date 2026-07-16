@@ -266,6 +266,22 @@ DOUBLET_DEFS = [
             f"a/b={abs(a)/max(abs(b), 1e-10):.2f}",
         ),
     },
+    {
+        # LRD domain (CLAUDE.md): unlike the fixed-ratio optical doublets
+        # above, He I/Pagamma has no expected amplitude ratio — the ratio
+        # ITSELF is the He I/Pagamma > 2.3 classical-AGN diagnostic (SS4.4),
+        # a Stage B call. Stage A's job is only to confirm both components
+        # are real; never disqualify on ratio here.
+        "name_a": "He I", "rest_a": 10833.0,
+        "name_b": "Paγ", "rest_b": 10941.0,
+        "sep_rest": 108.0,
+        "ratio_desc": "diagnostic, not fixed (He I/Pagamma > 2.3 => classical AGN, Stage B) — never a Stage A disqualifier",
+        "check": lambda a, b: (
+            abs(a) / max(abs(b), 1e-10),
+            True,
+            f"He I/Pagamma={abs(a)/max(abs(b), 1e-10):.2f} (diagnostic ratio, not a reality check)",
+        ),
+    },
 ]
 
 
