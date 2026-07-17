@@ -188,11 +188,40 @@ def _build_tools(mode: str = "nomad", npz_path: str = None) -> list:
             """
             return fit_broadline_lsf_bic(_wl, _fl, line_rest_ang, z_guess, r_circ_mas=r_circ_mas)
 
+        # lrd_adapt/tools: blueshifted He I absorption check (Kapoor+26
+        # SS4.2; CLAUDE.md decision rules). Rare (2/19 sources) -- see the
+        # tool's docstring, only relevant for He I when a blueshifted dip
+        # is visually suspected on the emission profile's blue wing.
+        from lrd_adapt.tools.blueshifted_absorption_bic import fit_blueshifted_absorption_bic
+
+        @tool
+        def _fit_blueshifted_absorption_bic(
+            line_rest_ang: float,
+            z_guess: float,
+        ) -> dict:
+            """Test whether a suspected blueshifted absorption dip on a line's
+            blue wing is real (Kapoor+26 SS4.2 -- rare, found in only 2/19
+            sources). Compares [narrow+broad emission] vs [narrow+broad
+            emission + blueshifted negative Gaussian] via BIC. Requires
+            ΔBIC > 10 to accept the absorption component. Only call this when
+            you visually suspect a dip on the blue side of an emission peak
+            (e.g. He I) -- do not run it as a default check on every line.
+
+            Parameters
+            ----------
+            line_rest_ang : float
+                Rest-frame wavelength of the line (Å), e.g. 10833.0 for He I.
+            z_guess : float
+                Redshift hypothesis under audit.
+            """
+            return fit_blueshifted_absorption_bic(_wl, _fl, line_rest_ang, z_guess)
+
         return [
             write_report, write_lines_csv,
             _fit_peak, _fit_doublet,
             compute_redshift,
             _fit_broadline_lsf_bic,
+            _fit_blueshifted_absorption_bic,
         ]
     return [write_report, write_lines_csv]
 
@@ -483,10 +512,15 @@ def _build_user_message(
             "- **`compute_redshift`**: Compute z from a fitted center and rest wavelength.\n"
             "- **`_fit_broadline_lsf_bic`**: Is an apparent broad width real velocity broadening or "
             "spatial-extent smearing? Call this before treating any width as evidence of anything — "
-            "see the system prompt's Fatal check #2.\n\n"
+            "see the system prompt's Fatal check #2.\n"
+            "- **`_fit_blueshifted_absorption_bic`**: Only if you visually suspect a dip on the blue "
+            "wing of a He I emission peak — rare (2/19 sources in Kapoor+26). Compares emission-only "
+            "vs emission+blueshifted-absorption via BIC; ΔBIC > 10 required. Do not call this by "
+            "default on every He I detection.\n\n"
             "**Workflow**: Evaluate CWT features first → for lines with NO CWT coverage, "
             "use λ_obs from the table above as center_guess → call `fit_peak` (single) "
             "or `fit_doublet` (He I+Paγ) → if width matters, `_fit_broadline_lsf_bic` → "
+            "if a blueshifted dip is visually suspected, `_fit_blueshifted_absorption_bic` → "
             "write CSV → write report → JSON block.\n"
         )
     elif mode == "redrock":

@@ -128,7 +128,7 @@ If any feature passes → adopt the best one. Record: implied_z, amplitude, FWHM
 1. Read λ_obs from the Predicted Lines table — this is your center_guess.
 2. **Single lines**: `fit_peak(center_guess=λ_obs, width_3sigma=50, line_type="emission")` — this domain's lines don't have a fixed 3σ width convention the way optical broad/narrow classes do; 50 Å is a reasonable general starting window, widen if the fit is poor.
 3. **He I+Paγ pair**: if the hypothesis is He I+Paγ and both fall in range, prefer `fit_doublet(center_guess_1=λ_He I, center_guess_2=λ_Paγ, separation_rest=108.0)` over two separate `fit_peak` calls — but remember there is **no expected amplitude ratio** to check (unlike optical doublets); the ratio itself is a Stage B quantity (He I/Paγ excitation diagnostic), not a Stage A pass/fail test. Only use `fit_doublet`'s separation check here.
-4. **Rare: blueshifted He I absorption** — if you suspect this (a dip on the blue side of a He I emission peak), note it but do not attempt to confirm it with `fit_peak` alone; it needs the negative-Gaussian/BIC treatment described in `kb/composite_profile.md`, which is beyond this tool belt's scope — flag it for the synthesis/audit stages rather than asserting it here.
+4. **Rare: blueshifted He I absorption** — if you suspect this (a dip on the blue side of a He I emission peak), do not attempt to confirm it with `fit_peak` alone; call `_fit_blueshifted_absorption_bic(line_rest_ang=10833.0, z_guess=...)` (ΔBIC > 10 required). Only 2/19 sources in Kapoor+26 show this — do not call it by default on every He I detection, only when a dip is visually suspected. See `kb/composite_profile.md`.
 
 ### Step D: Interpret fit results
 

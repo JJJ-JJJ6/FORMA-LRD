@@ -73,10 +73,10 @@ He I emission — a genuine emission-plus-absorption composite in the sense
 of this document's general methodology above. Apply the same morphological
 tests (center consistency, wing broadness, symmetry) to judge whether a
 claimed absorption dip is a real outflow signature or a spike/noise
-artifact riding on the emission profile. Requires ΔBIC > 10 (via
-`_fit_broadline_lsf_bic` or a dedicated negative-Gaussian fit) to accept —
-do not accept a visually suggestive dip without that check, and do not
-treat its absence as unusual (most sources don't show it).
+artifact riding on the emission profile. Requires ΔBIC > 10 via
+`_fit_blueshifted_absorption_bic` (`lrd_adapt/tools/blueshifted_absorption_bic.py`)
+to accept — do not accept a visually suggestive dip without that check,
+and do not treat its absence as unusual (most sources don't show it).
 
 ## General Principle
 

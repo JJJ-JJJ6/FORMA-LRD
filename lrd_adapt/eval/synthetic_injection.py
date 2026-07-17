@@ -132,6 +132,42 @@ def make_synthetic_case(
     }
 
 
+def make_pure_noise_case(
+    seed=0,
+    noise_level=0.05,
+    wave_min_um=3.15,
+    wave_max_um=3.95,
+    n_pixels=800,
+):
+    """
+    A negative-control-adjacent case (CLAUDE.md build order C): continuum +
+    noise, no injected line at all. Ground truth: nothing should be
+    confirmed as a real broad line here, at any tested position -- used to
+    measure the false-positive rate of `_fit_broadline_lsf_bic` under pure
+    noise (see lrd_adapt/eval/test_negative_controls.py).
+
+    This is NOT a substitute for the real negative controls CLAUDE.md asks
+    for (~100 actual non-LRD catalog sources) -- see
+    lrd_adapt/eval/negative_controls.py's docstring for why that needs real
+    catalog access this doesn't replace. It only tests one specific failure
+    mode: does the deterministic BIC tool itself hallucinate significant
+    broadening on pure noise, independent of any LLM/CWT behavior.
+    """
+    rng = np.random.default_rng(seed)
+    wave_um = np.linspace(wave_min_um, wave_max_um, n_pixels)
+    continuum = 0.5 + 0.02 * (wave_um - wave_um.mean())
+    flux = continuum + rng.normal(0, noise_level, size=wave_um.shape)
+
+    err = np.full_like(flux, noise_level)
+    flat = np.ones_like(flux)
+    contam = np.zeros_like(flux)
+
+    return {
+        "wave_um": wave_um, "flux": flux, "err": err, "flat": flat, "contam": contam,
+        "ground_truth": {"line": None, "z": None, "broad_line_real": False},
+    }
+
+
 def write_synthetic_1d_fits(case, path, arm_extname="F356W"):
     """Write a synthetic case (from make_synthetic_case) as a grizli-shaped
     *.1D.fits file, ready for lrd_adapt.converter.grizli_to_forma."""
