@@ -2,6 +2,25 @@
   "SRC01": {
     "line": "HeI_Pagamma",
     "z_spec": 2.328,
-    "_note": "Demo entry for A1 plumbing proof (CLAUDE.md's own example: He I 10833 at z=2.328). Replace/extend with real anonymized-code entries as sources are registered; never key this table by real J-names or coordinates."
-  }
+    "_note": "Demo/synthetic entry for A1 plumbing proof (CLAUDE.md's own example: He I 10833 at z=2.328). Not a real Kapoor+26 source (see mapping.csv) -- coincides in z with the real J1030_2735 (SRC04) below, which CLAUDE.md's example was clearly modeled on."
+  },
+  "SRC02": { "line": "Pabeta", "z_spec": 1.931, "_note": "Kapoor+26 Table 1, J1148_21539. LRD." },
+  "SRC03": { "line": "HeI_Pagamma", "z_spec": 2.243, "_note": "Kapoor+26 Table 1, J159_6107. LRD (faintest in sample)." },
+  "SRC04": { "line": "HeI_Pagamma", "z_spec": 2.328, "_note": "Kapoor+26 Table 1, J1030_2735. LRD, previously published (Loiacono et al. 2025)." },
+  "SRC05": { "line": "HeI_Pagamma", "z_spec": 2.498, "_note": "Kapoor+26 Table 1, J1030_2545. LRD." },
+  "SRC06": { "line": "OI_8446", "z_spec": 3.177, "_note": "Kapoor+26 Table 1, J0148_9325. LRD; no He I+Pagamma/[S III]/Halpha coverage at this z." },
+  "SRC07": { "line": "Pabeta", "z_spec": 1.552, "_note": "Kapoor+26 Table 1, J0100_18107. Classical AGN." },
+  "SRC08": { "line": "HeI_Pagamma", "z_spec": 2.046, "_note": "Kapoor+26 Table 1, J1120_11834. Classical AGN." },
+  "SRC09": { "line": "HeI_Pagamma", "z_spec": 2.130, "_note": "Kapoor+26 Table 1, J0148_7135. Classical AGN." },
+  "SRC10": { "line": "HeI_Pagamma", "z_spec": 2.178, "_note": "Kapoor+26 Table 1, J0148_15902. Classical AGN." },
+  "SRC11": { "line": "HeI_Pagamma", "z_spec": 2.192, "_note": "Kapoor+26 Table 1, J1148_21459. Classical AGN." },
+  "SRC12": { "line": "HeI_Pagamma", "z_spec": 2.201, "_note": "Kapoor+26 Table 1, J1148_22359. Classical AGN." },
+  "SRC13": { "line": "HeI_Pagamma", "z_spec": 2.219, "_note": "Kapoor+26 Table 1, J0100_1751. Classical AGN." },
+  "SRC14": { "line": "HeI_Pagamma", "z_spec": 2.247, "_note": "Kapoor+26 Table 1, J159_6127. Classical AGN (luminous)." },
+  "SRC15": { "line": "HeI_Pagamma", "z_spec": 2.334, "_note": "Kapoor+26 Table 1, J1148_3444. Classical AGN, sample's most luminous source." },
+  "SRC16": { "line": "HeI_Pagamma", "z_spec": 2.357, "_note": "Kapoor+26 Table 1, J0148_12798. Classical AGN." },
+  "SRC17": { "line": "HeI_Pagamma", "z_spec": 2.378, "_note": "Kapoor+26 Table 1, J1030_12378. Classical AGN; He I/Pagamma=2.4, borderline case just above the 2.3 threshold." },
+  "SRC18": { "line": "HeI_Pagamma", "z_spec": 2.400, "_note": "Kapoor+26 Table 1, J0148_18339. Classical AGN." },
+  "SRC19": { "line": "HeI_Pagamma", "z_spec": 2.409, "_note": "Kapoor+26 Table 1, J1030_9732. Classical AGN per Table 1, but paper's own 'transitionary object' stress case -- see CLAUDE.md and ground_truth.json." },
+  "SRC20": { "line": "HeI_Pagamma", "z_spec": 2.435, "_note": "Kapoor+26 Table 1, J0148_10704. Classical AGN, very luminous." }
 }

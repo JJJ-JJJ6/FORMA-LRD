@@ -41,6 +41,25 @@ def test_vocabulary_mismatch_regression():
     assert score_source("SRC01", result_wrong)["line_id_correct"] is False
 
 
+def test_pabeta_and_oi8446_vocabulary_mapping():
+    """Regression coverage for the other two single-line identities (only
+    He I+Pagamma was covered above) -- SRC02 (Pabeta, real: J1148_21539)
+    and SRC06 (O I 8446, real: J0148_9325)."""
+    r_pabeta = score_source("SRC02", {
+        "type": "LineIDConfirmed", "classification": "LRD",
+        "redshift": 1.9312, "lines": ["Paβ"],
+    })
+    assert r_pabeta["line_id_correct"] is True
+    assert r_pabeta["classification_correct"] is True
+
+    r_oi = score_source("SRC06", {
+        "type": "LineIDConfirmed", "classification": "LRD",
+        "redshift": 3.177, "lines": ["O I 8446"],
+    })
+    assert r_oi["line_id_correct"] is True
+    assert r_oi["classification_correct"] is True
+
+
 def test_wrong_result_scores_wrong():
     result = {
         "type": "LineIDConfirmed", "classification": "ClassicalAGN",
@@ -53,13 +72,12 @@ def test_wrong_result_scores_wrong():
 
 
 def test_unscoreable_source_is_none_not_false():
-    """A source with no ground truth (e.g. SRC03's classification is
-    genuinely unknown pending real Table 1 data) must score as None, not
-    silently count as correct or incorrect."""
+    """A source with no ground truth registered at all must score as None,
+    not silently count as correct or incorrect."""
     result = {"type": "Unknown", "classification": "Unknown", "redshift": None, "lines": []}
-    scored = score_source("SRC03", result)
-    assert scored["classification_correct"] is None  # SRC03 has no known paper_classification
-    assert scored["line_id_correct"] is None  # SRC03 has no primary_hypotheses.json entry either
+    scored = score_source("SRC_NOT_REGISTERED_AT_ALL", result)
+    assert scored["classification_correct"] is None
+    assert scored["line_id_correct"] is None
 
 
 def test_unregistered_source_scores_all_none():
@@ -72,18 +90,19 @@ def test_unregistered_source_scores_all_none():
 def test_aggregate_denominators_exclude_unscored():
     results = [
         score_source("SRC01", {"type": "LineIDConfirmed", "classification": "LRD", "redshift": 2.328, "lines": ["He I"]}),
-        score_source("SRC03", {"type": "Unknown", "classification": "Unknown", "redshift": None, "lines": []}),
+        score_source("SRC_NOT_REGISTERED_AT_ALL", {"type": "Unknown", "classification": "Unknown", "redshift": None, "lines": []}),
     ]
     agg = aggregate(results)
     assert agg["n_sources"] == 2
-    assert agg["n_line_id_scored"] == 1  # SRC03 has no primary hypothesis to score against
+    assert agg["n_line_id_scored"] == 1  # the unregistered source has no primary hypothesis to score against
     assert agg["line_id_accuracy"] == 1.0
-    assert agg["n_classification_scored"] == 1  # SRC03 excluded, not scored as wrong
+    assert agg["n_classification_scored"] == 1  # unregistered source excluded, not scored as wrong
 
 
 if __name__ == "__main__":
     test_correct_result_scores_correct()
     test_vocabulary_mismatch_regression()
+    test_pabeta_and_oi8446_vocabulary_mapping()
     test_wrong_result_scores_wrong()
     test_unscoreable_source_is_none_not_false()
     test_unregistered_source_scores_all_none()
