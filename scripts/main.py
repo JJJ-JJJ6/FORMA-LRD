@@ -8,6 +8,14 @@ from dotenv import load_dotenv
 import sys
 from pathlib import Path
 
+# Upstream code prints emoji/CJK text directly (workflow_orchestrator.py and
+# others) -- on Windows, stdout/stderr default to the system codepage
+# (cp1252), which crashes with UnicodeEncodeError the moment any of that
+# runs. Force UTF-8 unconditionally rather than patching every print site.
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / 'src'))
 sys.path.insert(0, str(PROJECT_ROOT))  # for lrd_adapt/ (sibling of src/, see CLAUDE.md)
