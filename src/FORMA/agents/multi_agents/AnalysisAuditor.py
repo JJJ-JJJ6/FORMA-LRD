@@ -454,7 +454,8 @@ def build_contradiction_matrix(
     if not all_features:
         return [], [], {"n_rows": 0, "n_total_features": 0, "n_edge_blue": 0,
                         "n_edge_red": 0, "n_contaminated": 0, "median_amplitude": 0,
-                        "top_quartile_amplitude": 0}
+                        "top_quartile_amplitude": 0, "hypothesis_indices": [],
+                        "use_wavelength_edge_zones": use_wavelength_edge_zones}
 
     # Group by (int(wl_obs), amp_sign).  Features at nearly the same wavelength
     # with the same amplitude sign are the same CWT-detected peak/trough.

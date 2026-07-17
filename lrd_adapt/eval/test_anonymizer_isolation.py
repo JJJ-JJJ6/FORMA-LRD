@@ -107,6 +107,30 @@ def test_default_mapping_file_exists_and_is_well_formed():
         assert entry["real_id"], f"{code} has an empty real_id"
 
 
+def test_no_real_ids_leak_into_agent_visible_kb_or_skills():
+    """The actual regression this suite is for: scan every KB file and skill
+    prompt (agent-visible content) for any real_id from mapping.csv. Caught
+    a real leak once already (a J-name in a stress-case cross-reference in
+    kb/classification.md) -- this test exists so that class of bug can't
+    silently recur."""
+    mapping = load_mapping()
+    real_ids = [entry["real_id"] for entry in mapping.values() if entry["real_id"] != "DEMO/SYNTHETIC"]
+
+    agent_visible_dirs = [
+        REPO_ROOT / "src/FORMA/agents/multi_agents/harness/kb",
+        REPO_ROOT / "src/FORMA/agents/multi_agents/harness/skills",
+    ]
+    offenders = []
+    for d in agent_visible_dirs:
+        for path in d.rglob("*.md"):
+            text = path.read_text(encoding="utf-8")
+            for real_id in real_ids:
+                if real_id in text:
+                    offenders.append((str(path.relative_to(REPO_ROOT)), real_id))
+
+    assert not offenders, f"real source IDs leaked into agent-visible content: {offenders}"
+
+
 def test_ground_truth_file_exists_and_every_entry_has_a_registered_src_code():
     gt_path = REPO_ROOT / "lrd_adapt/eval/ground_truth.json"
     assert gt_path.exists(), f"expected {gt_path}"
@@ -124,6 +148,7 @@ if __name__ == "__main__":
     test_external_evidence_loader_returns_single_source_only()
     test_hypothesis_provider_takes_explicit_args_not_a_table()
     test_anonymizer_registration_roundtrip()
+    test_no_real_ids_leak_into_agent_visible_kb_or_skills()
     test_default_mapping_file_exists_and_is_well_formed()
     test_ground_truth_file_exists_and_every_entry_has_a_registered_src_code()
     print("OK -- anonymization isolation boundary checks passed.")

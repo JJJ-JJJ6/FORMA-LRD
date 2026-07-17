@@ -89,9 +89,9 @@ pixels in the FITS mask (bit 4, |contam| > contam_frac x |flux|). A
 detected feature sitting in a masked/contaminated region should be treated
 with the same caution DESI-domain analysis gave OH-zone features: real
 astrophysical signal is possible even under contamination (see the
-J159_6107 stress case in `kb_drafts/lrd_line_identity_rules.md` — real
-line, contaminated continuum), so contamination is a caveat, not an
-automatic disqualifier.
+contamination-dominated-source stress case in
+`kb_drafts/lrd_line_identity_rules.md` — real line, contaminated
+continuum), so contamination is a caveat, not an automatic disqualifier.
 
 ## Stress cases (handle honestly, do not tune around them)
 
