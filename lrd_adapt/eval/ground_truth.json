@@ -1,0 +1,27 @@
+{
+  "_readme": "Paper-derived final classification per SRC code, for SCORING ONLY -- never agent-visible (same isolation treatment as mapping.csv: not in harness/tools.py's _GREP_FILES, not imported by any lrd_adapt/{converter,hypothesis,evidence,tools} module -- see test_anonymizer_isolation.py). This is deliberately NOT the same thing as primary_hypotheses.json's line+z_spec, which IS agent-visible (that's the hypothesis being tested, per CLAUDE.md's project framing). This file is the answer to the Stage B question the pipeline is trying to independently reach -- exposing it to the agent would make the classification test circular. Only entries CLAUDE.md's own text actually states are filled in; 'unknown_not_in_CLAUDE.md' means the real answer needs to come from Kapoor+26 Table 1 directly, not guessed.",
+  "SRC01": {
+    "paper_classification": "LRD",
+    "source": "CLAUDE.md's own worked example text: 'the broad line is He I lambda10833 at z=2.328, and this source is an LRD' -- not a real Kapoor+26 source, demo/synthetic only (see mapping.csv)."
+  },
+  "SRC02": {
+    "paper_classification": "Transitional/Ambiguous",
+    "source": "CLAUDE.md stress case: 'the paper's own transitional source (faint+compact but blue, high He I/Pagamma). Correct behavior is calibrated uncertainty, not a confident call.' Not cleanly LRD or ClassicalAGN by the paper's own account."
+  },
+  "SRC03": {
+    "paper_classification": "unknown_not_in_CLAUDE.md",
+    "source": "CLAUDE.md only describes this as a data-quality stress case (contamination-dominated continuum, real line) -- no classification stated. Fill in from Kapoor+26 Table 1."
+  },
+  "SRC04": {
+    "paper_classification": "unknown_not_in_CLAUDE.md",
+    "source": "CLAUDE.md only describes this as a missing-coverage stress case (z=3.18, no He I+Pagamma window) -- no classification stated. Fill in from Kapoor+26 Table 1."
+  },
+  "SRC05": {
+    "paper_classification": "unknown_not_in_CLAUDE.md",
+    "source": "CLAUDE.md only notes this is one of 2/19 sources with blueshifted He I absorption -- no classification stated. Fill in from Kapoor+26 Table 1."
+  },
+  "SRC06": {
+    "paper_classification": "unknown_not_in_CLAUDE.md",
+    "source": "CLAUDE.md only notes this is one of 2/19 sources with blueshifted He I absorption -- no classification stated. Fill in from Kapoor+26 Table 1."
+  }
+}

@@ -1,0 +1,3 @@
+{
+  "_readme": "Empty template. Populate once real catalog access (eor1 / archival data) is available -- see negative_controls.py's module docstring for the two blockers (no catalog access yet, and an unresolved hypothesis-provider design gap for sources with no paper claim to audit)."
+}

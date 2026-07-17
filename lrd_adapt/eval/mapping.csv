@@ -1,0 +1,7 @@
+src_code,real_id,notes
+SRC01,DEMO/SYNTHETIC,"Not a real Kapoor+26 source -- the A1/Stage B worked demo (He I 10833 at z=2.328), used for plumbing tests only. Never register a real source under this code."
+SRC02,J1030_9732,"Stress case (CLAUDE.md): paper's own transitional source -- faint+compact but blue, high He I/Pagamma. Expect calibrated uncertainty, not a confident call."
+SRC03,J159_6107,"Stress case (CLAUDE.md): continuum dominated by grism contamination; the line itself is real. Tests contamination-vs-feature reasoning."
+SRC04,J0148_9325,"Stress case (CLAUDE.md): z=3.18, no He I+Pagamma coverage (O I + high-order Paschen only). Tests reasoning under missing evidence."
+SRC05,J1030_2735,"One of only 2/19 sources in Kapoor+26 showing blueshifted He I absorption (SS4.2) -- see the known BIC-tool gap noted in the Stage B commit."
+SRC06,J1148_21539,"The other of the 2/19 blueshifted-He-I-absorption sources (SS4.2)."
