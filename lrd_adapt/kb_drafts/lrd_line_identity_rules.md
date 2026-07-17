@@ -59,6 +59,11 @@ should be treated as suspicious — re-check the fit, not just accept it.
 
 ## AGN excitation demarcation — Stage B, not Stage A [paper, CLAUDE.md SS4.4]
 
+**Installed into `kb/lrd_classification.md`** (Stage B build). The
+sections below are kept here for provenance/traceability; treat
+`kb/lrd_classification.md` as the source of truth for the actual
+classification logic going forward.
+
 He I/Pa-gamma > 2.3 => classical AGN (Brinchmann 2023 calibration); all
 paper LRDs fall below this, all paper classical AGNs above. Anti-correlates
 with Balmer-break strength (interpreted as He I self-absorption at high gas

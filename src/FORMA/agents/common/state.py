@@ -80,3 +80,5 @@ class SpectroState(MessagesState):
     _no_features: Optional[bool] = None                      # set by orchestrator when VI finds zero features
     margin: Optional[Dict[str, int]] = None               # VisualInterpreter crop margins
     _failure_recorded: Optional[bool] = None              # SelfEvolve failure tracking
+    external_evidence: Optional[Dict[str, Any]] = None    # LRD domain Stage B: photometry, Balmer break,
+                                                            # r_circ, X-ray, morphology (lrd_adapt/evidence)

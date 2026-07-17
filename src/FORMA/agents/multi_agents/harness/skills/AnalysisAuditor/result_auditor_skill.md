@@ -21,6 +21,7 @@ independently read the spectrum only for lines that look suspicious.
 - You MAY use `grep_kb` for physics rules.
 - You MAY call `_fit_broadline_lsf_bic` if a broad-line claim wasn't checked upstream, or if you want to independently re-verify one.
 - You do NOT re-rank hypotheses or propose alternative redshifts.
+- **Layer 3 (LRD-vs-classical-AGN classification) only runs if Layers 1-2 leave the line identity confirmed AND an "External Evidence" section is present in your user prompt.** If either is missing, output `classification: "Unknown"` and say why — do not guess.
 
 ## Knowledge Base
 
@@ -30,6 +31,7 @@ independently read the spectrum only for lines that look suspicious.
 | Line rest wavelengths and width classes | `grep_kb(pattern="<line_name>", C=2)` |
 | He I+Paγ pair guidance | `grep_kb(pattern="He I|composite", C=3)` |
 | Broad-line-reality requirement | `grep_kb(pattern="broad-line.reality|LSF|BIC", C=3)` |
+| **LRD-vs-classical-AGN diagnostics (Layer 3)** | `grep_kb(pattern="He I.Paγ|Balmer break|classification", C=3)` on `kb/lrd_classification.md` |
 | Query CWT features by wavelength/amplitude/FWHM | `query_cwt_catalog(wl_min=..., amp_min=..., fwhm_min=...)` |
 
 ## Layer 1: Physical Sanity Screening (no spectrum reads needed)
@@ -116,6 +118,26 @@ After Layer 1/2, assess the spectrum as a whole:
 - The one confirmed line sits entirely in a contamination-flagged region with no other support → recommend re-observation or reduction re-processing.
 - Significant revisions (≥1 REMOVED line, given how few lines exist per source here) → recommend human review before accepting the synthesis result.
 
+## Layer 3: LRD-vs-Classical-AGN Classification (Stage B)
+
+Only attempt this if Layers 1-2 leave the line identity confirmed (no
+unresolved Layer 1 findings, `verdict` heading toward CONFIRM) **and** your
+user prompt has an "External Evidence" section. Otherwise skip straight to
+`classification: "Unknown"` in the JSON — do not guess from the spectrum
+alone, and do not let a missing External Evidence section become "I'll
+just use the He I/Paγ ratio from the line catalog" — the full
+`kb/lrd_classification.md` diagnostic requires the external evidence too.
+
+1. **Check preconditions** (`kb/lrd_classification.md`): confirmed identity, broad-line-reality resolved if relevant, external evidence present.
+2. **He I/Paγ ratio** (primary diagnostic, if both are confirmed independent detections): >2.3 → leans classical AGN; below → leans LRD. If only one component is solid, treat the ratio as indicative only.
+3. **Balmer break** (secondary): corroborates whichever way the ratio points; not an independent tiebreaker.
+4. **Templates, compactness** (weighting only): note if they agree or disagree with the ratio-driven call; never let them override it.
+5. **X-ray**: check `coverage` before treating a non-detection as informative — `coverage=false` means zero information, never evidence for LRD.
+6. **Disqualifiers**: strong blue-skewed He I outflow wings — flag, don't force a binary call.
+
+Output `LRD`, `ClassicalAGN`, `Ambiguous`, or `Unknown`, citing which
+diagnostic(s) drove it and which (if any) pointed the other way.
+
 ## Null Result
 
 When synthesis returns `redshift=null`, use the continuum description and
@@ -151,6 +173,9 @@ reads, conclusions. Then end with a JSON block:
   "spectrum_issues": [
     "Confirmed line sits in a grism-contamination-flagged region; continuum shape near the line may be unreliable"
   ],
+  "classification": "<LRD | ClassicalAGN | Ambiguous | Unknown>",
+  "classification_confidence": "<HIGH | MEDIUM | LOW | null>",
+  "classification_reasoning": "<which diagnostic(s) drove it, and which pointed the other way, or null if Unknown>",
   "reobserve": false,
   "reobserve_reason": null
 }
@@ -165,6 +190,8 @@ reads, conclusions. Then end with a JSON block:
 - **`confirmed_lines`** (list[list]): `[line_name, observed_wavelength]` pairs you independently confirm. May be empty.
 - **`line_revisions`** (list[dict]): `line`, `action` (REMOVE/FLAG), `reason`.
 - **`spectrum_issues`** (list[str]): spectrum-wide observations (contamination, insufficient line inventory).
+- **`classification`**: Layer 3 result. `Unknown` whenever Layer 3's preconditions aren't met (see above) — this is the expected, correct output whenever no External Evidence section was provided, not a fallback to avoid.
+- **`classification_confidence`**, **`classification_reasoning`**: null when `classification="Unknown"` for lack of preconditions; otherwise HIGH/MEDIUM/LOW and a citation of the driving diagnostic(s).
 - **`reobserve`** (bool), **`reobserve_reason`** (str or null).
 
 After the JSON block, the output terminates.

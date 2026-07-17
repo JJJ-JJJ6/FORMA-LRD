@@ -882,6 +882,7 @@ _GREP_FILES: dict[str, _Path] = {
     "kb/ionization.md": _KB_DIR / "ionization.md",
     "kb/lines.md": _KB_DIR / "lines.md",
     "kb/composite_profile.md": _KB_DIR / "composite_profile.md",
+    "kb/lrd_classification.md": _KB_DIR / "lrd_classification.md",
 }
 
 _grep_cache: dict[str, str] | None = None

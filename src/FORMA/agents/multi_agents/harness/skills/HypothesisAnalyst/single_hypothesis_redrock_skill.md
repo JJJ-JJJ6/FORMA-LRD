@@ -81,6 +81,15 @@ null). If the line's width doesn't matter to your verdict either way (e.g.
 you're only checking whether the line is present, not characterizing its
 kinematics), you don't need to call this tool.
 
+## External Evidence (if present)
+
+Your user prompt may include an "External Evidence" section (photometry,
+Balmer break, compactness, X-ray coverage). **This is for context only at
+this stage — it does not affect line identity or redshift verification.**
+It exists here so it isn't lost by the time the Stage B classification
+runs downstream (`kb/lrd_classification.md`, Result Auditor). Do not use it
+to argue for or against this hypothesis's line identity.
+
 ## Token Budget
 
 Your output limit is ~16K tokens. Typically 1-6 predicted lines to evaluate (far fewer than the ~30-line optical DESI reference table — this domain's F356W window usually admits only 1-2 in-band identities besides the primary hypothesis).

@@ -1,0 +1,27 @@
+{
+  "SRC01": {
+    "photometry": {
+      "value": "Red/dust-reddened continuum shape (F150W-F356W color), consistent with a dust-reddened AGN or reddened stellar population",
+      "provenance": "paper"
+    },
+    "balmer_break": {
+      "value": 2.3,
+      "unit": "f_nu,4050/f_nu,3650",
+      "provenance": "paper"
+    },
+    "r_circ_mas": {
+      "value": 98.0,
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": false,
+      "provenance": "paper"
+    },
+    "morphology_notes": {
+      "value": "Compact in F356W, no PSF deconvolution applied",
+      "provenance": "paper"
+    },
+    "_note": "Demo entry only (SRC01 = the CLAUDE.md worked example, He I 10833 at z=2.328). Replace/extend with real anonymized-code entries; never key this table by real J-names or coordinates (Anonymization rule, CLAUDE.md)."
+  }
+}

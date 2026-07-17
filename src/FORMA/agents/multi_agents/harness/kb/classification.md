@@ -13,10 +13,12 @@ LRD domain (Kapoor+26 EIGER F356W survey). Draft source:
 
 This pipeline verifies **line identity and redshift** (Stage A). It does
 **not** decide LRD vs classical AGN — that call needs the external-evidence
-channel (photometry, Balmer break, compactness, X-ray) which is Stage B,
-not yet wired in. Do not let the He I/Pa-gamma ratio, template fits,
-compactness, or X-ray coverage drive a Stage A verdict. Those are recorded
-in `kb_drafts/lrd_line_identity_rules.md` for when Stage B lands.
+channel (photometry, Balmer break, compactness, X-ray), which is a
+*separate* stage (`kb/lrd_classification.md`, Stage B) that runs after this
+one, using this stage's confirmed line identity as an input. Do not let the
+He I/Pa-gamma ratio, template fits, compactness, or X-ray coverage drive a
+Stage A verdict, even now that Stage B exists — keeping the two questions
+separate is what makes each one auditable on its own terms.
 
 ## The six candidate identities
 
@@ -119,5 +121,8 @@ The final JSON verdict's classification-equivalent field must use one of:
 - `Unknown` — no candidate identity is credible given the data (e.g. no
   real feature detected at all, or the region is fully masked/contaminated).
 
-Do NOT output an LRD/classical-AGN verdict in this field — that is Stage B,
-not yet implemented.
+Do NOT output an LRD/classical-AGN verdict in this field, even though
+Stage B now exists — that call belongs in the separate `classification`
+field the result-auditor stage adds (see `kb/lrd_classification.md`), not
+here. Keeping them in different fields is what lets each be audited
+independently.

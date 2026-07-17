@@ -1011,11 +1011,22 @@ def _build_cwt_catalog(hypothesis_dir: str) -> list[dict]:
     return all_features
 
 
-def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str) -> str:
+def _build_synthesis_audit_user_message(
+    state: SpectroState, hypothesis_dir: str, is_lrd: bool = False,
+) -> str:
     """Build the user prompt for Stage B — synthesis verdict audit.
 
     Includes the synthesis verdict, winning hypothesis details, and the
     2nd-best hypothesis for quick alternative checking.
+
+    Parameters
+    ----------
+    is_lrd : bool
+        True for CLAUDE.md's LRD domain (HYPOTHESIS_PROVIDER=lrd). Disables
+        the DESI-specific blue/red-edge framing (meaningless for space-based
+        F356W data, where every wavelength is >7800 A) and the QSO/Galaxy
+        null-result guess, and adds the External Evidence section needed
+        for the LRD-vs-classical-AGN call (kb/lrd_classification.md).
     """
     rule_analysis = state.get("hypothesis_analysis") or {}
     feature_audit_verdict = state.get("feature_audit_verdict") or {}
@@ -1032,10 +1043,28 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
         "## Spectrum",
         f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å",
         f"- Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}",
-        f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)",
-        f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)",
-        "",
     ]
+    if is_lrd:
+        n_contaminated = feature_audit_verdict.get("global_issues") and sum(
+            1 for gi in feature_audit_verdict.get("global_issues", []) if "contamination" in gi.lower()
+        )
+        parts.append(
+            "- No atmospheric blue/red edge in this domain (space-based JWST data) "
+            f"— see FeatureAuditor's contamination notes below instead"
+            + (f" ({n_contaminated} flagged)" if n_contaminated else "")
+            + "."
+        )
+    else:
+        parts.append(f"- **Blue edge**: {wl_left:.0f} – 4000 Å (throughput drop, non-Gaussian noise)")
+        parts.append(f"- **Red edge (OH zone)**: 7800 – {wl_right:.0f} Å (OH + OI skyline residuals)")
+    parts.append("")
+
+    if is_lrd:
+        external_evidence = state.get("external_evidence")
+        if external_evidence:
+            from lrd_adapt.evidence.external_evidence import format_external_evidence_markdown
+            parts.append(format_external_evidence_markdown(external_evidence))
+            parts.append("")
 
     # ── Hypothesis Synthesis verdict ──
     parts.append("## Hypothesis Synthesis Verdict")
@@ -1163,12 +1192,22 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
     if doublet_verdicts:
         parts.append("### FA Doublet Verdicts")
         parts.append("")
-        parts.append(
-            "FA verified known doublet pairs (Ca K/H, [O III]a/b, [N II]a/b, "
-            "[S II]a/b). `ratio_ok=false` means the observed ratio does not "
-            "match the expected doublet ratio — the "
-            "doublet identification is likely WRONG."
-        )
+        if is_lrd:
+            parts.append(
+                "FA verified the He I+Paγ pair, if claimed. Unlike the optical "
+                "domain's fixed-ratio doublets, there is NO expected amplitude "
+                "ratio here — `ratio_ok` is always true for this pair (the ratio "
+                "itself is a Stage B diagnostic, see kb/lrd_classification.md, "
+                "not a Stage A reality check). Focus on whether both components "
+                "were independently confirmed real, per FA's notes."
+            )
+        else:
+            parts.append(
+                "FA verified known doublet pairs (Ca K/H, [O III]a/b, [N II]a/b, "
+                "[S II]a/b). `ratio_ok=false` means the observed ratio does not "
+                "match the expected doublet ratio — the "
+                "doublet identification is likely WRONG."
+            )
         parts.append("")
         parts.append("| H | Pair | λ_a | λ_b | Ratio OK | FA Notes |")
         parts.append("|---|------|-----|-----|----------|----------|")
@@ -1182,6 +1221,36 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
                 f"| {dv.get('notes','')} |"
             )
         parts.append("")
+
+    # ── Broad-line-reality verdicts (LRD domain, A3 BIC tool) ──
+    if is_lrd:
+        broadline_verdicts = _filter_by_hypotheses(
+            feature_audit_verdict.get("broadline_verdicts", [])
+        )
+        if broadline_verdicts:
+            parts.append("### FA Broad-Line-Reality Verdicts")
+            parts.append("")
+            parts.append(
+                "FA ran `_fit_broadline_lsf_bic` on each line whose apparent width "
+                "mattered to a hypothesis's case. `broad_line_real=false` means the "
+                "null model (spatial-extent smearing, not real velocity broadening) "
+                "won or ΔBIC did not clear 10 — any downstream reasoning treating "
+                "that line as a confirmed broad/BLR line is unsupported."
+            )
+            parts.append("")
+            parts.append("| H | Line | z | Real? | Best Model | ΔBIC vs null | FWHM (km/s) | FA Notes |")
+            parts.append("|---|------|---|-------|------------|--------------|-------------|----------|")
+            for bv in broadline_verdicts:
+                parts.append(
+                    f"| H{bv['hypothesis_idx']} | {bv.get('line','?')} "
+                    f"| {bv.get('z_guess','—')} "
+                    f"| {'✅' if bv.get('broad_line_real') else '❌'} "
+                    f"| {bv.get('best_model','—')} "
+                    f"| {bv.get('delta_bic_vs_null','—')} "
+                    f"| {bv.get('broad_fwhm_kms') or '—'} "
+                    f"| {bv.get('notes','')} |"
+                )
+            parts.append("")
 
     # ── [O II] morphology verdicts ──
     oii_verdicts = _filter_by_hypotheses(
@@ -1245,68 +1314,103 @@ def _build_synthesis_audit_user_message(state: SpectroState, hypothesis_dir: str
     # ── Task ──
     parts.append("## Task")
     parts.append("")
-    parts.append(
-        "You are an independent defensive auditor.  Follow the methodology from "
-        "your system prompt:\n\n"
-        "**Layer 1** — Physical sanity screening (no spectrum reads).  Scan the "
-        "line inventory above.  Use `grep_kb` to check classification physics.  "
-        "Identify every line that is physically inconsistent with the claimed "
-        "object type, that has suspicious amplitude/FWHM relative to the catalog, "
-        "or whose implied_z deviates significantly from the best redshift.\n\n"
-        "**Layer 1b — Completeness check (MANDATORY)**: Look at the **All Verified "
-        "Features** table above.  Identify features that the WINNING hypothesis "
-        "does NOT claim.  For each unexplained verified feature:\n"
-        "- Is it likely noise that FA mistakenly KEPT?  If yes: are there features "
-        "of similar amplitude in the winning hypothesis that might ALSO be noise?\n"
-        "- Is it a real feature that the winning hypothesis cannot explain?  If "
-        "yes: can you identify what it might be (airglow? absorption from a "
-        "different system? a line at a different redshift?)?  Does the presence "
-        "of unexplained real features lower confidence in the winning hypothesis?\n"
-        "- Use `read_spectrum_region` aggressively to investigate unexplained "
-        "features — this IS your job.\n\n"
-        "**Layer 2** — Targeted verification (spectrum reads for suspicious AND "
-        "unexplained features).  Call `read_spectrum_region` ±100 Å.  Judge "
-        "visually: is this a real feature, or an artifact/noise that FA let "
-        "through?\n\n"
-        "**After both layers**: Assess spectrum-level issues (OH zone, blue edge, "
-        "line inventory sufficiency), count how many verified features the winner "
-        "actually explains vs leaves unexplained, and decide whether to recommend "
-        "re-observation.\n\n"
-        "Output your reasoning in free text, then the JSON verdict block."
-    )
+    if is_lrd:
+        parts.append(
+            "You are an independent defensive auditor.  Follow the methodology from "
+            "your system prompt (Layers 1-2 on kb/classification.md's Stage A line "
+            "identity, then Layer 3 on kb/lrd_classification.md's Stage B "
+            "LRD-vs-classical-AGN call, if External Evidence is available above):\n\n"
+            "**Layer 1** — Physical sanity screening (no spectrum reads): redshift-"
+            "window compliance, broad-line-reality consistency (see the FA "
+            "Broad-Line-Reality Verdicts table above), He I+Paγ pair completeness, "
+            "amplitude/width outliers.\n\n"
+            "**Layer 1b — Completeness check (MANDATORY)**: features in the **All "
+            "Verified Features** table the winning hypothesis does NOT claim — "
+            "noise FA mistakenly kept, or a real signal the winner can't explain?\n\n"
+            "**Layer 2** — Targeted verification: `read_spectrum_region` on "
+            "suspicious/unexplained features.\n\n"
+            "**Layer 3** — LRD-vs-classical-AGN classification (only if Layers 1-2 "
+            "confirm the line identity and External Evidence is available above): "
+            "apply kb/lrd_classification.md's diagnostics and add the `classification` "
+            "field to your JSON output.\n\n"
+            "Output your reasoning in free text, then the JSON verdict block."
+        )
+    else:
+        parts.append(
+            "You are an independent defensive auditor.  Follow the methodology from "
+            "your system prompt:\n\n"
+            "**Layer 1** — Physical sanity screening (no spectrum reads).  Scan the "
+            "line inventory above.  Use `grep_kb` to check classification physics.  "
+            "Identify every line that is physically inconsistent with the claimed "
+            "object type, that has suspicious amplitude/FWHM relative to the catalog, "
+            "or whose implied_z deviates significantly from the best redshift.\n\n"
+            "**Layer 1b — Completeness check (MANDATORY)**: Look at the **All Verified "
+            "Features** table above.  Identify features that the WINNING hypothesis "
+            "does NOT claim.  For each unexplained verified feature:\n"
+            "- Is it likely noise that FA mistakenly KEPT?  If yes: are there features "
+            "of similar amplitude in the winning hypothesis that might ALSO be noise?\n"
+            "- Is it a real feature that the winning hypothesis cannot explain?  If "
+            "yes: can you identify what it might be (airglow? absorption from a "
+            "different system? a line at a different redshift?)?  Does the presence "
+            "of unexplained real features lower confidence in the winning hypothesis?\n"
+            "- Use `read_spectrum_region` aggressively to investigate unexplained "
+            "features — this IS your job.\n\n"
+            "**Layer 2** — Targeted verification (spectrum reads for suspicious AND "
+            "unexplained features).  Call `read_spectrum_region` ±100 Å.  Judge "
+            "visually: is this a real feature, or an artifact/noise that FA let "
+            "through?\n\n"
+            "**After both layers**: Assess spectrum-level issues (OH zone, blue edge, "
+            "line inventory sufficiency), count how many verified features the winner "
+            "actually explains vs leaves unexplained, and decide whether to recommend "
+            "re-observation.\n\n"
+            "Output your reasoning in free text, then the JSON verdict block."
+        )
 
     # ── Null-result fallback: guess spectral class ──
     if rule_analysis.get("redshift") is None:
         parts.append("")
         parts.append("### ⚠ Null Result — Spectral Classification Guess")
         parts.append("")
-        parts.append(
-            "The Hypothesis Synthesis agent returned `redshift=null` — no hypothesis was "
-            "confirmed.  However, this spectrum may still contain astrophysical "
-            "signal.  Using the **continuum description** above and the **All "
-            "Verified Features** table, provide your best guess for the spectral "
-            "class of this object:"
-        )
-        parts.append("")
-        parts.append(
-            "- **QSO**: Blue/rising continuum, broad emission features, high-ionization "
-            "lines ([Ne V], C IV, C III]), Lyα forest if at high-z."
-        )
-        parts.append(
-            "- **Galaxy**: Red/flat continuum, narrow emission lines ([O II], [O III], "
-            "Balmer series), stellar absorption (Ca K/H, G-band, Mg I), 4000 Å break."
-        )
-        parts.append(
-            "- **Unknown**: Cannot determine from available data."
-        )
-        parts.append("")
-        parts.append(
-            "Base your guess on the continuum shape AND the brightest verified "
-            "features.  Include your reasoning and the guessed class in "
-            "`key_issues` or a free-text note before the JSON block.  This is "
-            "NOT a redshift determination — it's a best-effort classification "
-            "to guide follow-up observation strategy."
-        )
+        if is_lrd:
+            parts.append(
+                "The Hypothesis Synthesis agent returned `redshift=null` — no line "
+                "identity was confirmed among the six F356W candidates. This may "
+                "still be a real source; use the continuum description and the "
+                "**All Verified Features** table to note whether there is at least "
+                "one plausible real feature, even without a confirmed identity. "
+                "This is NOT a redshift or classification determination — do not "
+                "guess LRD vs classical AGN here; that needs a confirmed line "
+                "identity first (kb/lrd_classification.md's preconditions). Note "
+                "your observation in `key_issues` before the JSON block."
+            )
+        else:
+            parts.append(
+                "The Hypothesis Synthesis agent returned `redshift=null` — no hypothesis was "
+                "confirmed.  However, this spectrum may still contain astrophysical "
+                "signal.  Using the **continuum description** above and the **All "
+                "Verified Features** table, provide your best guess for the spectral "
+                "class of this object:"
+            )
+            parts.append("")
+            parts.append(
+                "- **QSO**: Blue/rising continuum, broad emission features, high-ionization "
+                "lines ([Ne V], C IV, C III]), Lyα forest if at high-z."
+            )
+            parts.append(
+                "- **Galaxy**: Red/flat continuum, narrow emission lines ([O II], [O III], "
+                "Balmer series), stellar absorption (Ca K/H, G-band, Mg I), 4000 Å break."
+            )
+            parts.append(
+                "- **Unknown**: Cannot determine from available data."
+            )
+            parts.append("")
+            parts.append(
+                "Base your guess on the continuum shape AND the brightest verified "
+                "features.  Include your reasoning and the guessed class in "
+                "`key_issues` or a free-text note before the JSON block.  This is "
+                "NOT a redshift determination — it's a best-effort classification "
+                "to guide follow-up observation strategy."
+            )
         parts.append("")
 
     return "\n".join(parts)
@@ -1869,7 +1973,8 @@ class AnalysisAuditor(BaseAgent):
 
         # ── Build prompts ──
         system_prompt = self._load_skill("result_auditor_skill")
-        user_prompt = _build_synthesis_audit_user_message(state, hypothesis_dir)
+        is_lrd = self.runtime.configs.params.hypothesis_provider == "lrd"
+        user_prompt = _build_synthesis_audit_user_message(state, hypothesis_dir, is_lrd=is_lrd)
 
         # ── Build CWT catalog (all features, all hypotheses) ──
         _cwt_catalog = _build_cwt_catalog(hypothesis_dir)

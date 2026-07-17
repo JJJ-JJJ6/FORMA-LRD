@@ -417,6 +417,8 @@ def _build_user_message(
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
+    domain: str = "optical",
+    external_evidence: dict = None,
 ) -> str:
     _z_min = z_min if z_min is not None else round(redshift - 0.1, 4)
     _z_max = z_max if z_max is not None else round(redshift + 0.1, 4)
@@ -463,7 +465,31 @@ def _build_user_message(
 
     # ── Mode-specific instructions ──────────────────────────────
     _mode_instructions = ""
-    if mode == "redrock":
+    if mode == "redrock" and domain == "lrd":
+        _mode_instructions = (
+            "\n## Fitting Tools Available\n\n"
+            "You have additional tools beyond CWT feature evaluation:\n"
+            "- **`fit_peak`**: Fit a single Gaussian + linear baseline around a predicted position. "
+            "Use the λ_obs value from the Predicted Lines table as center_guess. "
+            "Only call this when the Features column is ``—`` (no CWT detection) or when CWT features are "
+            "all rejected. **CWT features are higher-trust than your own fitting.** Only call fit_peak "
+            "as a LAST RESORT.\n"
+            "- **`fit_doublet`**: Fit two Gaussians + linear baseline for the He I+Paγ pair "
+            "(10833/10941 Å, separation_rest=108.0). Use when both components fall in the observed "
+            "range and no CWT features exist for either. Unlike the optical doublets, there is NO "
+            "expected amplitude ratio to check here — that ratio is a Stage B diagnostic (He I/Paγ > 2.3), "
+            "not a Stage A pass/fail test. The separation check alone still confirms both components "
+            "belong to the same redshift.\n"
+            "- **`compute_redshift`**: Compute z from a fitted center and rest wavelength.\n"
+            "- **`_fit_broadline_lsf_bic`**: Is an apparent broad width real velocity broadening or "
+            "spatial-extent smearing? Call this before treating any width as evidence of anything — "
+            "see the system prompt's Fatal check #2.\n\n"
+            "**Workflow**: Evaluate CWT features first → for lines with NO CWT coverage, "
+            "use λ_obs from the table above as center_guess → call `fit_peak` (single) "
+            "or `fit_doublet` (He I+Paγ) → if width matters, `_fit_broadline_lsf_bic` → "
+            "write CSV → write report → JSON block.\n"
+        )
+    elif mode == "redrock":
         _mode_instructions = (
             "\n## Fitting Tools Available\n\n"
             "You have additional tools beyond CWT feature evaluation:\n"
@@ -487,6 +513,11 @@ def _build_user_message(
             "or `fit_doublet` (pairs) → write CSV → write report → JSON block.\n"
         )
 
+    external_evidence_section = ""
+    if external_evidence:
+        from lrd_adapt.evidence.external_evidence import format_external_evidence_markdown
+        external_evidence_section = "\n" + format_external_evidence_markdown(external_evidence)
+
     return (
         spectrum_summary
         + f"\nVerify the redshift hypothesis z ≈ {redshift}.\n\n"
@@ -497,6 +528,7 @@ def _build_user_message(
         f"Lines with [λ_pred masked] or [window partially masked] can still be evaluated.\n"
         + _masked_msg
         + _mode_instructions
+        + external_evidence_section
         + f"\nFITS file: {fits_path}\n"
         f"Cleaned spectrum: {npz_path}\n"
         + (f"Output Report file: {report_path}\n" if report_path else "")
@@ -535,6 +567,8 @@ def run(
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
+    domain: str = "optical",
+    external_evidence: dict = None,
     model: str = None,
     api_key: str = None,
     base_url: str = None,
@@ -618,6 +652,7 @@ def run(
         peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
+        domain=domain, external_evidence=external_evidence,
     )
     config = {"recursion_limit": max_turns}
 
@@ -687,6 +722,8 @@ async def arun(
     masked_regions: list = None,
     report_path: str = None,
     csv_path: str = None,
+    domain: str = "optical",
+    external_evidence: dict = None,
     model: str = None,
     api_key: str = None,
     base_url: str = None,
@@ -734,6 +771,7 @@ async def arun(
         peaks=peaks, troughs=troughs,
         z_min=z_min, z_max=z_max, masked_regions=masked_regions,
         report_path=report_path, csv_path=csv_path,
+        domain=domain, external_evidence=external_evidence,
     )
 
     # ── Streaming path ──────────────────────────────────────────

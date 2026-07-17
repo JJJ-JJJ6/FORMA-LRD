@@ -57,6 +57,13 @@ class HypothesisAnalyst(BaseAgent):
         mode = "redrock" if (params.redrock or params.hypothesis_provider == "lrd") else "nomad"
         state['_hypothesis_mode'] = mode  # stash for synthesize later
 
+        domain = "lrd" if params.hypothesis_provider == "lrd" else "optical"
+        if domain == "lrd" and state.get('external_evidence') is None:
+            # Stage B external-evidence channel (CLAUDE.md new code #4) —
+            # optional per source; a Stage A run works fine without it.
+            from lrd_adapt.evidence.external_evidence import load_external_evidence_for_state
+            state['external_evidence'] = load_external_evidence_for_state(state)
+
         hypotheses = collect_redshift_hypotheses(
             state.get('redshift_hypotheses', {})
         )
@@ -73,7 +80,7 @@ class HypothesisAnalyst(BaseAgent):
 
         # ── Phase 1: concurrent hypothesis runs ─────────────
         hypothesis_results = await self._run_single_hypothesis_batch(
-            state, hypotheses, mode=mode,
+            state, hypotheses, mode=mode, domain=domain,
         )
         state['hypothesis_results'] = hypothesis_results
 
@@ -152,7 +159,7 @@ class HypothesisAnalyst(BaseAgent):
     # =====================================================================
 
     async def _run_single_hypothesis_batch(
-        self, state: SpectroState, hypotheses: list, *, mode: str = "nomad",
+        self, state: SpectroState, hypotheses: list, *, mode: str = "nomad", domain: str = "optical",
     ) -> list:
         """Run the first hypothesis serially to warm the KV cache (skill prompt +
         tool definitions), then fan out the rest with bounded concurrency."""
@@ -164,6 +171,7 @@ class HypothesisAnalyst(BaseAgent):
         os.makedirs(harness_dir, exist_ok=True)
 
         overlap = state['spectrum'].get('overlap_regions')
+        external_evidence = state.get('external_evidence')
 
         snr = state['spectrum'].get('snr')
         snr_median = float(np.median(snr)) if snr is not None else None
@@ -180,6 +188,8 @@ class HypothesisAnalyst(BaseAgent):
                     redshift=hyp['z'],
                     npz_path=state['spectrum_npz_path'],
                     mode=mode,
+                    domain=domain,
+                    external_evidence=external_evidence,
                     hypothesis_idx=idx + 1,
                     wavelength_min=float(spec['wavelength'][0]),
                     wavelength_max=float(spec['wavelength'][-1]),
