@@ -124,10 +124,21 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line, z_spec, sourc
 
 
 def _strongest_peak_wavelength(state):
-    """Pick the observed wavelength of the highest-amplitude detected peak."""
+    """Pick the observed wavelength of the highest-amplitude detected peak.
+
+    Returns None if no peaks were detected -- this is a normal, expected
+    outcome (a real spectrum can legitimately show no significant feature,
+    e.g. a negative control, low SNR, or a masked/contaminated region), not
+    an error condition. Mirrors upstream's own brute_force_line_matching
+    (utils/VI.py), which naturally falls through to an empty-but-valid
+    {"z": [], "zmedian": None, "hypotheses": []} result on zero peaks
+    rather than raising -- callers of generate_lrd_hypotheses_for_state
+    rely on that same convention (CLAUDE.md finding #1: "downstream does
+    not care where hypotheses come from").
+    """
     peaks = state.get("peaks") or state.get("emission_records") or []
     if not peaks:
-        raise ValueError("No detected peaks in state; cannot anchor hypotheses.")
+        return None
 
     def amp_key(p):
         return p.get("amplitude", p.get("amplitude_rank", 0))
@@ -159,6 +170,8 @@ def generate_lrd_hypotheses_for_state(state, params):
 
     entry = table[source_code]
     observed_wavelength_ang = _strongest_peak_wavelength(state)
+    if observed_wavelength_ang is None:
+        return {"z": [], "zmedian": None, "hypotheses": []}
 
     return generate_lrd_hypotheses(
         observed_wavelength_ang=observed_wavelength_ang,

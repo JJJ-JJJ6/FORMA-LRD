@@ -134,7 +134,17 @@ async def main():
                     output_dir=output_dir
                 )
                 result = await orchestrator.run_analysis_single(state)
-                writer.write(result)
+                # CONFIRMED bug (found 2026-07-18 by actually running this
+                # path to completion): ResultWriter has no generic write()
+                # method at all -- only write_redshift_hypotheses() and
+                # write_hypothesis_analysis() (see agents/common/
+                # result_writer.py). The old call here would raise
+                # AttributeError on every run that reached this line, in
+                # any domain -- an upstream bug unrelated to the LRD
+                # adaptation, not something previously caught because
+                # nothing had completed an in-process run this far before.
+                writer.write_redshift_hypotheses(result)
+                writer.write_hypothesis_analysis(result)
                 logging.info(f"Image {file_name}.{format} processed")
 
                 in_brief = result.get("in_brief", {})
