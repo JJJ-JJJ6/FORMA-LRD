@@ -1,275 +1,145 @@
-# FORMA-LRD — read this first
+# FORMA-LRD
 
-This is a private adaptation of the upstream [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
-codebase for **verifying broad-line identifications in JWST/NIRCam F356W WFSS spectra
-of Little Red Dots and classical AGNs (EIGER survey, Kapoor+26 sample)**.
+A private adaptation of the upstream [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
+multi-agent pipeline for **verifying broad-line identifications in JWST/NIRCam F356W
+WFSS spectra of Little Red Dots and classical AGNs** (EIGER survey, Kapoor+26 sample).
+The paper's claims are treated as hypotheses to be tested, never as labels to be
+reproduced.
 
-- **Branch `lrd` (this branch): all of the adaptation work.** Branch `upstream-baseline`
-  is the untouched upstream commit this work forked from, kept only for comparison.
-- **See exactly what was added/changed vs. upstream:**
+- **Branch `lrd` (this branch)**: all of the adaptation work. Branch
+  `upstream-baseline` is the untouched upstream commit this work forked from.
+- **File-by-file guide to the adaptation work**: [LRD_WORK.md](./LRD_WORK.md)
+- **Exactly what was added/changed vs. upstream**:
   [upstream-baseline...lrd compare view](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/upstream-baseline...lrd)
-- The work consists of:
-  - `lrd_adapt/` — all new code: grizli 1D **and** 2D (`.stack.fits`) converters to
-    FORMA's input format, a paper-claim-driven hypothesis provider (replaces Redrock),
-    LSF/BIC broad-line and blueshifted-absorption fitting tools, external-evidence
-    channel, and a leave-one-out evaluation harness with anonymized ground truth.
-  - Targeted edits inside `src/FORMA/` — rest-NIR line tables, LRD knowledge-base and
-    skill-prompt content (replacing the optical/DESI domain), and wiring/bug fixes so
-    the above is reachable under `HYPOTHESIS_PROVIDER=lrd`.
-- **Full file-by-file guide to the adaptation work: [LRD_WORK.md](./LRD_WORK.md)**
-- Everything below this section is the upstream project's original README.
 
----
+Everything below is what is strictly necessary to run FORMA-LRD.
 
-中文 README 文件见 [README in Chinese](./README_Chinese.md).
+## Requirements
 
- **A related paper is in preparation.** 
+- **Python ≥ 3.12** (plain venv — no Docker involved)
+- **An LLM API key** for any OpenAI-compatible endpoint (developed and tested
+  against DeepSeek `deepseek-v4-pro`)
+- Input data: grizli extraction products for your sources — either `*.1D.fits`
+  (preferred) or `*.stack.fits` (2D)
 
-# LLM-Spectro-Agent
+**Explicitly NOT needed** (all upstream features that are disabled or replaced on
+this branch): PaddleOCR / Tesseract (the PNG input channel is commented out
+upstream — skip any OCR setup), Redrock and its templates (replaced by the
+paper-claim-driven hypothesis provider), VLM/vision credentials, Docker.
 
-An LLM-powered agent for human-like analysis of one-dimensional astronomical spectra.
-
-> ⚠️ **Currently supported mode:** FITS input + Redrock redshift hypothesis generation. The PNG input pipeline code has been commented out (2026-06-30) — see OCR section for details.
-
-## Overview
-
-This project use large language models (LLMs) to perform human-like astrophysical inference on 1D spectra, specifically:
-- **Source classification** [Only support galaxy (LRG and ELG, output as galaxy), QSO]
-- **Redshift estimation** for QSOs
-
-The system mimics the cognitive workflow of a human astronomer:
-1. **Visual interpretation** of the spectrum plot (axes, units, features)
-2. **Rule-based analysis** using astrophysical knowledge (e.g., Lyα, C IV, Mg II lines)
-3. **Multi-agent debate** between an auditor and refinement assistant to improve robustness
-4. **Synthesis** of a final report with confidence assessment
-
-The pipeline is currently configured to use the following model via API:
-- **Text reasoning**: `deepseek-v4-pro`
-
-> ⚠️ Note: VLM (vision-language model) is temporarily disabled.
-
-> ⚠️ Note: Other LLMs have not been tested and may require adaptation.
-
-> For detailed module documentation, architecture diagrams, and pipeline topology, see [`.repo_info/index.html`](.repo_info/index.html).
-
----
-
-## Dependencies & Installation
-### 1. OCR Engine
-
-> ⚠️ **Note (2026-06-30):** The PNG input channel (which depends on PaddleOCR / Tesseract) has been **commented out** in the source code. The project currently only supports `INPUT_FORMAT=fits`. You may **skip the entire OCR installation section below** and proceed directly to [Python Dependencies](#2-python-dependencies).
-
-This project supports two OCR (Optical Character Recognition) backends: PaddleOCR and Tesseract OCR.
-By default, PaddleOCR is used because it generally offers higher accuracy—especially for chart axis labels—but requires a more involved installation process.
-
-In src/utils, we provide two OCR wrapper functions:
-```python
-_detect_axis_ticks_paddle(state)
-```
-Uses PaddleOCR.
-```python
-_detect_axis_ticks_tesseract(state)
-```
-Uses Tesseract OCR.
-
-You can select your preferred OCR engine by setting the appropriate option in your .env file.
-
-#### 1.1 Installing PaddleOCR
-
-PaddleOCR depends on PaddlePaddle, which must be installed first.
-
-##### 1. Install PaddlePaddle
-For CPU-only support, run:
+## 1. Install
 
 ```bash
-pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+git clone https://github.com/JJJ-JJJ6/FORMA-LRD.git
+cd FORMA-LRD                    # lrd is the default branch
+python -m venv .venv
+# activate: .venv\Scripts\activate  (Windows)  |  source .venv/bin/activate  (Linux/macOS)
+pip install -e .
 ```
 
-For GPU support or detailed instructions (including system-specific guidance), refer to the [official PaddlePaddle installation page](https://www.paddlepaddle.org.cn/).
+> Known quirk: if `import langchain` fails complaining about
+> `langgraph.runtime`, the pinned langgraph is too old for the installed
+> langchain — run `pip install -U langgraph`.
 
-##### 2. Install PaddleOCR
+Verify the install:
+
 ```bash
-pip install "paddleocr[all]"
-```
-##### 3. Compatibility Fix for LangChain (you can do it after installing the Python dependencies)
-The current version of PaddleOCR uses legacy imports from older versions of LangChain (langchain.docstore.document, etc.), while this project relies on the newer
-* `langchain-core`
-* `langchain-text-splitter`
-
-To resolve this conflict, you’ll need to manually patch the PaddleOCR source code after installing the Python dependencies (see Section 2).
-
-Open the following file in your editor (adjust the path to match your Conda environment):
-```bash
-nano ~/Apps/anaconda3/envs/your_env_name/lib/python3.12/site-packages/paddlex/inference/pipelines/components/retriever/base.py
-```
-Replace these lines:
-```python
-from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-```
-with:
-```python
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-```
-💡 Tip: You can locate your environment path using 
-```bash
-which python
-```
-or 
-```bash
-conda info --envs.
-```
-#### 1.2 Installing Tesseract OCR
-
-Install it based on your OS:
-
-- **Ubuntu/Debian**:
-  ```bash
-  sudo apt-get install tesseract-ocr
-  ```
-
-- **macOS** (with Homebrew):
-  ```bash
-  brew install tesseract
-  ```
-
-- **Windows**:  
-  Download and install from [UB Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-
-> 📌 Make sure `tesseract` is in your system PATH. Verify with:
-> ```bash
-> tesseract --version
-> ```
-
-### 2. Python Dependencies
-Install the required Python packages:
-```bash
-pip install -r requirements.txt
+python -c "from FORMA.workflow_orchestrator import WorkflowOrchestrator; print('OK')"
 ```
 
-### 3. Environment Setup
-Copy the example configuration and fill in your settings:
+## 2. Configure `.env`
+
 ```bash
 cp .env_example .env
 ```
 
-Edit `.env` to specify:
-- `LLM_API_KEY`, `LLM_MODEL`: Text LLM configuration
-- `VLM_API_KEY`, `VLM_MODEL`: Vision-language model configuration
-- `INPUT_DIR`, `OUTPUT_DIR`: Input and output directories
-- `FILE_NAME`: Name of the input FITS file (without `.fits` extension)
-- `REDROCK`: Set to `true` to enable Redrock hypothesis generation
-- `RR_TEMPLATE_DIR`: Redrock template directory
-- and other parameters (see `.env_example` for full list)
+Then set, in `.env`:
 
-### 4. Redrock Installation (optional, for redshift hypothesis generation)
+**LRD preset** (from `lrd_adapt/configs/f356w.env` — copy these lines as-is):
 
-If you set `REDROCK=true` in `.env`, you need to install Redrock — DESI's official redshift fitter.
-
-#### 4.1 Install Redrock
-
-```bash
-git clone https://github.com/desihub/redrock
-cd redrock
-git clone https://github.com/desihub/redrock-templates py/redrock/templates
-pip install -e .
-pip install desiutil
-pip install desispec
+```ini
+REDROCK=false
+HYPOTHESIS_PROVIDER=lrd
+ARM_NAME=F356W
+ARM_WAVELENGTH_RANGE=31500-39500
+CWT_MAX_SCALE=14.0
 ```
 
-The templates will be installed with the code. Alternatively, you can place the templates elsewhere and set `RR_TEMPLATE_DIR` in `.env` to that location.
+**Your credentials and paths:**
 
-#### 4.2 (Optional) Archetypes Mode
-
-If `USE_ARCHETYPES=true`, clone the archetype repository:
-
-```bash
-git clone https://github.com/abhi0395/new-archetypes.git
-# or
-git clone https://github.com/desihub/redrock-archetypes.git
+```ini
+LLM_API_KEY=<your key>
+LLM_BASE_URL=https://api.deepseek.com     # or any OpenAI-compatible endpoint
+LLM_MODEL=deepseek-v4-pro
+RUN_MODE=s
+INPUT_DIR=<absolute path>/data/lrd_input
+OUTPUT_DIR=<absolute path>/data/lrd_output
+FILE_NAME=                                 # set per run, see step 4
 ```
 
-Set `ARCHETYPE_DIR` in `.env` to the cloned directory path.
+Everything else in `.env_example` can keep its default. Never commit a real
+`.env` (it is gitignored).
 
-Verify the installation:
+## 3. Convert input data
+
+Both routes produce identical FORMA-readable FITS. Source codes (`SRC02`–`SRC20`)
+and the paper's claimed redshifts come from `lrd_adapt/eval/mapping.csv` /
+`lrd_adapt/configs/primary_hypotheses.json`.
+
+**1D route (preferred — grizli's flux-calibrated optimal extraction):**
 
 ```bash
-rrdesi --help
+python -c "from lrd_adapt.converter.grizli_to_forma import convert_grizli_1d_to_forma; \
+convert_grizli_1d_to_forma('source.1D.fits', 'data/lrd_input/SRC04.fits', \
+arm_name='F356W', source_code='SRC04', z_spec=2.328)"
 ```
 
----
+**2D route (when only the `*.stack.fits` 2D spectrogram exists — internal boxcar
+extraction; line positions/widths are reliable, absolute fluxes are not):**
 
-## Quick Start
-
-See [Quick start](Quickstart.md) for a quick start guide.
-
-### Run the Analysis
-Execute the main script:
 ```bash
+python -m lrd_adapt.converter.stack_to_forma source.stack.fits data/lrd_input/SRC04.fits \
+  --arm F356W --source-code SRC04 --z-spec 2.328
+```
+
+## 4. Run
+
+```bash
+# set FILE_NAME to the converted file's basename (no .fits), then:
 python scripts/main.py
 ```
-Results will be saved to the output directory specified in `.env`.
----
 
-## Output Files Description
+(`FILE_NAME` can be set in `.env` or as an environment variable, e.g.
+`FILE_NAME=SRC04 python scripts/main.py` on Linux/macOS.)
 
-For an input FITS file `{your_file_name}.fits`, the pipeline uses Redrock to generate redshift hypotheses, then applies multi-agent LLM analysis to verify and refine them. Results are saved to `{OUTPUT_DIR}/{your_file_name}/` with the following structure (using `116.fits` as an example):
+Output lands in `OUTPUT_DIR/<FILE_NAME>/`:
 
 ```
-116/
-├── 116_in_brief.json                  # Final brief summary (type, redshift, confidence, lines)
-├── final_report.md                    # Final comprehensive report
-├── 116_spec_extract.png               # Reconstructed spectrum from OpenCV
-├── 116_spectrum.png                   # Extracted spectrum and SNR plot
-├── 116_snapshot.json                  # Full runtime state snapshot
-├── 116_brute_force_matching.txt       # Brute-force template matching results
-├── 116_hypothesis_analysis.txt        # Hypothesis synthesis verdict (JSON)
-├── 116_redrock/                       # Redrock external fitting results
-│   ├── 116_redrock.fits
-│   └── 116_rrdetails.h5
-├── visual_interpreter/                # Visual interpretation outputs
-│   ├── 116_continuum.png              # Fitted continuum spectrum
-│   ├── 116_features.png               # Detected spectral features visualization
-│   ├── 116_residual_spectrum.png      # Residual spectrum (data - continuum)
-│   ├── 116_emission.csv               # Detected emission lines table
-│   ├── 116_absorption.csv             # Detected absorption lines table
-│   └── 116_spectrum.npz               # Extracted spectrum data (NumPy)
-├── single_hypothesis/                 # Per-hypothesis detailed analysis
-│   ├── 1_report.md                    # Hypothesis report
-│   ├── 1_features.png                 # Feature visualization at this redshift
-│   ├── 1_lines.csv                    # Identified spectral lines
-│   ├── 1_lines_cleaned.csv            # Cleaned line list
-│   └── 1_stream.md                    # Agent stream log
-│   ├── 2_* ...                        # (one set per hypothesis, up to N)
-├── hypothesis_synthesis/              # Multi-hypothesis synthesis
-│   ├── report.md                      # Synthesis summary report
-│   ├── catalog.csv                    # Catalog of all hypotheses
-│   └── stream.md                      # Synthesis agent stream log
-├── feature_auditor/                   # Feature auditor outputs
-│   ├── stream.md                      # Auditor agent stream log
-│   └── verdict.json                   # Feature verdict
-├── result_auditor/                    # Result auditor outputs
-│   └── stream.md                      # Auditor agent stream log
-└── report_writer/                     # Report writer outputs
-    └── stream.md                      # Writer agent stream log
+final_report.md               ← the 6-section report (+ a PDF copy)
+visual_interpreter/           ← CWT feature detection plots/CSVs
+single_hypothesis/            ← per-hypothesis agent runs (streams, line tables, plots)
+feature_auditor/  hypothesis_synthesis/  result_auditor/  report_writer/
+<FILE_NAME>_redshift_hypotheses.txt   ← hypothesis provider scores
 ```
 
-### Key output files
+A source with no detectable features exits early with a placeholder report
+(`Unknown / human_review=Yes`) — that is calibrated behavior, not a failure.
 
-| File | Description |
-|------|-------------|
-| `{name}_in_brief.json` | Machine-readable summary: type, redshift, confidence, identified lines |
-| `final_report.md` | Human-readable final report with full analysis details |
-| `hypothesis_synthesis/report.md` | Summary of all tested hypotheses and final verdict |
-| `hypothesis_synthesis/catalog.csv` | Table of all hypotheses with line measurements |
-| `visual_interpreter/{name}_emission.csv` | All detected emission features (wavelength, flux, SNR, width) |
-| `visual_interpreter/{name}_absorption.csv` | All detected absorption features |
-| `single_hypothesis/{N}_lines.csv` | Line identifications for each tested redshift
+## 5. Tests (optional, no pytest needed — run each file directly)
 
----
-## License
+```bash
+python lrd_adapt/converter/test_stack_to_forma.py
+python lrd_adapt/tools/test_broadline_lsf_bic.py
+python lrd_adapt/tools/test_blueshifted_absorption_bic.py
+python lrd_adapt/eval/test_anonymizer_isolation.py
+python lrd_adapt/eval/test_synthetic_injection.py
+python lrd_adapt/eval/test_metrics.py
+```
 
-This project is for research and educational purposes. 
+## Credits & license
 
----
+Built on the upstream [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
+(MIT license). The upstream project's original documentation is preserved in this
+repo's git history and in `README_Chinese.md` / `Quickstart.md`; note that parts
+of those documents (OCR setup, Redrock, DESI arm configs, PNG input) do not apply
+to this branch.
