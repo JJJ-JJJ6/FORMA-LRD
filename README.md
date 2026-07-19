@@ -140,6 +140,6 @@ python lrd_adapt/eval/test_metrics.py
 
 Built on the upstream [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
 (MIT license). The upstream project's original documentation is preserved in this
-repo's git history and in `README_Chinese.md` / `Quickstart.md`; note that parts
-of those documents (OCR setup, Redrock, DESI arm configs, PNG input) do not apply
-to this branch.
+repo's git history and in `Quickstart.md`; note that parts of it (OCR setup,
+Redrock, DESI arm configs, PNG input) do not apply to this branch.
+A Chinese version of this README is available: [README_Chinese.md](./README_Chinese.md).
