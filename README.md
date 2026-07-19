@@ -14,6 +14,28 @@ reproduced.
 
 Everything below is what is strictly necessary to run FORMA-LRD.
 
+## How it works — where the "AI agents" come from
+
+The agents are not shipped software or local models — they are ordinary Python
+classes in this repo, and their reasoning comes from a remote LLM API:
+
+- **Agent machinery (local, in this repo)**: the six agents
+  (`VisualInterpreter`, `HypothesisAnalyst`, feature/result auditors,
+  `ReportWriter`, `SelfEvolve`) live in `src/FORMA/agents/multi_agents/` and are
+  wired into a pipeline by `workflow_orchestrator.py` (LangGraph). Each agent is
+  a system prompt (the skill files under `harness/skills/`), a set of callable
+  analysis tools (peak/doublet/BIC fitting, CSV/report writing), and a loop that
+  alternates between asking the LLM what to do next and executing the chosen
+  tool locally.
+- **The actual reasoning (remote)**: every agent "thought" is an HTTPS call to
+  the configured LLM endpoint (`LLM_BASE_URL`/`LLM_MODEL`, ~50 calls per
+  source). No language model runs on your machine. Without internet access or a
+  valid `LLM_API_KEY`, the deterministic parts (converters, CWT detection, BIC
+  fits) still work, but every agent fails at its first LLM call.
+- **Docker is irrelevant to all of this**: it would only ever have packaged the
+  Python environment, and this repo has no Dockerfile — the venv below fills
+  that role. The only "AI" ingredient you supply is the API key.
+
 ## Requirements
 
 - **Python ≥ 3.12** (plain venv — no Docker involved)

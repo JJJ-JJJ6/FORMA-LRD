@@ -13,6 +13,25 @@ Little Red Dot（LRD）与经典 AGN 的宽线证认**（EIGER 巡天，Kapoor+2
 
 以下内容即运行 FORMA-LRD 所需的全部步骤。
 
+## 工作原理 —— "AI 智能体"从哪里来
+
+智能体既不是随仓库分发的成品软件，也不是本地运行的模型 —— 它们只是本仓库中的
+普通 Python 类，其"推理能力"来自远程 LLM API：
+
+- **智能体框架（本地，在本仓库中）**：六个智能体（`VisualInterpreter`、
+  `HypothesisAnalyst`、特征/结果审计器、`ReportWriter`、`SelfEvolve`）位于
+  `src/FORMA/agents/multi_agents/`，由 `workflow_orchestrator.py`（LangGraph）
+  串联成流水线。每个智能体 = 一份系统提示词（`harness/skills/` 下的 skill
+  文件）+ 一组可调用的分析工具（峰/双线/BIC 拟合、CSV 与报告写出）+ 一个循环：
+  反复询问 LLM 下一步做什么，并在本地执行它选择的工具。
+- **真正的推理（远程）**：智能体的每一次"思考"都是对配置的 LLM 端点
+  （`LLM_BASE_URL`/`LLM_MODEL`）的一次 HTTPS 调用（每个源约 50 次）。你的机器上
+  不运行任何语言模型。没有网络或有效的 `LLM_API_KEY` 时，确定性部分（转换器、
+  CWT 特征检测、BIC 拟合）仍可工作，但每个智能体都会在第一次 LLM 调用处失败。
+- **Docker 与此完全无关**：它至多只是打包 Python 环境的一种方式，而本仓库并无
+  Dockerfile —— 下文的 venv 就承担了这个角色。你唯一需要提供的"AI"要素就是
+  API key。
+
 ## 环境要求
 
 - **Python ≥ 3.12**（普通 venv 即可，不需要 Docker）
