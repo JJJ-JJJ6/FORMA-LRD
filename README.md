@@ -4,10 +4,10 @@ This is a private adaptation of the upstream [FORMA / LLM-Spectro-Agent](https:/
 codebase for **verifying broad-line identifications in JWST/NIRCam F356W WFSS spectra
 of Little Red Dots and classical AGNs (EIGER survey, Kapoor+26 sample)**.
 
-- **Branch `lrd` (this branch): all of the adaptation work.** Branch `master` is the
-  untouched upstream baseline kept only for comparison.
+- **Branch `lrd` (this branch): all of the adaptation work.** Branch `upstream-baseline`
+  is the untouched upstream commit this work forked from, kept only for comparison.
 - **See exactly what was added/changed vs. upstream:**
-  [master...lrd compare view](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/master...lrd)
+  [upstream-baseline...lrd compare view](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/upstream-baseline...lrd)
 - The work consists of:
   - `lrd_adapt/` — all new code: grizli 1D **and** 2D (`.stack.fits`) converters to
     FORMA's input format, a paper-claim-driven hypothesis provider (replaces Redrock),
