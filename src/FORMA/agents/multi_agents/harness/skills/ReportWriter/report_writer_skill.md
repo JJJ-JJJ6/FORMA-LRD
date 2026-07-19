@@ -27,6 +27,21 @@ clarity, completeness, and readability.
   spectrum if RA didn't make that call (e.g. no External Evidence was
   available for this source). `Unknown` is a legitimate, expected outcome
   in that case, not a gap to paper over.
+- **Every line identity you write must be copied verbatim from the input
+  data** (synthesis summary, per-hypothesis tables, or FA verdicts). This
+  applies especially to the §2 Identity column. If a hypothesis has no
+  artifacts (e.g. its harness run failed before producing a line table),
+  write its Identity as "not available (harness run failed)" — do NOT
+  reconstruct or guess what lines that redshift would imply. Writing a
+  line name that appears nowhere in your input is a fabrication and
+  invalidates the report.
+- **Stay in this domain's instrument context**: JWST/NIRCam F356W slitless
+  grism spectra of the Kapoor+26 sample. Do NOT import concepts from
+  ground-based optical surveys (OH sky-line contamination, fiber effects,
+  DESI-style throughput edges, etc.) unless they literally appear in the
+  input data. The relevant data-quality issues here are grism (source
+  overlap) contamination and masked pixels, which the input describes
+  explicitly when present.
 
 ## Tools
 

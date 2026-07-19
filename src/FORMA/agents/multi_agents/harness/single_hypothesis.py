@@ -186,7 +186,25 @@ def _build_tools(mode: str = "nomad", npz_path: str = None) -> list:
                 to refine the extended-source LSF; otherwise a fixed
                 effective resolving power is used.
             """
-            return fit_broadline_lsf_bic(_wl, _fl, line_rest_ang, z_guess, r_circ_mas=r_circ_mas)
+            # An unfittable window (too few clean pixels, no noise estimate,
+            # no convergence) is an expected data-quality outcome, not a
+            # harness error -- return it as a result so the hypothesis run
+            # survives and the agent can report the check as untested.
+            try:
+                return fit_broadline_lsf_bic(_wl, _fl, line_rest_ang, z_guess, r_circ_mas=r_circ_mas)
+            except (ValueError, RuntimeError) as exc:
+                return {
+                    "success": False,
+                    "verdict": "NOT_TESTABLE",
+                    "reason": str(exc),
+                    "broad_line_real": None,
+                    "note": (
+                        "The BIC comparison could not be run on this data. Treat "
+                        "broad-line reality as UNTESTED for this line -- it is not "
+                        "evidence for or against the hypothesis. State this in your "
+                        "report instead of excluding the hypothesis on this basis alone."
+                    ),
+                }
 
         # lrd_adapt/tools: blueshifted He I absorption check (Kapoor+26
         # SS4.2; CLAUDE.md decision rules). Rare (2/19 sources) -- see the
@@ -214,7 +232,20 @@ def _build_tools(mode: str = "nomad", npz_path: str = None) -> list:
             z_guess : float
                 Redshift hypothesis under audit.
             """
-            return fit_blueshifted_absorption_bic(_wl, _fl, line_rest_ang, z_guess)
+            try:
+                return fit_blueshifted_absorption_bic(_wl, _fl, line_rest_ang, z_guess)
+            except (ValueError, RuntimeError) as exc:
+                return {
+                    "success": False,
+                    "verdict": "NOT_TESTABLE",
+                    "reason": str(exc),
+                    "absorption_real": None,
+                    "note": (
+                        "The BIC comparison could not be run on this data. Treat "
+                        "the blueshifted-absorption question as UNTESTED -- not as "
+                        "evidence for or against -- and state this in your report."
+                    ),
+                }
 
         return [
             write_report, write_lines_csv,

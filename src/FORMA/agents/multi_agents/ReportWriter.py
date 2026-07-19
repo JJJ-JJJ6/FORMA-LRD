@@ -49,11 +49,16 @@ class ReportWriter(BaseAgent):
             "temperature": 0.3,
         }
 
+        # LRD domain: no atmosphere, so the DESI 4000/7800 A edge-zone prompt
+        # text doesn't apply (same gating as AnalysisAuditor's matrix builder).
+        is_lrd = self.runtime.configs.params.hypothesis_provider == "lrd"
+
         print("[ReportWriter] Writing final report ...")
         stream_path = os.path.join(harness_dir, "report_writer/stream.md")
         try:
             final_report, in_brief = await report_writer_arun(
-                state, harness_dir, stream_md_path=stream_path, **llm_kwargs
+                state, harness_dir, stream_md_path=stream_path,
+                use_wavelength_edge_zones=not is_lrd, **llm_kwargs
             )
         except Exception as e:
             logging.warning(f"[ReportWriter] Report writing failed: {e}")

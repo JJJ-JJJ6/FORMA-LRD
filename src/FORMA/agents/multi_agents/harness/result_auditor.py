@@ -114,7 +114,9 @@ def _format_confirmed_lines_with_errors(
 # User prompt builder
 # ---------------------------------------------------------------------------
 
-def _build_user_message(state: SpectroState, harness_dir: str) -> str:
+def _build_user_message(
+    state: SpectroState, harness_dir: str, use_wavelength_edge_zones: bool = True
+) -> str:
     """Build the user prompt for the Report Writer report-writing LLM."""
     rule_analysis = state.get("hypothesis_analysis") or {}
     auditor_json = state.get("auditor_verdict_json") or {}
@@ -137,8 +139,17 @@ def _build_user_message(state: SpectroState, harness_dir: str) -> str:
     parts.append(f"- Wavelength range: {wl_left:.0f} – {wl_right:.0f} Å")
     if snr_median is not None:
         parts.append(f"- Median SNR: {snr_median:.1f}")
-    parts.append(f"- Blue edge: {wl_left:.0f} – 4000 Å (throughput drop)")
-    parts.append(f"- Red edge (OH zone): 7800 – {wl_right:.0f} Å")
+    if use_wavelength_edge_zones:
+        parts.append(f"- Blue edge: {wl_left:.0f} – 4000 Å (throughput drop)")
+        parts.append(f"- Red edge (OH zone): 7800 – {wl_right:.0f} Å")
+    else:
+        # LRD/JWST domain: space-based, so no atmospheric blue/red edge or
+        # OH airglow; grism contamination + masked pixels are the hazards.
+        overlap = state["spectrum"].get("overlap_regions") or []
+        parts.append(
+            "- No atmospheric blue/red edge in this domain (space-based JWST grism). "
+            f"Masked/contaminated wavelength regions: {len(overlap)}."
+        )
     parts.append("")
 
     # ── Continuum description ──
@@ -288,6 +299,7 @@ async def arun(
     temperature: float = 0.3,
     max_turns: int = 30,
     stream_md_path: Optional[str] = None,
+    use_wavelength_edge_zones: bool = True,
 ) -> Tuple[str, Optional[dict]]:
     """Run the Report Writer report-writing agent.
 
@@ -297,7 +309,9 @@ async def arun(
     tool calls, tool results, and final output) to that file.
     """
     system_prompt = _load_skill()
-    user_prompt = _build_user_message(state, harness_dir)
+    user_prompt = _build_user_message(
+        state, harness_dir, use_wavelength_edge_zones=use_wavelength_edge_zones
+    )
 
     # ── Streaming setup ──
     md = None

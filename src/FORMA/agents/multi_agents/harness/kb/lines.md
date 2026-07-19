@@ -67,7 +67,7 @@ content lands (CLAUDE.md build order A4).
 
 **General principle — spacing alone does NOT confirm a doublet.** The targeted search harness pre-selects features whose observed wavelengths are near the predicted line positions. Matching spacing is therefore *expected* for any candidate hypothesis — it is not an independent verification. The real diagnostic question is whether **both components are physically real features**. Specifically:
 - Is the weaker component a genuine peak/trough, or just noise at roughly the right position?
-- In the OH airglow zone (>7800 Å), if the weaker line is unusually bright, suspect OH skyline contamination masquerading as the doublet partner. Flag explicitly.
+- If the weaker line falls in a grism-contamination-flagged (masked) region, suspect overlapping-source flux masquerading as the doublet partner. Flag explicitly.
 
 ### [O III] (4960.3 / 5008.2 Å)
 - Rest separation: 47.9 Å. Observed separation: 47.9 × (1+z) Å.
@@ -135,48 +135,25 @@ wavelength_3 → Hε_abs    (longest, ~3970 Å — blended with Ca H)
 
 Mg II 2800 Å can appear as both broad emission (QSO BLR, FWHM > 2000 km/s) and narrow absorption (ISM). When both are claimed near the same observed wavelength, they may form a single emission–absorption composite profile. **For the full diagnostic criteria (morphological "M" test, center consistency, wing broadness, symmetry, spike–valley–spike detection), see `kb/composite_profile.md`.** Key principle: a genuine composite profile (broad, symmetric, smooth "M" shape) supports both claims as a single physical system; spike–valley–spike patterns do not.
 
-## Blue Edge Noise Zone (λ_obs < 4000 Å for DESI)
+## Data-Quality Zones (LRD/JWST domain)
 
-The DESI blue arm (3600–4000 Å) has the lowest throughput and highest noise. Spectral features here require additional scrutiny:
+This domain's spectra are **space-based** (JWST/NIRCam F356W slitless grism):
+there is NO atmospheric OH/OI airglow, NO telluric absorption, and NO
+ground-based blue/red throughput edge. Do not import those concepts from
+optical-survey experience, and do not flag features as "OH zone" or "blue
+edge" — those zones do not exist here.
 
-- **Throughput drop**: DESI blue-arm sensitivity falls steeply below 4000 Å. The noise is non-Gaussian with frequent outliers that CWT interprets as peaks.
-- **Evaluation**: Any line with λ_pred < 4000 Å should be flagged as "blue edge risk." Features barely distinguishable from the elevated blue-edge noise envelope should be capped at MARGINAL — trust your visual assessment over SNR or ridge-length metrics. Features invisible against the blue-edge noise envelope should be assigned NOT_FOUND. Read the spectrum ±150 Å before accepting any blue-zone line as evidence.
-- Lines that naturally fall here at higher redshift: Lyα (1216), C IV (1549), He II (1640), C III] (1909). These are high-ionization AGN indicators routinely claimed in low-SNR blue data — treat them as **presumptively unreliable until visually confirmed**.
+The analogous data-quality hazards in this domain are:
 
-## OH Airglow Zone and Skyline Contamination
-
-### OH Airglow (Red edge: > 7000 Å, strongest > 9000 Å)
-
-Hydroxyl (OH) molecular bands produce dense, bright narrow emission lines. Even after sky subtraction, residual OH lines appear at fixed observed wavelengths.
-
-- **Evaluation**: Any line with λ_pred > 7800 Å should be flagged as "OH zone." Features indistinguishable from the OH residual forest should be capped at MARGINAL — OH skylines can masquerade as astrophysical lines. Visually dominant peaks that do NOT match any known skyline position (see table below) may be real but should still carry an OH contamination caveat. Read the spectrum ±150 Å before accepting any OH-zone line.
-- A match within ±10 Å of a known bright skyline is strong evidence of atmospheric origin — assign NOT_FOUND for the astrophysical line.
-
-### OI Airglow (Visible: 5577, 6300, 6364 Å)
-
-Atomic oxygen forbidden transitions at fixed observed wavelengths:
-
-| λ_obs (Å) | Transition | Notes |
-|-----------|-----------|-------|
-| 5577.3 | [OI] green line | Strong, isolated. Often the brightest skyline in the visible band |
-| 6300.3 | [OI] red line | Weaker, but narrow and persistent |
-| 6363.8 | [OI] red line | Companion to 6300.3, ratio 6300/6364 ≈ 3:1 |
-
-Unlike OH which is a red-edge problem, OI lines can contaminate features ANYWHERE in the visible spectrum (4000–7000 Å). Any narrow emission feature near these wavelengths should be checked against OI contamination regardless of the claimed redshift.
-
-### Comprehensive Skyline / Atmospheric Feature Table
-
-| Type | Name | Wavelength (Å) | Notes |
-|------|------|----------------|-------|
-| Airglow Emission | [O I] | 5577.3 | Most famous skyline; easily produces spurious narrow emission peaks |
-| Airglow Emission | Na D | 5890, 5896 | Upper-atmosphere sodium layer emission doublet |
-| Airglow Emission | [O I] | 6300.3 | Often confused with astrophysical [O I] 6300 in AGN |
-| Airglow Emission | [O I] | 6363.8 | 3:1 doublet companion to 6300.3 |
-| Atmospheric Absorption | O₂ B-band | 6867 | Strong absorption band; affects continuum and weak-line identification |
-| OH Airglow Forest | OH Meinel Bands | 7000–7400 | Dense OH emission lines begin |
-| Atmospheric Absorption | O₂ A-band | 7605 | One of the strongest atmospheric absorption bands |
-| OH Airglow Forest | OH Meinel Bands | 7800–9800 | Extremely dense OH forest |
-
-When evaluating ANY narrow emission feature, cross-reference λ_obs against this table.  A match within ±10 Å of a known skyline position is strong evidence of contamination.
-
-Lines that may fall in the OH zone at higher redshift include: [O II] (3727), Ca K/H (3935/3970), Hδ (4103) — rest-frame optical features that are key diagnostics for galaxy classification. When these fall beyond 7800 Å, their reliability is compromised and this must be noted in the synthesis verdict.
+- **Grism contamination (source overlap)**: flux from overlapping spectra of
+  nearby sources. Contamination-dominated pixels arrive already masked
+  (see the masked-regions list in your input). A feature adjacent to a
+  masked region may be a contamination residual — cap it at MARGINAL and
+  say so.
+- **Masked pixels**: regions removed by the converter's quality mask (bad
+  flat-field, zero error, contamination). A predicted line falling in a
+  masked region is UNTESTABLE there — that is missing coverage, not
+  evidence against the hypothesis.
+- **Bandpass truncation**: the usable window is set by the F356W bandpass
+  (~31500–39500 Å). A companion line predicted outside it is simply not
+  observable — again missing coverage, not counter-evidence.
