@@ -26,7 +26,7 @@ import numpy as np
 # config — fill in your values here
 # ---------------------------------------------------------------------------
 LLM_MODEL = "deepseek-v4-pro"
-LLM_API_KEY = "sk-6b5e63ec501e48e6932f5d95959e09ba"
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")  # set via env var -- never hardcode keys
 LLM_BASE_URL = "https://api.deepseek.com"
 
 NUM_RUNS = 100  # <-- change this to run more or fewer times
