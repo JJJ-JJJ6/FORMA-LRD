@@ -16,6 +16,7 @@ of Little Red Dots and classical AGNs (EIGER survey, Kapoor+26 sample)**.
   - Targeted edits inside `src/FORMA/` — rest-NIR line tables, LRD knowledge-base and
     skill-prompt content (replacing the optical/DESI domain), and wiring/bug fixes so
     the above is reachable under `HYPOTHESIS_PROVIDER=lrd`.
+- **Full file-by-file guide to the adaptation work: [LRD_WORK.md](./LRD_WORK.md)**
 - Everything below this section is the upstream project's original README.
 
 ---
