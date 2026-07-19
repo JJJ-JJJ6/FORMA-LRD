@@ -1,3 +1,25 @@
+# FORMA-LRD — read this first
+
+This is a private adaptation of the upstream [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
+codebase for **verifying broad-line identifications in JWST/NIRCam F356W WFSS spectra
+of Little Red Dots and classical AGNs (EIGER survey, Kapoor+26 sample)**.
+
+- **Branch `lrd` (this branch): all of the adaptation work.** Branch `master` is the
+  untouched upstream baseline kept only for comparison.
+- **See exactly what was added/changed vs. upstream:**
+  [master...lrd compare view](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/master...lrd)
+- The work consists of:
+  - `lrd_adapt/` — all new code: grizli 1D **and** 2D (`.stack.fits`) converters to
+    FORMA's input format, a paper-claim-driven hypothesis provider (replaces Redrock),
+    LSF/BIC broad-line and blueshifted-absorption fitting tools, external-evidence
+    channel, and a leave-one-out evaluation harness with anonymized ground truth.
+  - Targeted edits inside `src/FORMA/` — rest-NIR line tables, LRD knowledge-base and
+    skill-prompt content (replacing the optical/DESI domain), and wiring/bug fixes so
+    the above is reachable under `HYPOTHESIS_PROVIDER=lrd`.
+- Everything below this section is the upstream project's original README.
+
+---
+
 中文 README 文件见 [README in Chinese](./README_Chinese.md).
 
  **A related paper is in preparation.** 
