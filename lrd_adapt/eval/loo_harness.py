@@ -40,10 +40,12 @@ def _load_json(relpath):
 
 
 def registered_loo_sources():
-    """SRC codes with a primary hypothesis registered -- these are the ones
-    that can actually be run (the hypothesis provider raises without one).
-    Excludes the demo/synthetic-only SRC01 by convention if a real source
-    list exists; for now (only SRC01 registered), returns it too."""
+    """SRC codes with a registered claim to audit -- these are the ones
+    the leave-one-out evaluation can score against ground truth (the
+    hypothesis provider itself no longer requires a registered entry; a
+    source without one just runs blind, with nothing to compare against
+    here). Excludes the demo/synthetic-only SRC01 by convention if a real
+    source list exists; for now (only SRC01 registered), returns it too."""
     return sorted(_load_json("lrd_adapt/configs/primary_hypotheses.json").keys())
 
 

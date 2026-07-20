@@ -1,10 +1,17 @@
 """
 LRD hypothesis provider — replaces Redrock at the VisualInterpreter call site
-(CLAUDE.md finding #2). For each source, emits the primary hypothesis (the
-paper's line ID + z_spec, passed in as a hypothesis to test — never trusted)
-plus every rival line identity consistent with the observed wavelength of the
-strongest detected line, using the F356W grism redshift windows from
-Kapoor+26 Section 3.2.
+(CLAUDE.md finding #2). For each source, generates every line identity
+consistent with the observed wavelength of the strongest detected line,
+using the F356W grism redshift windows from Kapoor+26 Section 3.2.
+
+A registered claim (`primary_line`/`z_spec`, e.g. from a paper table) is
+OPTIONAL and, when given, is carried through only as a provenance tag
+(`_lrd_provenance.matches_registered_claim`) for later scoring/comparison —
+it never changes a candidate's score, computed redshift, or whether it's
+generated at all. Every candidate is derived from the observed wavelength
+the same way, so this works identically for a source with a known claim to
+audit (leave-one-out evaluation against the 19 registered sources) and a
+source with no claim at all (blind search over an unscreened sample).
 
 Output matches the schema of utils.VI._redrock_to_hypotheses /
 brute_force_line_matching: {z, zmedian, hypotheses: [...]}. Downstream
@@ -40,28 +47,37 @@ REDSHIFT_WINDOWS = {
 
 
 def _score_for_window(z, z_min, z_max):
-    """Triangular score peaking at the window center, capped below the
-    primary hypothesis's score of 100 so the paper's claim never gets
-    silently outranked by an untested rival."""
+    """Triangular score peaking at the window center — the same formula for
+    every candidate, including one that happens to match a registered claim.
+    Purely a data-plausibility measure, not a trust signal."""
     center = (z_min + z_max) / 2.0
     half_width = (z_max - z_min) / 2.0
     if half_width <= 0:
         return 0.0
     frac = max(0.0, 1.0 - abs(z - center) / half_width)
-    return 70.0 * frac
+    return 100.0 * frac
 
 
-def generate_lrd_hypotheses(observed_wavelength_ang, primary_line, z_spec, source_code=None):
+def generate_lrd_hypotheses(observed_wavelength_ang, primary_line=None, z_spec=None, source_code=None):
     """
     Parameters
     ----------
     observed_wavelength_ang : float
         Observed wavelength of the strongest detected broad line (Angstrom).
-    primary_line : str
-        Key into REST_WAVELENGTHS_ANG — the paper's claimed line identity
-        for this source (the hypothesis to be audited, not trusted).
-    z_spec : float
-        The paper's claimed redshift for that identity.
+    primary_line : str, optional
+        Key into REST_WAVELENGTHS_ANG — a registered claim for this source
+        (e.g. a paper's line identity), if one exists. Used only to tag
+        whichever generated candidate happens to match it
+        (`_lrd_provenance.matches_registered_claim`) for later scoring — it
+        does not affect that candidate's score or computed redshift, and a
+        claimed line whose data-implied redshift falls outside its own
+        plausible window is not specially retained. If None (no registered
+        claim — the normal case for a blind search), every hypothesis is
+        generated identically with no provenance match possible.
+    z_spec : float, optional
+        The registered claim's redshift, carried through only as
+        `_lrd_provenance.registered_z_spec` for human/eval comparison —
+        never substituted for the data-derived redshift of any candidate.
     source_code : str, optional
         Anonymized code, carried into provenance only (see CLAUDE.md
         Anonymization section — never a real J-name/coordinate).
@@ -72,7 +88,7 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line, z_spec, sourc
         {z, zmedian, hypotheses} — same schema as
         utils.VI._redrock_to_hypotheses / brute_force_line_matching.
     """
-    if primary_line not in REST_WAVELENGTHS_ANG:
+    if primary_line is not None and primary_line not in REST_WAVELENGTHS_ANG:
         raise ValueError(
             f"Unknown primary_line {primary_line!r}; known: {sorted(REST_WAVELENGTHS_ANG)}"
         )
@@ -81,37 +97,35 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line, z_spec, sourc
     for line, rest_ang in REST_WAVELENGTHS_ANG.items():
         z = observed_wavelength_ang / rest_ang - 1.0
         z_min, z_max = REDSHIFT_WINDOWS[line]
-        is_primary = line == primary_line
 
-        if not is_primary and not (z_min <= z <= z_max):
-            continue  # not a live rival for this observed wavelength
+        if not (z_min <= z <= z_max):
+            continue  # not physically plausible at this observed wavelength
 
-        score = 100.0 if is_primary else _score_for_window(z, z_min, z_max)
-        z_used = z_spec if is_primary else z
+        score = _score_for_window(z, z_min, z_max)
+        matches_registered_claim = line == primary_line
 
         hypotheses.append({
             "Hypothesis": (
-                f"{z_used:.4f}-{line} "
-                f"({'paper' if is_primary else 'rival'}, "
-                f"obs={observed_wavelength_ang:.1f}A -> rest={rest_ang:.1f}A)"
+                f"{z:.4f}-{line} (obs={observed_wavelength_ang:.1f}A -> rest={rest_ang:.1f}A)"
             ),
-            "z_center": z_used,
-            "z_list": [z_used],
-            "z_max": z_used,
-            "z_min": z_used,
+            "z_center": z,
+            "z_list": [z],
+            "z_max": z,
+            "z_min": z,
             "z_spread": 0.0,
             "Emission matches": [line],
             "Absorption matches": [],
             "N_emission": 1,
             "N_absorption": 0,
             "matched_lines": {line: observed_wavelength_ang},
-            "z_representative": z_used,
+            "z_representative": z,
             "score": score,
-            "source": "lrd_adapt:paper" if is_primary else "lrd_adapt:rival",
+            "source": "lrd_adapt:candidate",
             "_lrd_provenance": {
                 "source_code": source_code,
                 "line": line,
-                "is_primary": is_primary,
+                "matches_registered_claim": matches_registered_claim,
+                "registered_z_spec": z_spec if matches_registered_claim else None,
                 "window": [z_min, z_max],
             },
         })
@@ -150,32 +164,33 @@ def _strongest_peak_wavelength(state):
 def generate_lrd_hypotheses_for_state(state, params):
     """
     Wired in at the VisualInterpreter Redrock call site
-    (HYPOTHESIS_PROVIDER=lrd). Looks up the per-source primary hypothesis
-    (paper line + z_spec) from the anonymized-code-keyed table in
-    lrd_adapt/configs/primary_hypotheses.json — never from real source
-    identity (that mapping lives separately, outside agent reach, per
-    CLAUDE.md Anonymization).
+    (HYPOTHESIS_PROVIDER=lrd). If this source has a registered claim
+    (anonymized-code-keyed entry in lrd_adapt/configs/primary_hypotheses.json
+    — never from real source identity, that mapping lives separately outside
+    agent reach per CLAUDE.md Anonymization), it's passed through for
+    provenance tagging only. A source with NO registered entry is not an
+    error -- that's the normal case for a blind search over sources with no
+    prior claim -- hypotheses are still generated purely from the observed
+    wavelength.
     """
     table_path = os.getenv("LRD_PRIMARY_HYPOTHESIS_TABLE") or os.path.join(
         os.path.dirname(__file__), "..", "configs", "primary_hypotheses.json"
     )
-    with open(table_path) as f:
-        table = json.load(f)
+    table = {}
+    if os.path.exists(table_path):
+        with open(table_path) as f:
+            table = json.load(f)
 
     source_code = state["file_name"]
-    if source_code not in table:
-        raise ValueError(
-            f"No primary hypothesis registered for {source_code!r} in {table_path}"
-        )
+    entry = table.get(source_code)
 
-    entry = table[source_code]
     observed_wavelength_ang = _strongest_peak_wavelength(state)
     if observed_wavelength_ang is None:
         return {"z": [], "zmedian": None, "hypotheses": []}
 
     return generate_lrd_hypotheses(
         observed_wavelength_ang=observed_wavelength_ang,
-        primary_line=entry["line"],
-        z_spec=entry["z_spec"],
+        primary_line=entry["line"] if entry else None,
+        z_spec=entry["z_spec"] if entry else None,
         source_code=source_code,
     )

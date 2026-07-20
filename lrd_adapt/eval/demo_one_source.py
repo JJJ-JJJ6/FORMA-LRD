@@ -120,12 +120,29 @@ def main():
     (OUT_DIR / "redshift_hypotheses.json").write_text(json.dumps(hyps, indent=2))
     print(f"[4/4] hypotheses written -> {OUT_DIR / 'redshift_hypotheses.json'}")
 
-    print("\nPrimary + rival hypotheses:")
+    print("\nCandidate hypotheses (data-derived, no privileged answer):")
     for h in hyps["hypotheses"]:
-        print(f"  score={h['score']:6.1f}  source={h['source']:18s}  {h['Hypothesis']}")
+        matches = h["_lrd_provenance"]["matches_registered_claim"]
+        print(f"  score={h['score']:6.1f}  matches_registered_claim={matches!s:5s}  {h['Hypothesis']}")
 
-    assert any(h["source"] == "lrd_adapt:paper" for h in hyps["hypotheses"]), "primary hypothesis missing"
-    assert hyps["hypotheses"][0]["source"] == "lrd_adapt:paper", "primary hypothesis should score highest"
+    # The registered claim (He I+Pagamma) must still appear as a candidate.
+    # It does NOT necessarily score highest: with only one detected peak,
+    # window-centering alone is a weak discriminator (the six redshift
+    # windows are similar widths, so some other line's window often centers
+    # marginally closer) -- see lrd_adapt/hypothesis/test_lrd_hypothesis_provider.py
+    # for why near-degenerate single-peak scores are the expected, honest
+    # behavior, not a bug. This is a plumbing check (does the registered
+    # claim survive as a live candidate with a comparable score), not a
+    # claim that scoring alone resolves single-line ambiguity.
+    assert any(
+        h["_lrd_provenance"]["matches_registered_claim"] for h in hyps["hypotheses"]
+    ), "registered claim (HeI_Pagamma) did not even appear as a candidate"
+    he1 = next(h for h in hyps["hypotheses"] if h["_lrd_provenance"]["matches_registered_claim"])
+    top_score = hyps["hypotheses"][0]["score"]
+    assert top_score - he1["score"] < 5.0, (
+        f"registered claim scored {he1['score']:.1f} vs top {top_score:.1f} -- "
+        "suspiciously far off for a clean single-line synthetic injection"
+    )
 
     print(f"\nOK -- full output tree for one source at {OUT_DIR}")
 

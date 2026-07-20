@@ -1,0 +1,126 @@
+"""
+Tests for the debiased hypothesis provider: candidates must be generated,
+scored, and redshift-computed identically whether or not a registered claim
+exists, so a source with no prior claim (blind search) is handled the same
+way as one with a known claim to audit.
+
+No pytest dependency -- run directly:
+    python lrd_adapt/hypothesis/test_lrd_hypothesis_provider.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from lrd_adapt.hypothesis.lrd_hypothesis_provider import (  # noqa: E402
+    generate_lrd_hypotheses,
+)
+
+# SRC04's real CWT-detected peak (see project history: 36030.0 A, matches
+# the paper's He I 10833 claim at z=2.328 to within ~1 pixel).
+SRC04_OBSERVED_PEAK_ANG = 36030.0
+
+
+def test_blind_call_needs_no_registered_claim():
+    """No primary_line/z_spec at all -- must not raise, must still enumerate
+    every physically plausible candidate."""
+    result = generate_lrd_hypotheses(observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG)
+    assert result["hypotheses"], "blind call produced no candidates at all"
+    for h in result["hypotheses"]:
+        assert h["_lrd_provenance"]["matches_registered_claim"] is False
+        assert h["_lrd_provenance"]["registered_z_spec"] is None
+
+
+def test_blind_call_all_six_candidates_are_genuinely_close_for_one_peak():
+    """Honest finding, not a bug: with only ONE detected peak and no other
+    information, the window-centering score should NOT strongly discriminate
+    among the six candidates -- that's a real information-theoretic limit,
+    not something a scoring formula can paper over. All six line up within
+    a few points of each other for SRC04's real peak (matches the actual
+    full-pipeline LLM run's independent conclusion: LineIDAmbiguous,
+    six-way degeneracy, needs corroborating lines/external evidence to
+    break). If this ever starts strongly favoring one candidate from a
+    single peak alone, that's a red flag that scoring picked up a bias
+    again, not that it got smarter."""
+    result = generate_lrd_hypotheses(observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG)
+    scores = [h["score"] for h in result["hypotheses"]]
+    assert len(scores) == 6, f"expected all 6 lines to be physically plausible here, got {len(scores)}"
+    assert max(scores) - min(scores) < 5.0, (
+        f"scores span {max(scores) - min(scores):.1f} points -- single-peak scoring "
+        "should stay near-degenerate across all plausible candidates, see docstring"
+    )
+    lines = {h["_lrd_provenance"]["line"] for h in result["hypotheses"]}
+    assert "HeI_Pagamma" in lines, "the registered claim's line should still appear as a candidate"
+
+
+def test_registered_claim_is_provenance_only_not_a_score_boost():
+    """Same peak, called with vs without the registered claim, must produce
+    IDENTICAL scores and redshifts for every candidate -- the claim may only
+    change the `matches_registered_claim`/`registered_z_spec` tags."""
+    blind = generate_lrd_hypotheses(observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG)
+    with_claim = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        primary_line="HeI_Pagamma", z_spec=2.328,
+    )
+
+    blind_by_line = {h["_lrd_provenance"]["line"]: h for h in blind["hypotheses"]}
+    claim_by_line = {h["_lrd_provenance"]["line"]: h for h in with_claim["hypotheses"]}
+    assert set(blind_by_line) == set(claim_by_line), "registering a claim changed which candidates are generated"
+
+    for line, h_blind in blind_by_line.items():
+        h_claim = claim_by_line[line]
+        assert h_blind["score"] == h_claim["score"], f"{line}: score changed by registering a claim"
+        assert h_blind["z_representative"] == h_claim["z_representative"], (
+            f"{line}: computed redshift changed by registering a claim"
+        )
+
+    # Only the tag differs, and only on the matching candidate.
+    he1_claim = claim_by_line["HeI_Pagamma"]
+    assert he1_claim["_lrd_provenance"]["matches_registered_claim"] is True
+    assert he1_claim["_lrd_provenance"]["registered_z_spec"] == 2.328
+    for line, h in claim_by_line.items():
+        if line != "HeI_Pagamma":
+            assert h["_lrd_provenance"]["matches_registered_claim"] is False
+
+
+def test_registered_z_spec_never_overrides_data_derived_redshift():
+    """A deliberately WRONG registered z_spec must not change the computed
+    redshift for the matching candidate -- it's data-derived only."""
+    result = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        primary_line="HeI_Pagamma", z_spec=99.0,  # deliberately wrong
+    )
+    he1 = next(h for h in result["hypotheses"] if h["_lrd_provenance"]["line"] == "HeI_Pagamma")
+    assert abs(he1["z_representative"] - 2.3259) < 1e-3, (
+        "redshift should come from the observed peak, not the (wrong) registered z_spec"
+    )
+    assert he1["_lrd_provenance"]["registered_z_spec"] == 99.0, "the wrong claim should still be tagged, just inert"
+
+
+def test_implausible_registered_line_is_not_grandfathered_in():
+    """A registered claim whose implied redshift falls outside its own
+    line's plausible window must NOT be force-included -- no candidate gets
+    a free pass just because a paper claims it."""
+    # At this peak, Halpha's implied z is ~4.49 -- outside its own window
+    # only if the peak doesn't correspond to it; use an observed wavelength
+    # where Paalpha's implied z falls outside Paalpha's own window.
+    obs_wl_outside_paalpha_window = 18756.0 * (1 + 5.0)  # z=5.0, Paalpha window is (0.68, 1.10)
+    result = generate_lrd_hypotheses(
+        observed_wavelength_ang=obs_wl_outside_paalpha_window,
+        primary_line="Paalpha", z_spec=5.0,
+    )
+    lines_present = {h["_lrd_provenance"]["line"] for h in result["hypotheses"]}
+    assert "Paalpha" not in lines_present, (
+        "a registered claim outside its own line's redshift window should not be force-included"
+    )
+
+
+if __name__ == "__main__":
+    test_blind_call_needs_no_registered_claim()
+    test_blind_call_all_six_candidates_are_genuinely_close_for_one_peak()
+    test_registered_claim_is_provenance_only_not_a_score_boost()
+    test_registered_z_spec_never_overrides_data_derived_redshift()
+    test_implausible_registered_line_is_not_grandfathered_in()
+    print("OK -- debiased hypothesis provider tests passed.")

@@ -39,28 +39,22 @@ independent look found nothing" -- rather than the harder, currently
 unanswerable "does the pipeline get this object's true classification
 right."
 
-## Still unresolved: the hypothesis-provider design gap
+## Update: the hypothesis-provider design gap is resolved
 
 lrd_adapt/hypothesis/lrd_hypothesis_provider.py's generate_lrd_hypotheses()
-takes `primary_line` and `z_spec` as REQUIRED arguments -- by design,
-because for the 19 real sources there always IS a paper claim to audit
-(that's the whole point of the "primary hypothesis = paper's claim" design
-from A1). A negative control -- even a properly screened one -- still has
-no such claim; calling generate_lrd_hypotheses_for_state() on one will
-raise (`No primary hypothesis registered for ...`), not gracefully return
-"no claim to test." This still needs a real design decision:
-
-- Option A: extend the hypothesis provider with a mode that, given only an
-  observed wavelength (if the screening step above found one after all, or
-  for a candidate deliberately kept despite showing something), enumerates
-  the six candidate identities with NO designated "primary"/paper one, and
-  scores whether the pipeline stays appropriately uncertain rather than
-  confidently confirming any of them.
-- Option B: for candidates the screening step confirms show NO line at
-  all, test that the pipeline correctly returns Unknown when the
-  converter/CWT stage finds nothing -- simpler, and now the more directly
-  applicable of the two given how screening works, since a properly
-  screened negative control is by construction a "no line" case.
+used to take `primary_line`/`z_spec` as REQUIRED arguments and raise
+(`No primary hypothesis registered for ...`) for any source without one --
+this was Option A below, now implemented: `primary_line`/`z_spec` are
+optional, and calling generate_lrd_hypotheses_for_state() on an
+unregistered source (e.g. a screened negative control, or any blind-search
+source) returns the same six-candidate enumeration with no privileged
+answer, scored purely from the data. A properly screened "confirmed no
+line" negative control still degrades further upstream (Option B): zero
+CWT peaks means _strongest_peak_wavelength returns None and the pipeline
+short-circuits to an empty-but-valid hypothesis set before this function
+is even reached. Both paths from the original options are now covered;
+what's still missing is real screened negative-control sources themselves
+(catalog access, see the section above), not provider plumbing.
 
 Manifest format (once real, screened sources are available):
     lrd_adapt/eval/negative_controls_manifest.json

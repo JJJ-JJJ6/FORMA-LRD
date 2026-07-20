@@ -22,12 +22,16 @@ separate is what makes each one auditable on its own terms.
 
 ## The six candidate identities
 
-Every source in this sample is a known broad-line source (Kapoor+26 Table
-1) with one dominant detected line. That line's observed wavelength is
+When VisualInterpreter detects a dominant line, its observed wavelength is
 consistent, in principle, with six different rest-frame identities — each
 implying a different systemic redshift. See `kb/lines.md` for the exact
-rest wavelengths and z-windows. In identity order (short to long rest
-wavelength):
+rest wavelengths and z-windows. This holds regardless of whether the
+source has a prior claim to audit (Kapoor+26 Table 1's 19 confirmed
+broad-line sources) or none at all (a blind search over an unscreened
+sample) — evaluate the six candidates purely on the evidence in either
+case. Not finding credible support for any of them is a valid, expected
+outcome, not a failure of this stage. In identity order (short to long
+rest wavelength):
 
 1. **O I 8446** (z window 2.73-3.68)
 2. **[S III]** 9071/9533 (z window 2.30-3.14)
