@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from lrd_adapt.hypothesis.lrd_hypothesis_provider import (  # noqa: E402
     generate_lrd_hypotheses,
+    generate_lrd_hypotheses_for_state,
 )
 
 # SRC04's real CWT-detected peak (see project history: 36030.0 A, matches
@@ -117,10 +118,126 @@ def test_implausible_registered_line_is_not_grandfathered_in():
     )
 
 
+# -----------------------------------------------------------------------
+# External redshift prior (e.g. grizli's own automated z-fit, once a real
+# product exists to parse -- see lrd_hypothesis_provider.py's docstring).
+# He I+Pagamma's data-implied z at SRC04's real peak is ~2.3259.
+# -----------------------------------------------------------------------
+
+HEI_IMPLIED_Z_AT_SRC04_PEAK = 36030.0 / 10833.0 - 1.0  # ~2.3259
+
+
+def test_omitting_prior_args_is_unchanged_from_no_prior_support_at_all():
+    """Regression guard: callers that don't know about the prior mechanism
+    (every existing call site) must see byte-identical scores to before it
+    existed."""
+    with_defaults = generate_lrd_hypotheses(observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG)
+    explicit_none = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        external_z_prior=None, external_z_prior_sigma=None,
+    )
+    for h1, h2 in zip(with_defaults["hypotheses"], explicit_none["hypotheses"]):
+        assert h1["score"] == h2["score"]
+    for h in with_defaults["hypotheses"]:
+        assert h["_lrd_provenance"]["prior_bonus"] == 0.0
+
+
+def test_tight_prior_near_hei_breaks_the_degeneracy():
+    """A confident external prior (small sigma) close to He I's data-implied
+    z should make He I clearly win, unlike the near-degenerate no-prior
+    case -- this is the mechanism that would let a real grizli multi-line
+    fit (sharp zgrid peak) actually resolve what one peak alone cannot."""
+    result = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        external_z_prior=HEI_IMPLIED_Z_AT_SRC04_PEAK,
+        external_z_prior_sigma=0.01,
+        external_z_prior_source="test_grizli_zfit",
+    )
+    top = result["hypotheses"][0]
+    assert top["_lrd_provenance"]["line"] == "HeI_Pagamma", (
+        f"expected a tight prior to make HeI_Pagamma win, got {top['_lrd_provenance']['line']!r}"
+    )
+    runner_up_score = result["hypotheses"][1]["score"]
+    assert top["score"] - runner_up_score > 20.0, "tight prior should clearly separate the winner, not just nudge it"
+    assert top["_lrd_provenance"]["external_z_prior_source"] == "test_grizli_zfit"
+
+
+def test_loose_prior_only_mildly_nudges_not_dominates():
+    """A coarse prior (sigma large relative to the ~3.6-wide spread of
+    candidate redshifts here, e.g. a rough photo-z) should leave the
+    SPREAD between candidate scores close to the no-prior baseline --
+    everyone gets a similar bonus, so it doesn't newly sharpen the
+    discrimination the way a tight prior does. sigma=2.0 turns out to
+    still be fairly discriminating at this z scale (candidates span
+    z~0.9-4.5) -- sigma=8 is the genuinely loose case."""
+    no_prior = generate_lrd_hypotheses(observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG)
+    with_loose_prior = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        external_z_prior=HEI_IMPLIED_Z_AT_SRC04_PEAK,
+        external_z_prior_sigma=8.0,
+    )
+    no_prior_scores = [h["score"] for h in no_prior["hypotheses"]]
+    loose_scores = [h["score"] for h in with_loose_prior["hypotheses"]]
+    no_prior_spread = max(no_prior_scores) - min(no_prior_scores)
+    loose_spread = max(loose_scores) - min(loose_scores)
+    assert loose_spread < no_prior_spread + 5.0, (
+        f"a loose (sigma=8) prior widened the score spread from {no_prior_spread:.1f} to "
+        f"{loose_spread:.1f} -- expected it to stay close to the no-prior baseline"
+    )
+
+
+def test_prior_far_from_every_candidate_barely_helps_anyone():
+    """An external prior that doesn't match ANY candidate's implied redshift
+    should leave scores close to the no-prior baseline for everyone -- it
+    shouldn't manufacture a false winner out of a bad prior."""
+    result = generate_lrd_hypotheses(
+        observed_wavelength_ang=SRC04_OBSERVED_PEAK_ANG,
+        external_z_prior=50.0,  # nowhere near any of the ~0.9-4.5 candidates
+        external_z_prior_sigma=0.05,
+    )
+    for h in result["hypotheses"]:
+        assert h["_lrd_provenance"]["prior_bonus"] < 1.0
+
+
+def test_state_wiring_passes_prior_through_when_present():
+    """generate_lrd_hypotheses_for_state should pick up an external prior
+    from state if some upstream step ever sets one -- this is the hook a
+    future grizli-zfit-reading converter would plug into."""
+    state = {
+        "file_name": "SRC_NOT_REGISTERED_AT_ALL",
+        "peaks": [{"wavelength": SRC04_OBSERVED_PEAK_ANG, "amplitude": 1.0}],
+        "external_z_prior": HEI_IMPLIED_Z_AT_SRC04_PEAK,
+        "external_z_prior_sigma": 0.01,
+        "external_z_prior_source": "test_state_wiring",
+    }
+    result = generate_lrd_hypotheses_for_state(state, params=None)
+    top = result["hypotheses"][0]
+    assert top["_lrd_provenance"]["line"] == "HeI_Pagamma"
+    assert top["_lrd_provenance"]["external_z_prior_source"] == "test_state_wiring"
+
+
+def test_state_wiring_defaults_to_no_prior_when_absent():
+    """Existing state dicts (no external_z_prior key at all) must behave
+    exactly as before this feature existed."""
+    state = {
+        "file_name": "SRC_NOT_REGISTERED_AT_ALL",
+        "peaks": [{"wavelength": SRC04_OBSERVED_PEAK_ANG, "amplitude": 1.0}],
+    }
+    result = generate_lrd_hypotheses_for_state(state, params=None)
+    for h in result["hypotheses"]:
+        assert h["_lrd_provenance"]["prior_bonus"] == 0.0
+
+
 if __name__ == "__main__":
     test_blind_call_needs_no_registered_claim()
     test_blind_call_all_six_candidates_are_genuinely_close_for_one_peak()
     test_registered_claim_is_provenance_only_not_a_score_boost()
     test_registered_z_spec_never_overrides_data_derived_redshift()
     test_implausible_registered_line_is_not_grandfathered_in()
-    print("OK -- debiased hypothesis provider tests passed.")
+    test_omitting_prior_args_is_unchanged_from_no_prior_support_at_all()
+    test_tight_prior_near_hei_breaks_the_degeneracy()
+    test_loose_prior_only_mildly_nudges_not_dominates()
+    test_prior_far_from_every_candidate_barely_helps_anyone()
+    test_state_wiring_passes_prior_through_when_present()
+    test_state_wiring_defaults_to_no_prior_when_absent()
+    print("OK -- debiased hypothesis provider + external-prior tests passed.")

@@ -20,6 +20,7 @@ harness code does not care where hypotheses come from (finding #1).
 from __future__ import annotations
 
 import json
+import math
 import os
 import statistics
 
@@ -58,7 +59,32 @@ def _score_for_window(z, z_min, z_max):
     return 100.0 * frac
 
 
-def generate_lrd_hypotheses(observed_wavelength_ang, primary_line=None, z_spec=None, source_code=None):
+def _prior_bonus(z, prior, prior_sigma):
+    """Gaussian bonus in [0, 100] for how close a candidate's data-implied
+    redshift is to an independent external prior, in units of the prior's
+    own uncertainty. 0 if no prior was given. A tight prior (small sigma —
+    e.g. a confident multi-line automated fit) sharply favors the one
+    matching candidate and does almost nothing for the rest; a loose prior
+    (large sigma — e.g. a coarse photometric redshift) gives everyone a
+    gentle, roughly even nudge. This is additive on top of _score_for_window,
+    not a replacement -- a candidate outside its own physically plausible
+    window is still never generated at all, no matter how well it matches
+    the prior."""
+    if prior is None or prior_sigma is None or prior_sigma <= 0:
+        return 0.0
+    n_sigma = abs(z - prior) / prior_sigma
+    return 100.0 * math.exp(-0.5 * n_sigma ** 2)
+
+
+def generate_lrd_hypotheses(
+    observed_wavelength_ang,
+    primary_line=None,
+    z_spec=None,
+    source_code=None,
+    external_z_prior=None,
+    external_z_prior_sigma=None,
+    external_z_prior_source=None,
+):
     """
     Parameters
     ----------
@@ -81,6 +107,30 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line=None, z_spec=N
     source_code : str, optional
         Anonymized code, carried into provenance only (see CLAUDE.md
         Anonymization section — never a real J-name/coordinate).
+    external_z_prior : float, optional
+        An independently-derived redshift estimate for this source (e.g.
+        grizli's own template-fit best-z from its full.fits product, or a
+        photometric redshift) -- NOT derived from assuming any particular
+        identity for the line under test here, or scoring becomes
+        circular (a prior is "independent" if you could have computed it
+        without already knowing which line this is). When given, every
+        candidate's score gets a bonus for how close its data-implied
+        redshift sits to this prior -- see _prior_bonus. This is the hook
+        for consuming e.g. grizli's automated redshift fit once a real
+        product exists to parse (not implemented yet -- no real grizli
+        full.fits has been available to check the schema against; see
+        lrd_adapt/hypothesis/test_lrd_hypothesis_provider.py for how this
+        parameter behaves once something does supply it).
+    external_z_prior_sigma : float, optional
+        1-sigma uncertainty on external_z_prior. Required for the prior to
+        have any effect -- an unquantified prior can't be weighted
+        meaningfully. Smaller = sharper discrimination (e.g. a confident
+        multi-line automated fit); larger = a gentler, more permissive
+        nudge (e.g. a coarse photo-z).
+    external_z_prior_source : str, optional
+        Free-text provenance for the prior (e.g. "grizli_zfit", "photo_z"),
+        carried into _lrd_provenance only -- audit trail, never affects
+        the computed score.
 
     Returns
     -------
@@ -101,7 +151,9 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line=None, z_spec=N
         if not (z_min <= z <= z_max):
             continue  # not physically plausible at this observed wavelength
 
-        score = _score_for_window(z, z_min, z_max)
+        window_score = _score_for_window(z, z_min, z_max)
+        prior_bonus = _prior_bonus(z, external_z_prior, external_z_prior_sigma)
+        score = window_score + prior_bonus
         matches_registered_claim = line == primary_line
 
         hypotheses.append({
@@ -127,6 +179,11 @@ def generate_lrd_hypotheses(observed_wavelength_ang, primary_line=None, z_spec=N
                 "matches_registered_claim": matches_registered_claim,
                 "registered_z_spec": z_spec if matches_registered_claim else None,
                 "window": [z_min, z_max],
+                "window_score": window_score,
+                "external_z_prior": external_z_prior,
+                "external_z_prior_sigma": external_z_prior_sigma,
+                "external_z_prior_source": external_z_prior_source,
+                "prior_bonus": prior_bonus,
             },
         })
 
@@ -172,6 +229,16 @@ def generate_lrd_hypotheses_for_state(state, params):
     error -- that's the normal case for a blind search over sources with no
     prior claim -- hypotheses are still generated purely from the observed
     wavelength.
+
+    Also reads an optional external redshift prior straight from state
+    (state['external_z_prior']/['external_z_prior_sigma']/
+    ['external_z_prior_source']) if some upstream step has set one -- e.g.
+    a future converter that parses grizli's own automated redshift-fit
+    product (full.fits), once a real one exists to check the schema
+    against. Nothing currently sets these state fields; they default to
+    None, which generate_lrd_hypotheses treats as "no prior" (unchanged
+    behavior). This is the wiring point for that future integration, not
+    the integration itself.
     """
     table_path = os.getenv("LRD_PRIMARY_HYPOTHESIS_TABLE") or os.path.join(
         os.path.dirname(__file__), "..", "configs", "primary_hypotheses.json"
@@ -193,4 +260,7 @@ def generate_lrd_hypotheses_for_state(state, params):
         primary_line=entry["line"] if entry else None,
         z_spec=entry["z_spec"] if entry else None,
         source_code=source_code,
+        external_z_prior=state.get("external_z_prior"),
+        external_z_prior_sigma=state.get("external_z_prior_sigma"),
+        external_z_prior_source=state.get("external_z_prior_source"),
     )

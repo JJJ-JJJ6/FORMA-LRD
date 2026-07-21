@@ -82,3 +82,6 @@ class SpectroState(MessagesState):
     _failure_recorded: Optional[bool] = None              # SelfEvolve failure tracking
     external_evidence: Optional[Dict[str, Any]] = None    # LRD domain Stage B: photometry, Balmer break,
                                                             # r_circ, X-ray, morphology (lrd_adapt/evidence)
+    external_z_prior: Optional[float] = None               # LRD domain: independent redshift estimate
+    external_z_prior_sigma: Optional[float] = None         # (e.g. grizli's own template fit, photo-z) --
+    external_z_prior_source: Optional[str] = None          # unset by default; see lrd_hypothesis_provider.py
