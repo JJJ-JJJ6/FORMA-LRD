@@ -65,4 +65,6 @@ wxyv46kb.pdf
 **/*_redrock/
 *.egg-info/
 lrd_adapt/eval/_demo_output/
+lrd_adapt/converter/_demo_output/
+lrd_adapt/blind/_demo_output/
 

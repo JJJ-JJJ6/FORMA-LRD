@@ -69,6 +69,12 @@ The work lives in two layers.
 | `test_anonymizer_isolation.py` | Regression test: no real source ID is reachable from any agent-visible KB, skill, or config content. |
 | `test_loo_harness.py`, `test_metrics.py`, `test_negative_controls.py`, `test_synthetic_injection.py` | Unit/integration tests for the above. |
 
+### `lrd_adapt/blind/` — blind-search triage (supervisor pivot, 2026-07)
+
+| File | Purpose |
+|---|---|
+| `triage.py` (+ `test_triage.py`) | Cheap CWT-only scan over many grizli `*.stack.fits` files — no redshift, no hypothesis, no LLM. First stage of the blind-search funnel (mirrors Kapoor+26's own Allegro first pass): flag line-candidate sources, then spend the expensive `run_fit=True` re-extraction and full FORMA verification only on the flagged subset. Reuses the pipeline's own boxcar extractor and CWT detector with the live `.env` preset values; deliberately over-inclusive (any emission detection flags; runs unmasked, so contamination residuals can flag too — filtered downstream, never lost). `--flagged-csv` output feeds the eor1 `extract_all.py --ids-csv` re-extraction directly. |
+
 ### `lrd_adapt/kb_drafts/`
 
 | File | Purpose |
