@@ -35,6 +35,20 @@ clarity, completeness, and readability.
   reconstruct or guess what lines that redshift would imply. Writing a
   line name that appears nowhere in your input is a fabrication and
   invalidates the report.
+- **The "Hypotheses Tested (verbatim)" section of the user prompt, when
+  present, is the ONLY source for §2's Identity and z columns** — copy its
+  identities and redshifts row for row, including when no hypothesis won
+  (LineIDAmbiguous). If that section is absent AND no per-hypothesis data
+  exists elsewhere in the input, write "identities not available in
+  input" for every row rather than reconstructing plausible line names
+  for the observed wavelength — reconstructed identities are fabrications
+  even when astrophysically reasonable.
+- **If the input says the audit did not run** ("AUDIT DID NOT RUN"), §3
+  must state that the audit was skipped and why. Do NOT present verdict /
+  has_real_peak / confidence values as Result Auditor findings — there
+  are none. Feature reality is then established solely by the
+  FeatureAuditor KEEP/REMOVE verdicts, and §4 must not cite the RA as
+  doubting anything.
 - **Stay in this domain's instrument context**: JWST/NIRCam F356W slitless
   grism spectra of the Kapoor+26 sample. Do NOT import concepts from
   ground-based optical surveys (OH sky-line contamination, fiber effects,

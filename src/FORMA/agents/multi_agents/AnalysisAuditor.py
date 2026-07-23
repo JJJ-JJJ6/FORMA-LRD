@@ -1940,11 +1940,17 @@ class AnalysisAuditor(BaseAgent):
         if not rule_analysis or rule_analysis.get("redshift") is None:
             print("[AnalysisAuditor] No valid synthesis verdict — skipping audit.")
             state["auditor_verdict"] = "SKIPPED: no synthesis verdict"
+            # audit_skipped marks this as a placeholder, NOT an auditor
+            # finding: no audit ran, so has_real_peak is unknown (None),
+            # not False — a False here contradicted FeatureAuditor KEEPs
+            # and got presented downstream as a real RA verdict.
             state["auditor_verdict_json"] = {
+                "audit_skipped": True,
+                "skip_reason": "No synthesis verdict to audit (no winning hypothesis).",
                 "verdict": "UNCERTAIN",
                 "calibrated_confidence": "LOW",
                 "spectrum_quality": "unknown",
-                "has_real_peak": False,
+                "has_real_peak": None,
                 "confirmed_lines": [],
                 "line_revisions": [],
                 "spectrum_issues": ["No synthesis verdict to audit."],
@@ -2104,11 +2110,16 @@ class AnalysisAuditor(BaseAgent):
         if parsed is None:
             print("[AnalysisAuditor] Could not extract JSON from audit response.")
             state["auditor_verdict"] = "ERROR: could not parse JSON"
+            # Same placeholder convention as the skip path above: the audit
+            # produced no usable verdict, so mark it and leave
+            # has_real_peak unknown rather than asserting False.
             state["auditor_verdict_json"] = {
+                "audit_skipped": True,
+                "skip_reason": "Auditor ran but its response JSON could not be parsed.",
                 "verdict": "UNCERTAIN",
                 "calibrated_confidence": "LOW",
                 "spectrum_quality": "unknown",
-                "has_real_peak": False,
+                "has_real_peak": None,
                 "confirmed_lines": [],
                 "line_revisions": [],
                 "spectrum_issues": ["Failed to parse JSON from auditor response."],

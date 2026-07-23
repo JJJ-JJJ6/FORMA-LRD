@@ -5,96 +5,298 @@
       "value": "Red/dust-reddened continuum shape (F150W-F356W color), consistent with a dust-reddened AGN or reddened stellar population",
       "provenance": "paper"
     },
-    "balmer_break": { "value": 2.3, "unit": "f_nu,4050/f_nu,3650", "provenance": "paper" },
-    "r_circ_mas": { "value": 98.0, "provenance": "paper" },
-    "xray": { "coverage": true, "detected": false, "provenance": "paper" },
-    "morphology_notes": { "value": "Compact in F356W, no PSF deconvolution applied", "provenance": "paper" },
+    "balmer_break": {
+      "value": 2.3,
+      "unit": "f_nu,4050/f_nu,3650",
+      "provenance": "paper"
+    },
+    "r_circ_mas": {
+      "value": 98.0,
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": false,
+      "provenance": "paper"
+    },
+    "morphology_notes": {
+      "value": "Compact in F356W, no PSF deconvolution applied",
+      "provenance": "paper"
+    },
     "_note": "Demo/synthetic entry only (SRC01 = the A1/Stage B worked demo). Not real Kapoor+26 measurements -- these values were invented for plumbing tests before the real Table 1 data was extracted. See SRC04 (J1030_2735, the real source this demo was modeled on) for actual paper values."
   },
   "SRC02": {
-    "balmer_break": { "value": "strong", "provenance": "paper", "note": "Kapoor+26 Sec 4.3 prose: J1030_2735 and J1148_21539 show strong Balmer breaks. No precise per-source f_nu ratio extracted." },
-    "photometry": { "value": "M5100 = -20.4", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "balmer_break": {
+      "value": "strong",
+      "provenance": "paper",
+      "note": "Kapoor+26 Sec 4.3 prose: J1030_2735 and J1148_21539 show strong Balmer breaks. No precise per-source f_nu ratio extracted."
+    },
+    "photometry": {
+      "value": "M5100 = -20.4",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC03": {
-    "balmer_break": { "value": "weak", "provenance": "paper", "note": "J1030_2545, J0148_9325, J159_6107 have relatively weak Balmer breaks (Kapoor+26 Sec 4.3)." },
-    "photometry": { "value": "M5100 = -19.4 (paper's faintest LRD)", "provenance": "paper" },
-    "morphology_notes": { "value": "Continuum emission clearly dominated by contamination (Kapoor+26 Sec 4.2, direct quote)", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "balmer_break": {
+      "value": "weak",
+      "provenance": "paper",
+      "note": "J1030_2545, J0148_9325, J159_6107 have relatively weak Balmer breaks (Kapoor+26 Sec 4.3)."
+    },
+    "photometry": {
+      "value": "M5100 = -19.4 (paper's faintest LRD)",
+      "provenance": "paper"
+    },
+    "morphology_notes": {
+      "value": "Continuum emission clearly dominated by contamination (Kapoor+26 Sec 4.2, direct quote)",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC04": {
-    "balmer_break": { "value": "strong (sample's strongest)", "provenance": "paper" },
-    "photometry": { "value": "M5100 = -21.5", "provenance": "paper" },
-    "morphology_notes": { "value": "Previously published independently (Loiacono et al. 2025)", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "balmer_break": {
+      "value": "strong (sample's strongest)",
+      "provenance": "paper"
+    },
+    "photometry": {
+      "value": "M5100 = -21.5",
+      "provenance": "paper"
+    },
+    "morphology_notes": {
+      "value": "Previously published independently (Loiacono et al. 2025)",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC05": {
-    "balmer_break": { "value": "weak", "provenance": "paper" },
-    "photometry": { "value": "M5100 = -19.7", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "balmer_break": {
+      "value": "weak",
+      "provenance": "paper"
+    },
+    "photometry": {
+      "value": "M5100 = -19.7",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC06": {
-    "balmer_break": { "value": "weak", "provenance": "paper" },
-    "photometry": { "value": "M5100 = -22.3", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "balmer_break": {
+      "value": "weak",
+      "provenance": "paper"
+    },
+    "photometry": {
+      "value": "M5100 = -22.3",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC07": {
-    "photometry": { "value": "M5100 = -21.6", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.6",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC08": {
-    "photometry": { "value": "M5100 = -21.7", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": true, "provenance": "paper", "note": "Unambiguous: all 3 Table 1 flags checked on this row." },
-    "morphology_notes": { "value": "He I outflow signature detected", "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.7",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": true,
+      "provenance": "paper",
+      "note": "Unambiguous: all 3 Table 1 flags checked on this row."
+    },
+    "morphology_notes": {
+      "value": "He I outflow signature detected",
+      "provenance": "paper"
+    }
   },
   "SRC09": {
-    "photometry": { "value": "M5100 = -22.9", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -22.9",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC10": {
-    "photometry": { "value": "M5100 = -21.5", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.5",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC11": {
-    "photometry": { "value": "M5100 = -21.6", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.6",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC12": {
-    "photometry": { "value": "M5100 = -22.4", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -22.4",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC13": {
-    "photometry": { "value": "M5100 = -21.5", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.5",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC14": {
-    "photometry": { "value": "M5100 = -22.6 (luminous)", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -22.6 (luminous)",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC15": {
-    "photometry": { "value": "M5100 = -24.4 (sample's most luminous source)", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": true, "provenance": "paper", "note": "Unambiguous: all 3 Table 1 flags checked on this row." },
-    "morphology_notes": { "value": "He I outflow signature detected", "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -24.4 (sample's most luminous source)",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": true,
+      "provenance": "paper",
+      "note": "Unambiguous: all 3 Table 1 flags checked on this row."
+    },
+    "morphology_notes": {
+      "value": "He I outflow signature detected",
+      "provenance": "paper"
+    }
   },
   "SRC16": {
-    "photometry": { "value": "M5100 = -22.3", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -22.3",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC17": {
-    "photometry": { "value": "M5100 = -22.1", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -22.1",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC18": {
-    "photometry": { "value": "M5100 = -21.3", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -21.3",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC19": {
-    "photometry": { "value": "M5100 = -20.2 (faintest, most compact broad-line source in the sample)", "provenance": "paper" },
-    "morphology_notes": { "value": "Spectrum better fitted by a blue quasar template; morphology (with faint clumpy neighbors) resembles the LRDs despite the classical-AGN classification -- paper's 'transitionary object' framing", "provenance": "paper" },
-    "xray": { "coverage": true, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -20.2 (faintest, most compact broad-line source in the sample)",
+      "provenance": "paper"
+    },
+    "morphology_notes": {
+      "value": "Spectrum better fitted by a blue quasar template; morphology (with faint clumpy neighbors) resembles the LRDs despite the classical-AGN classification -- paper's 'transitionary object' framing",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": true,
+      "detected": null,
+      "provenance": "paper"
+    }
   },
   "SRC20": {
-    "photometry": { "value": "M5100 = -25.3 (very luminous)", "provenance": "paper" },
-    "xray": { "coverage": false, "detected": null, "provenance": "paper" }
+    "photometry": {
+      "value": "M5100 = -25.3 (very luminous)",
+      "provenance": "paper"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "paper"
+    }
+  },
+  "SRC90": {
+    "_note": "SYNTHETIC demo source (synth_00004 fake specvizitor data). Evidence MEASURED by lrd_adapt/evidence tools, not transcribed from any paper.",
+    "balmer_break": {
+      "value": "break proxy f_nu(F200W)/f_nu(F115W) = 1.313 (weak/no break; reliable at this z, window 2.30-4.20)",
+      "provenance": "ours"
+    },
+    "photometry": {
+      "value": "colors: F115W-F200W = 0.296 mag, F200W-F356W = 0.317 mag (moderately red continuum)",
+      "provenance": "ours"
+    },
+    "r_circ_mas": {
+      "value": 182.5,
+      "provenance": "ours"
+    },
+    "xray": {
+      "coverage": false,
+      "detected": null,
+      "provenance": "ours",
+      "_note": "no archival X-ray query performed; absence of coverage is not evidence"
+    }
   }
 }

@@ -160,6 +160,20 @@ def _build_user_message(
         parts.append(continuum_desc)
         parts.append("")
 
+    # ── Hypotheses actually tested (deterministic provider output) ──
+    # Without this the report writer has no identity list at all and has
+    # been observed to INVENT hypothesis tables from training priors
+    # (DESI optical lines) when no hypothesis wins. Copy verbatim.
+    rh = state.get("redshift_hypotheses") or {}
+    hyp_list = rh.get("hypotheses") or []
+    if hyp_list:
+        parts.append("## Hypotheses Tested (verbatim — the ONLY valid identities)")
+        parts.append("")
+        for i, h in enumerate(hyp_list, 1):
+            names = ", ".join((h.get("matched_lines") or {}).keys()) or h.get("Hypothesis", "?")
+            parts.append(f"- H{i}: {names} at z = {h.get('z_representative')}")
+        parts.append("")
+
     # ── Synthesis summary ──
     parts.append("## Hypothesis Synthesis Verdict")
     parts.append("")
@@ -182,10 +196,36 @@ def _build_user_message(
     # ── RA verdict ──
     parts.append("## Result Auditor Verdict")
     parts.append("")
-    parts.append(f"- Verdict: {auditor_json.get('verdict', '?')}")
-    parts.append(f"- Calibrated confidence: {auditor_json.get('calibrated_confidence', '?')}")
-    parts.append(f"- Spectrum quality: {auditor_json.get('spectrum_quality', '?')}")
-    parts.append(f"- has_real_peak: {auditor_json.get('has_real_peak', '?')}")
+    if auditor_json.get("audit_skipped"):
+        parts.append(
+            f"- AUDIT DID NOT RUN: {auditor_json.get('skip_reason', 'skipped')}"
+        )
+        parts.append(
+            "- There is NO auditor verdict for this source. Do not attribute "
+            "any finding (including has_real_peak or feature-reality doubts) "
+            "to the Result Auditor — feature reality is established by the "
+            "FeatureAuditor KEEP/REMOVE verdicts alone."
+        )
+    else:
+        parts.append(f"- Verdict: {auditor_json.get('verdict', '?')}")
+        parts.append(f"- Calibrated confidence: {auditor_json.get('calibrated_confidence', '?')}")
+        parts.append(f"- Spectrum quality: {auditor_json.get('spectrum_quality', '?')}")
+        parts.append(f"- has_real_peak: {auditor_json.get('has_real_peak', '?')}")
+    parts.append("")
+
+    # ── External evidence availability (Stage B context) ──
+    # Without this line the report writer has claimed "no External
+    # Evidence was available" for sources whose evidence existed but went
+    # unconsulted because Stage A confirmed no identity.
+    if state.get("external_evidence"):
+        parts.append(
+            "## External Evidence Status: PRESENT for this source (Stage B "
+            "input). If classification is Unknown, the reason is an "
+            "unconfirmed Stage A identity or a skipped audit — NOT missing "
+            "evidence; do not claim no evidence was available."
+        )
+    else:
+        parts.append("## External Evidence Status: none available for this source.")
     parts.append("")
 
     key_issues = auditor_json.get("key_issues") or []
