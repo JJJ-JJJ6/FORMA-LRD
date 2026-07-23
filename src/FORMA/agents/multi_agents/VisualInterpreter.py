@@ -381,6 +381,37 @@ class VisualInterpreter(BaseAgent):
 
             print(params.redrock)
             if params.hypothesis_provider == "lrd":
+                if state.get('external_z_prior') is None:
+                    # Blind-search funnel: once a source has been through
+                    # the EXPENSIVE run_fit=True re-extraction (triage-
+                    # flagged candidates only — see
+                    # lrd_adapt/blind/triage.py), grizli's own automated
+                    # template fit is a real, independent redshift
+                    # measurement (not the paper's claim) — exactly what
+                    # generate_lrd_hypotheses_for_state's external_z_prior
+                    # is for. Convention: a sibling f"{file_name}.full.fits"
+                    # next to the converted FORMA input in INPUT_DIR.
+                    # Optional — a cheap-tier (not-yet-re-extracted) source
+                    # has no such file and runs exactly as before.
+                    full_fits_path = os.path.join(
+                        os.path.dirname(state['file_path']),
+                        f"{state['file_name']}.full.fits",
+                    )
+                    if os.path.exists(full_fits_path):
+                        from lrd_adapt.converter.zfit_reader import zfit_to_state_prior
+                        try:
+                            prior = zfit_to_state_prior(full_fits_path)
+                            state['external_z_prior'] = prior['external_z_prior']
+                            state['external_z_prior_sigma'] = prior['external_z_prior_sigma']
+                            state['external_z_prior_source'] = prior['external_z_prior_source']
+                            print(f"[VisualInterpreter] external_z_prior loaded from "
+                                  f"{full_fits_path}: z={prior['external_z_prior']}, "
+                                  f"sigma={prior['external_z_prior_sigma']}")
+                        except ValueError as e:
+                            print(f"[VisualInterpreter] found {full_fits_path} but "
+                                  f"could not read a redshift fit from it ({e}); "
+                                  "continuing without an external_z_prior.")
+
                 # ── LRD path: paper's line ID + z_spec vs. rival identities,
                 # see lrd_adapt/hypothesis (CLAUDE.md change budget, new code #2) ──
                 from lrd_adapt.hypothesis.lrd_hypothesis_provider import (
