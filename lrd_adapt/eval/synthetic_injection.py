@@ -172,11 +172,18 @@ def write_synthetic_1d_fits(case, path, arm_extname="F356W"):
     """Write a synthetic case (from make_synthetic_case) as a grizli-shaped
     *.1D.fits file, ready for lrd_adapt.converter.grizli_to_forma."""
     col = fits.ColDefs([
-        fits.Column(name="wave", format="D", array=case["wave_um"]),
-        fits.Column(name="flux", format="D", array=case["flux"]),
-        fits.Column(name="err", format="D", array=case["err"]),
-        fits.Column(name="flat", format="D", array=case["flat"]),
-        fits.Column(name="contam", format="D", array=case["contam"]),
+        fits.Column(name="wave", format="D", array=case["wave_um"], unit="um"),
+        fits.Column(name="flux", format="D", array=case["flux"], unit="count/s"),
+        fits.Column(name="err", format="D", array=case["err"], unit="count/s"),
+        # grizli's flat-field sensitivity unit -- specvizitor's grizli
+        # plugin requires flat to be convertible to '1e19 AA cm2 ct / erg'
+        # for its ct/s -> physical flux conversion (verified against
+        # sviz-grizli.py; a unitless flat crashes its finalize path).
+        # TUNIT must use FITS '10**19' notation: astropy's FITS reader
+        # returns UnrecognizedUnit for the '1e19 ...' spelling.
+        fits.Column(name="flat", format="D", array=case["flat"],
+                    unit="10**19 Angstrom cm2 count / erg"),
+        fits.Column(name="contam", format="D", array=case["contam"], unit="count/s"),
     ])
     hdu = fits.BinTableHDU.from_columns(col, name=arm_extname)
     fits.HDUList([fits.PrimaryHDU(), hdu]).writeto(path, overwrite=True)

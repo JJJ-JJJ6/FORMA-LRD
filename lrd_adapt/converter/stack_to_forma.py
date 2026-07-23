@@ -116,7 +116,7 @@ def write_boxcar_1d_fits(result, out_path, arm_extname="F356W"):
     """Write the extraction as a grizli-convention 1D BinTable FITS."""
     col = fits.ColDefs(
         [
-            fits.Column(name="wave", format="D", array=result["wave_um"], unit="micron"),
+            fits.Column(name="wave", format="D", array=result["wave_um"], unit="um"),
             fits.Column(name="flux", format="D", array=result["flux"], unit="count/s"),
             fits.Column(name="err", format="D", array=result["err"], unit="count/s"),
             fits.Column(name="flat", format="D", array=result["flat"]),
