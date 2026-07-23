@@ -190,11 +190,20 @@ def write_synthetic_1d_fits(case, path, arm_extname="F356W"):
 
 
 def write_synthetic_full_fits(z, path, z_sigma=0.003, source_id=0,
-                              z_grid_halfwidth=0.5, n_grid=2001):
+                              z_grid_halfwidth=0.5, n_grid=2001,
+                              dsci_r_circ_mas=None,
+                              dsci_pixel_scale_mas=63.0, dsci_size=100,
+                              dsci_seed=0):
     """
     Write a synthetic grizli-*.full.fits-shaped redshift-fit product: a
     primary HDU with a REDSHIFT keyword and a ZFIT_STACK BinTable with
     zgrid / pdf / chi2 columns (Gaussian pdf centered on ``z``).
+
+    When ``dsci_r_circ_mas`` is given, also writes a DSCI ImageHDU: a
+    circular Gaussian source whose half-light radius equals that value,
+    on a WCS with ``dsci_pixel_scale_mas`` per pixel (default 63 mas =
+    the NIRCam LW pixel scale from CLAUDE.md). This is the ground-truth
+    target for lrd_adapt.evidence.compactness.
 
     Exists so lrd_adapt.converter.zfit_reader has a round-trip test target
     before any real .full.fits is available. The layout follows grizli's
@@ -224,4 +233,73 @@ def write_synthetic_full_fits(z, path, z_sigma=0.003, source_id=0,
         ]),
         name="ZFIT_STACK",
     )
-    fits.HDUList([primary, zfit]).writeto(path, overwrite=True)
+    hdus = [primary, zfit]
+
+    if dsci_r_circ_mas is not None:
+        # Gaussian half-light radius = 1.17741 sigma
+        sigma_pix = (dsci_r_circ_mas / dsci_pixel_scale_mas) / 1.17741
+        rng = np.random.default_rng(dsci_seed)
+        c = (dsci_size - 1) / 2.0
+        yy, xx = np.mgrid[0:dsci_size, 0:dsci_size]
+        img = np.exp(-0.5 * ((xx - c) ** 2 + (yy - c) ** 2) / sigma_pix**2)
+        img += rng.normal(0.0, 0.01, size=img.shape)  # faint sky noise
+
+        hdr = fits.Header()
+        hdr["CD1_1"] = -dsci_pixel_scale_mas / 3.6e6  # deg/px, RA flips sign
+        hdr["CD1_2"] = 0.0
+        hdr["CD2_1"] = 0.0
+        hdr["CD2_2"] = dsci_pixel_scale_mas / 3.6e6
+        hdus.append(fits.ImageHDU(data=img, header=hdr, name="DSCI"))
+
+    fits.HDUList(hdus).writeto(path, overwrite=True)
+
+
+# grizli-like photometric catalog columns per band; only ratios are
+# consumed downstream, so the absolute scale is arbitrary "uJy-like".
+_PHOT_BANDS = ("f115w", "f200w", "f356w")
+_PHOT_PIVOT_ANG = {"f115w": 11540.0, "f200w": 19890.0, "f356w": 35680.0}
+_BALMER_BREAK_REST_ANG = 3645.0
+
+
+def write_synthetic_phot_catalog(rows, path):
+    """
+    Write a synthetic {root}_phot.fits-style field catalog.
+
+    rows : list of dicts with keys
+        id            : int
+        z             : float (used to place the break between bands)
+        break_factor  : float >= 1 -- f_nu suppression blueward of the
+                        rest-frame Balmer break (1 = no break;
+                        Kapoor+26 LRD range ~1-4)
+        red_slope     : optional f_nu power-law slope in lambda
+                        (default 0.5, mildly red)
+
+    Fluxes are a toy SED evaluated at each band's pivot wavelength:
+    flat-ish f_nu with the blueward side divided by break_factor. The
+    injected break_factor is the ground truth for
+    lrd_adapt.evidence.phot_evidence's proxy recovery test. Column
+    names follow the f{band}_flux_aper_1 pattern our reader tries
+    first; the real eor1 catalog is the schema re-verification gate.
+    """
+    from astropy.table import Table
+
+    ids, cols = [], {f"{b}_flux_aper_1": [] for b in _PHOT_BANDS}
+    for row in rows:
+        ids.append(int(row["id"]))
+        z = float(row["z"])
+        bf = float(row.get("break_factor", 1.0))
+        slope = float(row.get("red_slope", 0.5))
+        for b in _PHOT_BANDS:
+            rest = _PHOT_PIVOT_ANG[b] / (1.0 + z)
+            fnu = (rest / 5000.0) ** slope  # mild red continuum
+            if rest < _BALMER_BREAK_REST_ANG:
+                fnu /= bf
+            cols[f"{b}_flux_aper_1"].append(fnu)
+
+    table = Table({"id": ids, **cols})
+    table.meta["COMMENT"] = (
+        "SYNTHETIC photometric catalog "
+        "(lrd_adapt/eval/synthetic_injection.write_synthetic_phot_catalog)"
+        " -- not a real grizli catalog."
+    )
+    table.write(path, overwrite=True)

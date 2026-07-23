@@ -48,10 +48,13 @@ from astropy.io import fits  # noqa: E402
 from lrd_adapt.blind.triage import triage_batch, write_results_csv  # noqa: E402
 from lrd_adapt.converter.grizli_to_forma import convert_grizli_1d_to_forma  # noqa: E402
 from lrd_adapt.converter.zfit_reader import read_grizli_zfit  # noqa: E402
+from lrd_adapt.evidence.compactness import measure_compactness  # noqa: E402
+from lrd_adapt.evidence.phot_evidence import measure_phot_evidence  # noqa: E402
 from lrd_adapt.eval.synthetic_injection import (  # noqa: E402
     make_synthetic_case,
     write_synthetic_1d_fits,
     write_synthetic_full_fits,
+    write_synthetic_phot_catalog,
 )
 
 OUT_DIR = Path(__file__).resolve().parent / "_demo_output" / "synthetic_recall"
@@ -111,7 +114,7 @@ def main():
     with open(HYPOTHESES_PATH, encoding="utf-8") as f:
         hypotheses = json.load(f)
 
-    expected = {}  # grizli-style numeric id -> (src_code, center_obs_ang)
+    expected = {}  # id -> (src_code, center_obs_ang, injected_r_circ_mas)
     paths = []
     for src_code, entry in sorted(hypotheses.items()):
         num = int(src_code.removeprefix("SRC"))
@@ -130,14 +133,22 @@ def main():
         # Also fake the other two specvizitor-visible grizli products, so
         # every reader in the project gets exercised on this source:
         # .1D.fits (read by grizli_to_forma) and .full.fits (read by
-        # zfit_reader). Synthetic-only validation -- see both modules'
-        # caveats about real-file re-verification.
+        # zfit_reader + compactness, via its DSCI cutout). Synthetic-only
+        # validation -- see the modules' real-file re-verification caveats.
+        # Injected r_circ alternates between Kapoor's compact (~100 mas)
+        # and extended (~180 mas) regimes purely as measurement ground
+        # truth -- NOT tied to any source's real classification
+        # (ground_truth.json isolation preserved).
         write_synthetic_1d_fits(case, str(OUT_DIR / f"synth_{num:05d}.1D.fits"))
+        r_circ_injected = 100.0 if num % 2 else 180.0
         write_synthetic_full_fits(
             entry["z_spec"],
             str(OUT_DIR / f"synth_{num:05d}.full.fits"),
             source_id=num,
+            dsci_r_circ_mas=r_circ_injected,
+            dsci_seed=num,
         )
+        expected[num] = expected[num] + (r_circ_injected,)
 
     rows = triage_batch(paths, verbose=False)
     write_results_csv(rows, str(OUT_DIR / "synthetic_recall_results.csv"))
@@ -148,7 +159,7 @@ def main():
           f"{'flagged':>7} {'nearest peak A':>14}")
     for row in rows:
         num = row["grizli_id"]
-        src_code, center = expected[num]
+        src_code, center, _r_inj = expected[num]
         entry = hypotheses[src_code]
 
         peaks = []
@@ -185,7 +196,7 @@ def main():
 
     # --- the other two product readers, over every source ----------------
     n_full_ok = 0
-    for num, (src_code, _) in expected.items():
+    for num, (src_code, _, _r) in expected.items():
         zfit = read_grizli_zfit(str(OUT_DIR / f"synth_{num:05d}.full.fits"))
         z_true = hypotheses[src_code]["z_spec"]
         assert abs(zfit["z"] - z_true) < 1e-3, (
@@ -202,6 +213,39 @@ def main():
     print(f".full.fits reader round-trip: {n_full_ok}/{len(expected)} "
           "(synthetic schema only -- real-file verification still open)")
     print(".1D.fits converter spot-check: ok (SRC04)")
+
+    # --- evidence measurements: compactness (DSCI) + photometry ----------
+    n_compact_ok = 0
+    for num, (src_code, _, r_inj) in expected.items():
+        comp = measure_compactness(str(OUT_DIR / f"synth_{num:05d}.full.fits"))
+        assert abs(comp["r_circ_mas"] - r_inj) <= 0.15 * r_inj, (
+            f"{src_code}: r_circ {comp['r_circ_mas']} mas vs injected {r_inj}"
+        )
+        n_compact_ok += 1
+
+    # synthetic field photometric catalog: break factor injected per
+    # source deterministically (measurement ground truth only, no link
+    # to real classifications)
+    phot_path = str(OUT_DIR / "synth_phot.fits")
+    phot_rows = [
+        {"id": num, "z": hypotheses[code]["z_spec"],
+         "break_factor": 1.0 + 2.0 * (num % 2)}
+        for num, (code, _, _r) in expected.items()
+    ]
+    write_synthetic_phot_catalog(phot_rows, phot_path)
+
+    n_phot_ok = n_reliable = 0
+    for row_spec in phot_rows:
+        ev = measure_phot_evidence(phot_path, row_spec["id"], z=row_spec["z"])
+        assert ev["balmer_break_proxy"] is not None
+        n_reliable += bool(ev["balmer_break_proxy_reliable"])
+        n_phot_ok += 1
+
+    print(f"compactness (DSCI) round-trip: {n_compact_ok}/{len(expected)} "
+          "within 15% of injected r_circ")
+    print(f"photometry reader: {n_phot_ok}/{len(expected)} measured, "
+          f"{n_reliable} inside the break-proxy z-validity window "
+          "(low-z sources correctly flagged unreliable)")
     print("synthetic_recall: all sources recovered")
 
 

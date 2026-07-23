@@ -46,6 +46,8 @@ The work lives in two layers.
 | File | Purpose |
 |---|---|
 | `external_evidence.py` (+ `test_external_evidence.py`) | Loads, validates, and formats the per-source "External Evidence" block (photometry, Balmer-break estimate, compactness r_circ, X-ray coverage) injected into agent prompts. Every item is provenance-tagged `ours` vs `paper`. |
+| `phot_evidence.py` (+ `test_phot_evidence.py`) | **Measures** photometric evidence from a grizli field catalog (`{root}_phot.fits`): band fluxes, colors, and a Balmer-break proxy (f_ν(F200W)/f_ν(F115W)) with an explicit z-validity window outside which it self-flags unreliable. Defensive column resolution; fails loudly listing actual columns. Provenance `ours` — this is what lets blind-search candidates (absent from the paper) get classified. Synthetic-catalog validation only until checked against the real eor1 `j1030_phot.fits`. |
+| `compactness.py` (+ `test_compactness.py`) | **Measures** r_circ from the DSCI direct-image cutout of a `*.full.fits`: curve-of-growth half-light radius, subpixel apertures, adaptive 4×r50 total-flux aperture, no PSF deconvolution (Kapoor+26 Fig. 5 convention). Recovers injected 100/180 mas to a few percent on synthetics; real-DSCI verification still open. |
 
 ### `lrd_adapt/configs/` — run presets and per-source inputs
 
