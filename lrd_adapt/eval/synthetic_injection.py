@@ -180,3 +180,41 @@ def write_synthetic_1d_fits(case, path, arm_extname="F356W"):
     ])
     hdu = fits.BinTableHDU.from_columns(col, name=arm_extname)
     fits.HDUList([fits.PrimaryHDU(), hdu]).writeto(path, overwrite=True)
+
+
+def write_synthetic_full_fits(z, path, z_sigma=0.003, source_id=0,
+                              z_grid_halfwidth=0.5, n_grid=2001):
+    """
+    Write a synthetic grizli-*.full.fits-shaped redshift-fit product: a
+    primary HDU with a REDSHIFT keyword and a ZFIT_STACK BinTable with
+    zgrid / pdf / chi2 columns (Gaussian pdf centered on ``z``).
+
+    Exists so lrd_adapt.converter.zfit_reader has a round-trip test target
+    before any real .full.fits is available. The layout follows grizli's
+    documented convention but has NOT been checked against a real file --
+    the reader's schema caveat applies equally here. Never place these
+    where they could be mistaken for real fit products.
+    """
+    z_lo = max(0.01, z - z_grid_halfwidth)
+    zgrid = np.linspace(z_lo, z + z_grid_halfwidth, n_grid)
+    pdf = np.exp(-0.5 * ((zgrid - z) / z_sigma) ** 2)
+    chi2 = ((zgrid - z) / z_sigma) ** 2  # parabolic minimum at z, floor 0
+
+    primary = fits.PrimaryHDU()
+    primary.header["ID"] = source_id
+    primary.header["REDSHIFT"] = float(z)
+    primary.header["COMMENT"] = (
+        "SYNTHETIC redshift-fit product "
+        "(lrd_adapt/eval/synthetic_injection.write_synthetic_full_fits) "
+        "-- not a real grizli fit."
+    )
+
+    zfit = fits.BinTableHDU.from_columns(
+        fits.ColDefs([
+            fits.Column(name="zgrid", format="D", array=zgrid),
+            fits.Column(name="pdf", format="D", array=pdf),
+            fits.Column(name="chi2", format="D", array=chi2),
+        ]),
+        name="ZFIT_STACK",
+    )
+    fits.HDUList([primary, zfit]).writeto(path, overwrite=True)

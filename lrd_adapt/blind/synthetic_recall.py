@@ -46,7 +46,13 @@ import numpy as np  # noqa: E402
 from astropy.io import fits  # noqa: E402
 
 from lrd_adapt.blind.triage import triage_batch, write_results_csv  # noqa: E402
-from lrd_adapt.eval.synthetic_injection import make_synthetic_case  # noqa: E402
+from lrd_adapt.converter.grizli_to_forma import convert_grizli_1d_to_forma  # noqa: E402
+from lrd_adapt.converter.zfit_reader import read_grizli_zfit  # noqa: E402
+from lrd_adapt.eval.synthetic_injection import (  # noqa: E402
+    make_synthetic_case,
+    write_synthetic_1d_fits,
+    write_synthetic_full_fits,
+)
 
 OUT_DIR = Path(__file__).resolve().parent / "_demo_output" / "synthetic_recall"
 HYPOTHESES_PATH = REPO_ROOT / "lrd_adapt" / "configs" / "primary_hypotheses.json"
@@ -121,6 +127,18 @@ def main():
         expected[num] = (src_code, case["ground_truth"]["center_obs_ang"])
         paths.append(str(path))
 
+        # Also fake the other two specvizitor-visible grizli products, so
+        # every reader in the project gets exercised on this source:
+        # .1D.fits (read by grizli_to_forma) and .full.fits (read by
+        # zfit_reader). Synthetic-only validation -- see both modules'
+        # caveats about real-file re-verification.
+        write_synthetic_1d_fits(case, str(OUT_DIR / f"synth_{num:05d}.1D.fits"))
+        write_synthetic_full_fits(
+            entry["z_spec"],
+            str(OUT_DIR / f"synth_{num:05d}.full.fits"),
+            source_id=num,
+        )
+
     rows = triage_batch(paths, verbose=False)
     write_results_csv(rows, str(OUT_DIR / "synthetic_recall_results.csv"))
 
@@ -164,6 +182,26 @@ def main():
         "Triage recall failure on synthetic paper-derived sources: "
         + ", ".join(code for code, _ in failures)
     )
+
+    # --- the other two product readers, over every source ----------------
+    n_full_ok = 0
+    for num, (src_code, _) in expected.items():
+        zfit = read_grizli_zfit(str(OUT_DIR / f"synth_{num:05d}.full.fits"))
+        z_true = hypotheses[src_code]["z_spec"]
+        assert abs(zfit["z"] - z_true) < 1e-3, (
+            f"{src_code}: .full.fits round-trip z {zfit['z']} != {z_true}"
+        )
+        n_full_ok += 1
+    conv = convert_grizli_1d_to_forma(
+        str(OUT_DIR / "synth_00004.1D.fits"),
+        str(OUT_DIR / "synth_00004_forma.fits"),
+        source_code="SRC04",
+    )
+    assert conv["n_pixels"] > 0
+
+    print(f".full.fits reader round-trip: {n_full_ok}/{len(expected)} "
+          "(synthetic schema only -- real-file verification still open)")
+    print(".1D.fits converter spot-check: ok (SRC04)")
     print("synthetic_recall: all sources recovered")
 
 

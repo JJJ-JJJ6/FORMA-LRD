@@ -25,6 +25,7 @@ The work lives in two layers.
 | `stack_to_forma.py` | **2D route.** Reads a grizli `*.stack.fits` 2D spectrogram directly, boxcar-extracts a 1D spectrum around the auto-detected trace row (per-visit CONTAM carried through), then chains into the 1D converter — output layout identical to the 1D route. Caveat: flux stays in count/s (no flat-field curve in a stack file), so line positions/widths/identities are trustworthy but absolute fluxes are not. |
 | `masked_regions.py` | Reconstructs masked wavelength intervals from the output MASK HDU so contamination actually reaches the LLM-facing "masked regions" channel (upstream only computed multi-arm overlap, which is always empty for a single F356W arm). |
 | `test_stack_to_forma.py` | Synthetic 2D-stack round-trip test (line recovery, contam masking, metadata passthrough). |
+| `zfit_reader.py` (+ `test_zfit_reader.py`) | Reads grizli `*.full.fits` redshift-fit products (the file behind specvizitor's automated "Redshift" field) into the hypothesis provider's external-z-prior shape — z from the ZFIT table's own pdf (MAP + 16/84 width), header-REDSHIFT fallback, loud schema-mismatch failure. **Validated on synthetic files only** — re-verify against the first real `.full.fits` from eor1 before production use. |
 
 ### `lrd_adapt/hypothesis/` — replaces Redrock
 
