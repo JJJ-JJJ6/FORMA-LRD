@@ -10,8 +10,16 @@ JWST/NIRCam F356W WFSS, 3.15–3.95 µm), treating the paper's claims as hypothe
 to be tested — never as labels to be reproduced. FORMA's multi-agent architecture
 (orchestrator, hypothesis agents, auditors, report writer) is used unchanged; the
 optical/DESI domain content it shipped with is replaced with the rest-NIR LRD
-domain, and its Redrock redshift engine is replaced with a paper-claim-driven
-hypothesis provider.
+domain, and its Redrock redshift engine is replaced with a hypothesis provider
+that scores all six candidate line identities the same way whether or not a
+claim is registered for the source.
+
+**This verification pipeline is the core of the project.** `lrd_adapt/blind/`
+(below) is a later, strictly optional addition: a pre-processing stage that
+scans many sources with no prior claim to decide which are worth feeding into
+the same, unmodified verification pipeline. It does not change how Stage
+A/B/C or the agents work — see the README's "Optional: blind search" section
+for how to use or skip it.
 
 The work lives in two layers.
 

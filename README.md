@@ -4,7 +4,15 @@ A private adaptation of the upstream [FORMA / LLM-Spectro-Agent](https://github.
 multi-agent pipeline for **verifying broad-line identifications in JWST/NIRCam F356W
 WFSS spectra of Little Red Dots and classical AGNs** (EIGER survey, Kapoor+26 sample).
 The paper's claims are treated as hypotheses to be tested, never as labels to be
-reproduced.
+reproduced. **This verification pipeline is the core of the project and is what
+steps 1–5 below set up.**
+
+Blind search — scanning many sources with no prior claim to find new candidates,
+*before* handing them to the same verification pipeline — is a separate, optional
+add-on described at the end, under
+["Optional: blind search"](#optional-blind-search-finding-new-candidates-first).
+Skip that section entirely if you only want to verify a source you've already
+identified; nothing below it is required for steps 1–5 to work.
 
 - **Branch `lrd` (this branch)**: all of the adaptation work. Branch
   `upstream-baseline` is the untouched upstream commit this work forked from.
@@ -108,6 +116,11 @@ Both routes produce identical FORMA-readable FITS. Source codes (`SRC02`–`SRC2
 and the paper's claimed redshifts come from `lrd_adapt/eval/mapping.csv` /
 `lrd_adapt/configs/primary_hypotheses.json`.
 
+This is the **verification** case: a source you've already identified, with a
+known/claimed redshift to audit, passed as `z_spec` below. (For a source with
+*no* prior claim — the output of blind search — just omit `z_spec`; see
+["Optional: blind search"](#optional-blind-search-finding-new-candidates-first).)
+
 **1D route (preferred — grizli's flux-calibrated optimal extraction):**
 
 ```bash
@@ -157,6 +170,47 @@ python lrd_adapt/eval/test_anonymizer_isolation.py
 python lrd_adapt/eval/test_synthetic_injection.py
 python lrd_adapt/eval/test_metrics.py
 ```
+
+## Optional: blind search (finding new candidates first)
+
+**This entire section is optional.** Steps 1–5 above are the complete, standalone
+verification pipeline; skip this if you already have a specific source and a
+claim to audit. Blind search is a separate pre-processing stage that only
+decides *which sources are worth feeding into steps 3–4* — it does not change
+how the core pipeline runs.
+
+1. **Triage** (`lrd_adapt/blind/triage.py`): scans a folder of `*.stack.fits`
+   files with **no redshift, no registered claim, no LLM call** — just CWT line
+   detection — and flags which sources show a real feature:
+
+   ```bash
+   python -m lrd_adapt.blind.triage "path/to/*.stack.fits" \
+       -o triage_results.csv --flagged-csv flagged.csv
+   ```
+
+2. **Re-extract flagged candidates** with `run_fit=True` on your grizli side
+   (outside this repo) to get a real fitted redshift for each.
+
+3. **Convert and run exactly as in steps 3–4 above, with `z_spec` omitted** —
+   the hypothesis provider generates and scores all six candidate line
+   identities with no bias toward any of them, whether or not a claim exists.
+
+4. **(Automatic, needs no flag)** If a real `{FILE_NAME}.full.fits` sits next to
+   the converted input in `INPUT_DIR`, `VisualInterpreter.py` reads its fitted
+   redshift (`lrd_adapt/converter/zfit_reader.py`) and passes it in as a soft,
+   uncertainty-weighted prior — never a hard override. Verified on real eor1
+   data (2026-07-28): a poorly-constrained real fit nudges scores toward its
+   neighborhood without collapsing the six-way ambiguity to a false certainty.
+
+5. **(Optional, for Stage B on new candidates)** `lrd_adapt/evidence/` measures
+   photometry/colours (`phot_evidence.py`) and compactness
+   (`compactness.py`) directly from the user's own grizli/imaging products,
+   so a brand-new candidate — one the paper never discusses — can still get an
+   LRD-vs-classical-AGN classification instead of defaulting to `Unknown` for
+   lack of evidence.
+
+None of this touches `scripts/main.py` or the agent pipeline itself — it only
+supplies inputs to it.
 
 ## Credits & license
 

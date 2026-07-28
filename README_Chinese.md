@@ -3,7 +3,13 @@
 本仓库是上游 [FORMA / LLM-Spectro-Agent](https://github.com/mynamesnoname/FORMA)
 多智能体流水线的私有改编版本，用于**核验 JWST/NIRCam F356W 无缝光谱（WFSS）中
 Little Red Dot（LRD）与经典 AGN 的宽线证认**（EIGER 巡天，Kapoor+26 样本）。
-论文的结论在这里被当作待检验的假设，而不是直接复现的标签。
+论文的结论在这里被当作待检验的假设，而不是直接复现的标签。**这个核验流水线是
+本项目的核心，下面第 1–5 步搭建的正是它。**
+
+盲搜索——在没有任何先验声明的情况下扫描大量源，找出新候选体，再交给同一个核验
+流水线——是文末描述的一个独立、可选的附加功能，参见
+["可选：盲搜索"](#可选盲搜索寻找新候选体)。如果你只想核验一个已经确定的源，
+完全可以跳过该章节；第 1–5 步不依赖它。
 
 - **分支 `lrd`（当前分支）**：全部改编工作。分支 `upstream-baseline`
   是本工作分叉时未经改动的上游提交。
@@ -100,6 +106,10 @@ FILE_NAME=                                 # 每次运行时设置，见第 4 �
 两条路线产出完全相同格式的 FORMA 可读 FITS。源编号（`SRC02`–`SRC20`）与论文
 声称的红移见 `lrd_adapt/eval/mapping.csv` / `lrd_adapt/configs/primary_hypotheses.json`。
 
+这里说明的是**核验**场景：一个你已经确认过、带有待核验红移声明的源，通过下面的
+`z_spec` 传入。（如果源没有任何先验声明——即盲搜索的输出——省略 `z_spec` 即可，
+见["可选：盲搜索"](#可选盲搜索寻找新候选体)。）
+
 **1D 路线（优先 —— grizli 自身的定标最优抽谱）：**
 
 ```bash
@@ -149,6 +159,41 @@ python lrd_adapt/eval/test_anonymizer_isolation.py
 python lrd_adapt/eval/test_synthetic_injection.py
 python lrd_adapt/eval/test_metrics.py
 ```
+
+## 可选：盲搜索（寻找新候选体）
+
+**本节完全可选。** 上面第 1–5 步就是完整、独立的核验流水线；如果你已经有确定的
+源和待核验的声明，可以跳过本节。盲搜索只是一个独立的前置筛选阶段，决定"哪些源
+值得送进第 3–4 步"——它不会改变核心流水线本身的运行方式。
+
+1. **粗筛**（`lrd_adapt/blind/triage.py`）：扫描一个装有 `*.stack.fits` 文件的
+   文件夹，**不需要红移、不需要先验声明、不调用 LLM**——只做 CWT 谱线检测，
+   标记出哪些源显示出真实特征：
+
+   ```bash
+   python -m lrd_adapt.blind.triage "path/to/*.stack.fits" \
+       -o triage_results.csv --flagged-csv flagged.csv
+   ```
+
+2. **重新抽谱**：在你自己的 grizli 环境中（本仓库之外）对被标记的候选体用
+   `run_fit=True` 重新抽谱，得到真实的拟合红移。
+
+3. **按上面第 3–4 步转换并运行，只是省略 `z_spec`**——hypothesis provider 会
+   生成并公平打分全部六种候选谱线证认，无论该源是否有先验声明。
+
+4. **（自动，无需任何开关）** 如果 `INPUT_DIR` 里转换后的输入文件旁边放着真实的
+   `{FILE_NAME}.full.fits`，`VisualInterpreter.py` 会读取其中的拟合红移
+   （`lrd_adapt/converter/zfit_reader.py`），把它作为一个带不确定度的软先验
+   传入——绝不是硬性覆盖。已在真实 eor1 数据上验证（2026-07-28）：一个约束很弱
+   的真实拟合会让打分向其邻域倾斜，但不会把六选一的模糊性错误地收敛成一个虚假
+   的确定答案。
+
+5. **（可选，用于新候选体的 Stage B）** `lrd_adapt/evidence/` 可以直接从用户自己
+   的 grizli/成像数据中测量光度/颜色（`phot_evidence.py`）和致密度
+   （`compactness.py`），这样一个论文里从未提到的全新候选体也能得到
+   LRD／经典 AGN 的分类结果，而不是因为缺乏证据而默认输出 `Unknown`。
+
+以上步骤都不会改动 `scripts/main.py` 或智能体流水线本身——它们只是为其提供输入。
 
 ## 致谢与许可
 
