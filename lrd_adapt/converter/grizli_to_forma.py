@@ -1,12 +1,18 @@
 """
 Convert grizli *.1D.fits per-grism spectra into FORMA-readable FITS.
 
-Grizli 1D products (per CLAUDE.md, grizli's documented schema) store one
-BinTableHDU per grism/filter with columns: wave [um], flux, err, flat, contam.
-`flux`/`err` are in grizli's internal calibration and must be divided by
-`flat` to get physically calibrated flux-density units — this is standard
-grizli convention, not yet validated against a real EIGER extraction (do
-that before the KB freeze, per CLAUDE.md's change-budget note for this file).
+Grizli 1D products store one BinTableHDU per grism/filter with columns:
+wave, flux, err, flat, contam. CLAUDE.md's original schema note assumed
+wave is always in microns; validated 2026-07-28 against a real eor1
+extraction (j1030_01539.1D.fits) that this is NOT reliable — that real
+file's wave column TUNIT is 'Angstrom', not micron. This converter now
+reads the column's own TUNIT and converts accordingly, raising rather
+than guessing if the unit is absent or unrecognized. `flux`/`err` are in
+grizli's internal calibration and must be divided by `flat` to get
+physically calibrated flux-density units — this is standard grizli
+convention, confirmed against the same real file (flat's real TUNIT is
+'cm2 Angstrom count erg-1', matching the expected sensitivity-curve
+convention).
 
 FORMA's loader (_load_spectrum_from_fits, utils/VI.py) expects single- or
 multi-arm image HDUs named {ARM}_WAVELENGTH / {ARM}_FLUX / {ARM}_IVAR
@@ -16,6 +22,7 @@ FIBERMAP/METADATA table HDU with VI_Z / VI_SPECTYPE columns.
 from __future__ import annotations
 
 import numpy as np
+from astropy import units as u
 from astropy.io import fits
 
 MICRON_TO_ANGSTROM = 1e4
@@ -77,7 +84,8 @@ def convert_grizli_1d_to_forma(
         grism_hdu = _find_grism_hdu(hdul, grism_extname)
         data = grism_hdu.data
         colnames = {n.lower() for n in data.columns.names}
-        wave_um = np.asarray(data["wave"], dtype=float)
+        wave_raw = np.asarray(data["wave"], dtype=float)
+        wave_unit_str = data.columns["wave"].unit
         flux_raw = np.asarray(data["flux"], dtype=float)
         err_raw = np.asarray(data["err"], dtype=float)
         flat = (
@@ -91,7 +99,25 @@ def convert_grizli_1d_to_forma(
             else np.zeros_like(flux_raw)
         )
 
-    wavelength_ang = wave_um * MICRON_TO_ANGSTROM
+    # Real grizli 1D products have been observed storing `wave` in BOTH
+    # microns (matches this module's original documented assumption) and
+    # Angstrom (confirmed 2026-07-28 against a real eor1 extraction,
+    # TUNIT='Angstrom', values ~30500-41000) -- trust the column's own
+    # TUNIT rather than assuming, and fail loudly on anything unrecognized
+    # rather than silently mis-scaling by 10000x.
+    if wave_unit_str:
+        try:
+            wavelength_ang = (wave_raw * u.Unit(wave_unit_str)).to(u.AA).value
+        except (ValueError, u.UnitConversionError) as e:
+            raise ValueError(
+                f"{input_fits}: wave column TUNIT {wave_unit_str!r} could not be "
+                f"converted to Angstrom ({e}). Do not guess -- confirm the real "
+                "unit and extend this converter explicitly."
+            ) from None
+    else:
+        # No TUNIT recorded at all: fall back to this module's original
+        # documented assumption (microns), but only as a last resort.
+        wavelength_ang = wave_raw * MICRON_TO_ANGSTROM
 
     good_flat = flat > 0
     flux = np.divide(flux_raw, flat, out=np.zeros_like(flux_raw), where=good_flat)
