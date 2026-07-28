@@ -24,6 +24,26 @@ _WIDTH_3SIGMA_MAP = {
 }
 
 
+def _sigfig(x, n=6):
+    """Round to n significant figures, not n decimal places.
+
+    round(x, N) silently collapses to 0.0 for any x smaller than 10**-N --
+    fine for order-unity DESI-style flux, but real grizli flux-calibrated
+    data is order ~1e-19 (physical erg/s/cm2/A units), so every amplitude/
+    rms/flux value returned via round(x, 6) reads as exactly 0.0 to any
+    tool caller (confirmed 2026-07-28: this fed the FeatureAuditor an
+    all-zero flux array for a real spectrum with a genuine SNR~11 CWT-
+    confirmed line, producing a confident-but-wrong "no signal" verdict).
+    Returns None/NaN/inf unchanged.
+    """
+    if x is None:
+        return None
+    xf = float(x)
+    if not np.isfinite(xf):
+        return xf
+    return float(f"{xf:.{n}g}")
+
+
 # ---------------------------------------------------------------------------
 # Tool 1: load_spectrum
 # ---------------------------------------------------------------------------
@@ -171,10 +191,23 @@ def _do_fit_peak(
     linear_at_center = slope0 * center_guess + intercept0
     amp0 = flux_at_center - linear_at_center
 
+    # Floor scaled to this spectrum's own flux magnitude, not a fixed 1e-6:
+    # that absolute value assumed order-unity (DESI-style) flux and, for
+    # real flux-calibrated grizli data (~1e-19, physical erg/s/cm2/A units),
+    # overrode a genuinely-computed real amp0 with an initial guess ~13
+    # orders of magnitude too large -- sending curve_fit's optimizer off
+    # to a wildly wrong starting point and corrupting the resulting fit
+    # (confirmed 2026-07-28: this is why fit_peak/fit_doublet returned
+    # near-zero amplitude on a real spectrum with a genuine SNR~11 CWT
+    # detection, overriding the correct single-hypothesis LIKELY finding
+    # with the FeatureAuditor's confident-but-wrong REMOVE verdict).
+    # This guard should only ever fire on a genuinely degenerate (zero or
+    # wrong-signed) amp0, never override a real, already-scaled value.
+    eps = (np.max(np.abs(flux)) or 1.0) * 1e-6
     if line_type == "absorption":
-        amp0 = min(amp0, -1e-6); amp_lower, amp_upper = -np.inf, 0.0
+        amp0 = min(amp0, -eps); amp_lower, amp_upper = -np.inf, 0.0
     else:
-        amp0 = max(amp0, 1e-6);  amp_lower, amp_upper = 0.0, np.inf
+        amp0 = max(amp0, eps);  amp_lower, amp_upper = 0.0, np.inf
 
     sigma0 = np.clip(width_3sigma / 3.0, 2.0, window_half / 2)
     p0 = [amp0, center_guess, sigma0, slope0, intercept0]
@@ -204,7 +237,14 @@ def _do_fit_peak(
     residuals = flux - fitted
 
     local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
-    if local_rms < 1e-10:
+    # <= 0, not < 1e-10: that absolute threshold was 9+ orders of magnitude
+    # larger than genuine real flux-calibrated noise (~1e-19 scale), so it
+    # always fired and replaced a real, valid local_rms with an enormously
+    # inflated one -- silently crushing local_snr/delta_chi2_per_n for real
+    # data (confirmed 2026-07-28: a real SNR~3-11 signal computed as ~1e-9).
+    # This guard now only catches genuinely degenerate (zero/non-finite)
+    # estimates, which is all it was ever meant to do.
+    if not np.isfinite(local_rms) or local_rms <= 0:
         local_rms = np.std(residuals) or 1e-10
 
     n = len(wl)
@@ -224,19 +264,19 @@ def _do_fit_peak(
     return {
         "center": round(center, 3),
         "center_err": round(perr[1], 4) if perr[1] is not None else None,
-        "amplitude": round(amp, 6),
-        "amplitude_err": round(perr[0], 6) if perr[0] is not None else None,
+        "amplitude": _sigfig(amp),
+        "amplitude_err": _sigfig(perr[0]) if perr[0] is not None else None,
         "sigma": round(sigma, 3),
         "fwhm": round(fwhm, 3),
         "fwhm_km_s": round(fwhm_km_s, 1) if fwhm_km_s is not None else None,
         "delta_chi2_per_n": delta_chi2_per_n,
-        "local_rms": round(local_rms, 6),
+        "local_rms": _sigfig(local_rms),
         "local_snr": local_snr,
         "n_points": n,
         "flags": flags,
         "message": (
             f"Fit {'OK' if not flags else 'with warnings'}. "
-            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp:.4f}, "
+            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp:.3g}, "
             f"FWHM={fwhm:.1f} Å ({fwhm_km_s:.0f} km/s), "
             f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}"
         ),
@@ -341,12 +381,15 @@ def _do_fit_doublet(
     amp01 = flux_at_c1 - linear_at_c1
     amp02 = flux_at_c2 - linear_at_c2
 
+    # see fit_peak's identical fix above for why this is data-scaled, not a
+    # fixed 1e-6
+    eps = (np.max(np.abs(flux)) or 1.0) * 1e-6
     if line_type == "absorption":
-        amp01 = min(amp01, -1e-6)
-        amp02 = min(amp02, -1e-6)
+        amp01 = min(amp01, -eps)
+        amp02 = min(amp02, -eps)
     else:
-        amp01 = max(amp01, 1e-6)
-        amp02 = max(amp02, 1e-6)
+        amp01 = max(amp01, eps)
+        amp02 = max(amp02, eps)
 
     sigma0 = np.clip(width_3sigma / 3.0, 2.0, half / 4.0)
     p0 = [amp01, center_guess_1, sigma0, amp02, center_guess_2, sigma0,
@@ -396,8 +439,8 @@ def _do_fit_doublet(
         return {
             "center": round(float(center), 3),
             "center_err": round(float(perr_center), 4) if perr_center is not None else None,
-            "amplitude": round(float(amp), 6),
-            "amplitude_err": round(float(perr_amp), 6) if perr_amp is not None else None,
+            "amplitude": _sigfig(amp),
+            "amplitude_err": _sigfig(perr_amp) if perr_amp is not None else None,
             "sigma": round(float(sigma), 3),
             "fwhm": round(float(fwhm), 3),
             "fwhm_km_s": round(float(fwhm_kms), 1) if fwhm_kms is not None else None,
@@ -412,7 +455,8 @@ def _do_fit_doublet(
     residuals = flux - fitted
 
     local_rms = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
-    if local_rms < 1e-10:
+    # see fit_peak's identical fix above for why this is <= 0, not < 1e-10
+    if not np.isfinite(local_rms) or local_rms <= 0:
         local_rms = np.std(residuals) or 1e-10
 
     n = len(wl)
@@ -436,7 +480,11 @@ def _do_fit_doublet(
     # ── Amplitude ratio check ──────────────────────────────────
     amp_check = None
     if amp_ratio_expected is not None and c1_info and c2_info:
-        if abs(c1_info["amplitude"]) > 1e-10:
+        # != 0, not > 1e-10: amplitude is now _sigfig-preserved (see
+        # _comp_stats above), so a real but tiny amplitude no longer reads
+        # as exactly 0 -- the old absolute threshold silently disabled this
+        # ratio check for any real flux-calibrated (~1e-19 scale) doublet.
+        if c1_info["amplitude"] != 0:
             obs_ratio = abs(c2_info["amplitude"]) / abs(c1_info["amplitude"])
         else:
             obs_ratio = None
@@ -457,12 +505,12 @@ def _do_fit_doublet(
     if c1_info:
         msg_parts.append(
             f"C1: {c1_info['center']:.2f}±{c1_info.get('center_err', 0) or 0:.3f} Å, "
-            f"amp={c1_info['amplitude']:.4f}, FWHM={c1_info['fwhm']:.1f} Å"
+            f"amp={c1_info['amplitude']:.3g}, FWHM={c1_info['fwhm']:.1f} Å"
         )
     if c2_info:
         msg_parts.append(
             f"C2: {c2_info['center']:.2f}±{c2_info.get('center_err', 0) or 0:.3f} Å, "
-            f"amp={c2_info['amplitude']:.4f}, FWHM={c2_info['fwhm']:.1f} Å"
+            f"amp={c2_info['amplitude']:.3g}, FWHM={c2_info['fwhm']:.1f} Å"
         )
     msg_parts.append(f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}")
     if sep_check:
@@ -473,7 +521,7 @@ def _do_fit_doublet(
         "component_1": c1_info,
         "component_2": c2_info,
         "delta_chi2_per_n": delta_chi2_per_n,
-        "local_rms": round(local_rms, 6),
+        "local_rms": _sigfig(local_rms),
         "local_snr": local_snr,
         "separation_check": sep_check,
         "amp_ratio_check": amp_check,
@@ -518,10 +566,13 @@ def _try_fit_single(wl, flux, center_guess, width_3sigma, line_type, window_half
     fa = np.interp(center_guess, w, f)
     la = s0 * center_guess + i0
     a0 = fa - la
+    # see fit_peak's identical fix above for why this is data-scaled, not a
+    # fixed 1e-6
+    eps = (np.max(np.abs(f)) or 1.0) * 1e-6
     if line_type == "absorption":
-        a0 = min(a0, -1e-6); lo, hi = -np.inf, 0.0
+        a0 = min(a0, -eps); lo, hi = -np.inf, 0.0
     else:
-        a0 = max(a0, 1e-6); lo, hi = 0.0, np.inf
+        a0 = max(a0, eps); lo, hi = 0.0, np.inf
     sig0 = np.clip(width_3sigma / 3.0, 2.0, half / 2)
     try:
         popt, _ = curve_fit(
@@ -594,7 +645,7 @@ def read_spectrum_region(
         wl_range : [float, float]  — wavelength bounds (Å)
         n : int                    — number of points returned
         wl : list[float]           — wavelength array (Å, 3 d.p.)
-        fl : list[float]           — flux array (4 d.p.)
+        fl : list[float]           — flux array (6 significant figures)
     """
     data = np.load(npz_path)
     wl_full = data["wavelength"]
@@ -604,11 +655,19 @@ def read_spectrum_region(
     wl = wl_full[mask][::stride]
     fl = flux_full[mask][::stride]
 
+    # fl uses significant-figure rounding (via a %.6g round-trip), NOT
+    # round(x, 4): real flux-calibrated grizli data is order ~1e-19
+    # (physical erg/s/cm2/A units), and fixed-decimal rounding collapses
+    # every such value to exactly 0.0. Confirmed 2026-07-28: this silently
+    # fed the FeatureAuditor an all-zero flux array for a real spectrum
+    # with a genuine SNR=11.3 CWT-confirmed emission line, producing a
+    # confident-but-wrong "HIGH confidence, no signal" verdict that
+    # overturned the correct single-hypothesis LIKELY detection.
     return {
         "wl_range": [wl_min, wl_max],
         "n": len(wl),
         "wl": [round(float(w), 3) for w in wl],
-        "fl": [round(float(f), 4) for f in fl],
+        "fl": [float(f"{f:.6g}") for f in fl],
     }
 
 
@@ -1125,7 +1184,11 @@ def _detect_oii_slope_change_core(
     #           to a small positive value, then recovers. Detected when
     #           dip_ratio = dip_deriv / max_deriv < dip_threshold (0.20).
     #
-    dip_ratio = dip_deriv / max_deriv if max_deriv > 1e-10 else 1.0
+    # != 0, not > 1e-10: same absolute-vs-relative-scale issue as the
+    # amplitude/local_rms fixes elsewhere in this file -- a real
+    # flux-calibrated derivative can be genuinely significant while still
+    # being far below an absolute 1e-10 threshold tuned for unity-scale data.
+    dip_ratio = dip_deriv / max_deriv if max_deriv != 0 else 1.0
     if dip_deriv < 0:
         # Valley detected — flux reversal is unambiguous [O II] evidence
         recovery_ok = True  # negative derivative is its own confirmation

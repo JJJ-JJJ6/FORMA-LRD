@@ -800,15 +800,25 @@ def generate_continuum_description(
             monotonic_str = 'remains approximately flat'
         
         # Build description sentence
+        # NOTE: flux values use general-format (.3g, 3 sig figs, auto
+        # scientific notation) rather than fixed .3f -- real flux-calibrated
+        # grizli data is order ~1e-19 (physical erg/s/cm2/A units), and a
+        # fixed 3-decimal format silently rounds every such value to
+        # "0.000", making a spectrum with real signal read as flatlined/
+        # zero-flux to anyone (or any LLM) reading this description.
+        # Confirmed 2026-07-28 on real SRC05 data: ReportWriter concluded
+        # "the entire spectrum is flatlined at zero flux" from exactly
+        # this artifact, on a spectrum whose real flux range was
+        # -4.9e-19 to 2.8e-19 (i.e. genuinely nonzero, CWT-detectable).
         if start_idx == 0:
             # First interval
-            desc = f'The continuum has a value of {flux_start:.3f} at {lambda_start:.1f} Å, '
+            desc = f'The continuum has a value of {flux_start:.3g} at {lambda_start:.1f} Å, '
             desc += f'{monotonic_str} from {lambda_start:.1f} Å to {lambda_end:.1f} Å, '
-            desc += f'reaching {flux_end:.3f} at {lambda_end:.1f} Å'
+            desc += f'reaching {flux_end:.3g} at {lambda_end:.1f} Å'
         else:
             # Subsequent intervals
             desc = f'{monotonic_str} from {lambda_start:.1f} Å to {lambda_end:.1f} Å, '
-            desc += f'reaching {flux_end:.3f} at {lambda_end:.1f} Å'
+            desc += f'reaching {flux_end:.3g} at {lambda_end:.1f} Å'
         
         descriptions.append(desc)
     
@@ -1116,7 +1126,9 @@ def brute_force_line_matching(state, tol_wavelength=None):
         wc = info.get('width_class')
         parts = []
         if amp is not None:
-            parts.append(f"Amp={amp:.3f}")
+            # .3g not .3f -- same real-flux-scale rationale as the
+            # continuum-description fix above in this file.
+            parts.append(f"Amp={amp:.3g}")
         if fwhm_a is not None or fwhm_kms is not None:
             w_parts = []
             if fwhm_a is not None:

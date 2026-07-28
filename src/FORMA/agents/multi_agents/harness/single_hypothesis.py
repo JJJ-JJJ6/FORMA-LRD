@@ -366,10 +366,15 @@ def _build_cwt_features_table(peaks: list, troughs: list) -> str:
         fwhm_k = f.get('FWHM_km_s', None)
         ridge = f.get('ridge_length', None)
         snr = f.get('snr', None)
+        # amp uses general format (.3g), not .1f: real flux-calibrated
+        # amplitudes are order ~1e-19 (physical erg/s/cm2/A units), and a
+        # fixed 1-decimal format silently rounds every such value to "0.0",
+        # making the LLM see a table of apparently-zero-amplitude features
+        # even when SNR/ridge confirm a real, significant detection.
         return (
             f"| {wl:.1f} | "
             f"{f'{wl_err:.1f}' if isinstance(wl_err, (int, float)) else '—'} | "
-            f"{amp:.1f} | "
+            f"{amp:.3g} | "
             f"{f'{fwhm_a:.1f}' if isinstance(fwhm_a, (int, float)) else '—'} | "
             f"{f'{fwhm_k:.0f}' if isinstance(fwhm_k, (int, float)) else '—'} | "
             f"{f'{ridge}' if isinstance(ridge, (int, float)) else '—'} | "
