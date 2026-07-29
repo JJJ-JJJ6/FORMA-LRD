@@ -13,6 +13,7 @@ class IOConfig(BaseModel):
     output_dir: str
     run_mode: str
     file_name: Optional[str] = ""
+    triage_csv: Optional[str] = None
 
     @model_validator(mode='after')
     def validate_by_mode(self):
@@ -38,6 +39,7 @@ class IOConfig(BaseModel):
         output_dir = os.getenv("OUTPUT_DIR") or ""
         run_mode = (os.getenv("RUN_MODE") or "s").lower()
         file_name = os.getenv("FILE_NAME") or ""
+        triage_csv = os.getenv("TRIAGE_CSV") or None
 
         return cls(
             input_dir=input_dir,
@@ -45,5 +47,6 @@ class IOConfig(BaseModel):
             output_dir=output_dir,
             run_mode=run_mode,
             file_name=file_name,
+            triage_csv=triage_csv,
         )
     

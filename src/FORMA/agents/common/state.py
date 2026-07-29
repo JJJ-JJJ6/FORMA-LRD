@@ -85,3 +85,6 @@ class SpectroState(MessagesState):
     external_z_prior: Optional[float] = None               # LRD domain: independent redshift estimate
     external_z_prior_sigma: Optional[float] = None         # (e.g. grizli's own template fit, photo-z) --
     external_z_prior_source: Optional[str] = None          # unset by default; see lrd_hypothesis_provider.py
+    triage_peak_wavelength: Optional[float] = None         # LRD domain, blind search: candidate wavelength
+    triage_peak_snr: Optional[float] = None                # flagged by the cheap triage scan (lrd_adapt/blind/
+    triage_hint_source: Optional[str] = None               # triage.py) -- informational only, see _no_features_node

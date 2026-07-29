@@ -91,6 +91,18 @@ class WorkflowOrchestrator:
         result["_no_features"] = (len(peaks) == 0 and len(troughs) == 0)
         if result["_no_features"]:
             print("[VI] No emission or absorption features detected — aborting pipeline.")
+            triage_csv = getattr(self.configs.io, "triage_csv", None)
+            if triage_csv:
+                from lrd_adapt.blind.triage_hint import lookup_triage_hint
+                hint = lookup_triage_hint(triage_csv, result.get("file_name"))
+                if hint:
+                    result["triage_peak_wavelength"] = hint["wavelength_A"]
+                    result["triage_peak_snr"] = hint["snr"]
+                    result["triage_hint_source"] = hint["source"]
+                    print(f"[VI] Note: triage flagged a candidate at "
+                          f"{hint['wavelength_A']} Å (SNR {hint['snr']}) in "
+                          f"{hint['source']} that this run's own feature "
+                          "detection did not confirm.")
         return result
 
     def _has_features(self, state: SpectroState) -> str:
@@ -117,6 +129,33 @@ class WorkflowOrchestrator:
         harness_dir = state.get("harness_dir", "")
         file_name = state.get("file_name", "unknown")
 
+        triage_wl = state.get("triage_peak_wavelength")
+        triage_snr = state.get("triage_peak_snr")
+        triage_source = state.get("triage_hint_source")
+        has_triage_hint = triage_wl is not None
+
+        triage_note = ""
+        triage_issue = ""
+        if has_triage_hint:
+            triage_note = (
+                f"\n\n**Note:** the blind-search triage scan ({triage_source}) "
+                f"flagged a candidate signal at {triage_wl} Å (SNR {triage_snr}) "
+                "in this same source, before this run's own contamination-"
+                "masking-aware feature detection. That candidate was **not** "
+                "independently confirmed here — most likely because the "
+                "flagged wavelength falls in a region this run's masking "
+                "excluded as contaminated, not because the candidate is known "
+                "to be spurious. This is a data-quality limitation of this "
+                "extraction, not a rejection of the candidate."
+            )
+            triage_issue = (
+                f"\n- **Triage/verification mismatch**: triage flagged a "
+                f"candidate at {triage_wl} Å (SNR {triage_snr}) that this "
+                "run's own masking-aware detection could not confirm — likely "
+                "masked as contaminated. A deeper or re-processed extraction "
+                "of this source is needed before ruling the candidate out."
+            )
+
         # ── Placeholder report ──
         report = f"""# Final Analysis Report
 
@@ -126,7 +165,7 @@ class WorkflowOrchestrator:
 - Median SNR: {f'{snr_median:.1f}' if snr_median else 'N/A'}
 - Continuum shape: {continuum_desc}
 
-**⚠ No emission or absorption features were detected in this spectrum.** The Visual Interpreter's CWT feature detection found zero peaks and zero troughs. The spectrum may be pure noise, or the signal is below the detection threshold.
+**⚠ No emission or absorption features were detected in this spectrum.** The Visual Interpreter's CWT feature detection found zero peaks and zero troughs. The spectrum may be pure noise, or the signal is below the detection threshold.{triage_note}
 
 ## §2: Hypothesis Summary
 
@@ -139,7 +178,7 @@ Skipped — no features to analyse.
 ## §4: Potential Issues
 
 - **No signal detected**: CWT feature detection found no emission peaks or absorption troughs across the entire wavelength range.
-- This spectrum may be noise-dominated, or the object may be too faint for DESI to detect at this exposure.
+- This spectrum may be noise-dominated, or the object may be too faint to detect at this exposure.{triage_issue}
 
 ## §5: Comprehensive Assessment
 
@@ -156,9 +195,15 @@ No spectral features were detected in this exposure. The spectrum appears to con
 """
 
         # ── Write report ──
-        if harness_dir:
-            os.makedirs(harness_dir, exist_ok=True)
-            report_path = os.path.join(harness_dir, "final_report.md")
+        # harness_dir is only ever set by the per-hypothesis harness stage,
+        # which this early-exit path skips entirely, so it's always empty
+        # here; output_dir is set per-source by the state factory
+        # regardless (output_dir/{file_name}/), so fall back to it rather
+        # than silently skipping the write.
+        report_dir = harness_dir or state.get("output_dir") or ""
+        if report_dir:
+            os.makedirs(report_dir, exist_ok=True)
+            report_path = os.path.join(report_dir, "final_report.md")
             with open(report_path, "w", encoding="utf-8") as f:
                 f.write(report)
 
@@ -172,6 +217,17 @@ No spectral features were detected in this exposure. The spectrum appears to con
             "confidence": "LOW",
             "human_review": "Yes",
         }
+        if has_triage_hint:
+            in_brief["triage_peak_wavelength"] = triage_wl
+            in_brief["triage_peak_snr"] = triage_snr
+            in_brief["triage_hint_source"] = triage_source
+
+        key_issues = ["No features detected by Visual Interpreter."]
+        if has_triage_hint:
+            key_issues.append(
+                f"Triage flagged a candidate at {triage_wl} Å (SNR {triage_snr}) "
+                "that this run's own masking-aware detection did not confirm."
+            )
 
         state["final_report"] = report
         state["in_brief"] = in_brief
@@ -181,7 +237,7 @@ No spectral features were detected in this exposure. The spectrum appears to con
             "calibrated_confidence": "LOW",
             "has_real_peak": False,
             "confirmed_lines": [],
-            "key_issues": ["No features detected by Visual Interpreter."],
+            "key_issues": key_issues,
         }
         state["feature_audit_verdict"] = {"spectrum_quality": "noise-dominated", "skipped": True}
         return state
