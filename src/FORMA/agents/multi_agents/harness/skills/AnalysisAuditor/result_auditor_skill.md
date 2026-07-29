@@ -18,6 +18,13 @@ independently read the spectrum only for lines that look suspicious.
 
 - You decide what to audit. No one tells you which lines to check.
 - You MAY call `read_spectrum_region` — but only for suspicious lines from Layer 1.
+  **Calibration note**: its returned flux values are physically calibrated
+  (erg/s/cm2/Å) and are always numerically tiny in absolute terms — a real,
+  significant value routinely looks like `4.7e-21`. Never conclude a region
+  is "flat" or "zero" because the printed numbers look small at a glance;
+  judge flatness only by relative variation across the returned points
+  (ratios, not absolute magnitude), and prefer the CWT table's own `Amp`/
+  `SNR` columns for significance judgments over eyeballing raw flux.
 - You MAY use `grep_kb` for physics rules.
 - You MAY call `_fit_broadline_lsf_bic` if a broad-line claim wasn't checked upstream, or if you want to independently re-verify one.
 - You do NOT re-rank hypotheses or propose alternative redshifts.

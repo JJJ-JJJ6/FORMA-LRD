@@ -13,6 +13,8 @@ import numpy as np
 
 from pathlib import Path
 
+from FORMA.agents.multi_agents.harness.tools import _sigfig
+
 from FORMA.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
 from FORMA.agents.multi_agents.utils.HA import (
     build_dn4000_lookup,
@@ -273,7 +275,10 @@ async def analyze_failure(
             "wl_range": [wl_min, wl_max],
             "n": len(wl_slice),
             "wl": [round(float(w), 3) for w in wl_slice],
-            "fl": [round(float(f), 4) for f in fl_slice],
+            # _sigfig not round(f, 4) -- same duplicated bug fixed
+            # elsewhere in this project 2026-07-29 (real flux-calibrated
+            # data is ~1e-19 scale; round(f,4) collapses it to 0.0).
+            "fl": [_sigfig(f) for f in fl_slice],
         }
 
     root_cause_agent = create_agent(

@@ -47,7 +47,7 @@ def _resolve_max_tokens() -> int | None:
     return None
 
 
-from FORMA.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables
+from FORMA.agents.multi_agents.harness.tools import grep_kb, write_report, write_synthesis_csv, _detect_oii_slope_change_core, _resolve_csv_path, _build_line_tables, _sigfig
 from FORMA.agents.multi_agents.AnalysisAuditor import build_contradiction_matrix
 from FORMA.agents.multi_agents.harness.continuation import (
     _format_tool_call, _format_tool_result,
@@ -915,8 +915,11 @@ async def arun(
         return {
             "wl_range": [wl_min, wl_max],
             "n": len(wl_slice),
+            # flux uses _sigfig, not round(f, 4) -- see the identical fix
+            # and rationale in AnalysisAuditor.py's two read_spectrum_region
+            # closures (same duplicated bug, found 2026-07-29).
             "data": [
-                [round(float(w), 3), round(float(f), 4)]
+                [round(float(w), 3), _sigfig(f)]
                 for w, f in zip(wl_slice, fl_slice)
             ],
         }

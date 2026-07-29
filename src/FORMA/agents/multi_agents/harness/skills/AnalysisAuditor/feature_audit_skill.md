@@ -80,6 +80,20 @@ read a wide window (±200 Å) covering both components in one call.
 
 ### Step 3: Per-Feature Verification
 
+**Calibration note on raw flux magnitudes (read this before Step 3a):**
+`read_spectrum_region` returns physically flux-calibrated values (erg/s/cm2/Å).
+These are ALWAYS numerically tiny in absolute terms — real, significant
+signal routinely looks like `4.7e-21` or `6.8e-20`, not values near 1.
+**Never judge a region "flat," "zero," or "noise" by whether the printed
+numbers look small or start with `0.0...` at a glance — every value in
+this domain looks like that.** Judge flatness only by RELATIVE variation
+across the returned points (e.g. is the value at the claimed wavelength
+several times larger than its neighbors, in ratio, regardless of how
+small both numbers are in absolute terms), and cross-check against the
+CWT table's own `Amp`/`SNR` columns, which are the properly-scaled
+figures to reason about — never eyeball-round a raw flux value to
+"0.0" and treat that as evidence of "no signal."
+
 For each matrix row, apply the **Three-Question Test**:
 
 #### 3a. Peak clarity
@@ -87,7 +101,8 @@ For each matrix row, apply the **Three-Question Test**:
 - Single dominant feature spanning several pixels, visually obvious → **REAL**
 - Multiple oscillations of similar amplitude within ±80 Å → likely **NOISE**
 - Single-pixel spikes (1–2 pixels) → **ARTIFACT** (detector artifact), NOT a real line, unless independently corroborated
-- Flat/near-flat region → **NOISE**
+- Flat/near-flat region (values within ~10-20% of each other in RATIO,
+  not "all look tiny in absolute terms") → **NOISE**
 
 #### 3b. Width sanity
 

@@ -34,7 +34,7 @@ from FORMA.agents.common.base_agent import BaseAgent
 
 from FORMA.core.runtime.runtime_container import RuntimeContainer
 from FORMA.core.llm import _detect_vendor, _build_thinking_extra_body, _create_chat_openai
-from FORMA.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core
+from FORMA.agents.multi_agents.harness.tools import grep_kb, _detect_oii_slope_change_core, _sigfig
 from FORMA.agents.multi_agents.harness.hypothesis_synthesis import _build_line_tables
 from FORMA.agents.multi_agents.harness.continuation import (
     _find_last_ai_message, _find_last_content_ai_message, _is_truncated,
@@ -1804,8 +1804,16 @@ class FeatureAuditor(BaseAgent):
             return {
                 "wl_range": [wl_min, wl_max],
                 "n": len(wl_slice),
+                # flux uses _sigfig (significant figures), not round(f, 4):
+                # real flux-calibrated data is ~1e-19 scale and round(f, 4)
+                # silently collapses every such value to exactly 0.0
+                # (confirmed 2026-07-29: this exact bug, duplicated in this
+                # local closure separately from harness/tools.py's own
+                # already-fixed read_spectrum_region, made FeatureAuditor
+                # and ResultAuditor see an all-zero spectrum for a real
+                # source with a genuine SNR~11 CWT-confirmed line).
                 "data": [
-                    [round(float(w), 3), round(float(f), 4)]
+                    [round(float(w), 3), _sigfig(f)]
                     for w, f in zip(wl_slice, fl_slice)
                 ],
             }
@@ -2005,8 +2013,16 @@ class AnalysisAuditor(BaseAgent):
             return {
                 "wl_range": [wl_min, wl_max],
                 "n": len(wl_slice),
+                # flux uses _sigfig (significant figures), not round(f, 4):
+                # real flux-calibrated data is ~1e-19 scale and round(f, 4)
+                # silently collapses every such value to exactly 0.0
+                # (confirmed 2026-07-29: this exact bug, duplicated in this
+                # local closure separately from harness/tools.py's own
+                # already-fixed read_spectrum_region, made FeatureAuditor
+                # and ResultAuditor see an all-zero spectrum for a real
+                # source with a genuine SNR~11 CWT-confirmed line).
                 "data": [
-                    [round(float(w), 3), round(float(f), 4)]
+                    [round(float(w), 3), _sigfig(f)]
                     for w, f in zip(wl_slice, fl_slice)
                 ],
             }

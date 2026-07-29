@@ -952,8 +952,20 @@ def run_continuum_fitting_masked(
     wave_fit = wavelengths[fit_mask]
     flux_fit = flux[fit_mask]
 
-    # ── 在 mask 后的子光谱上自动选阶和拟合 ────────────────────────
-    sp_fit = Spectrum(flux=flux_fit * u.Jy, spectral_axis=wave_fit * u.AA)
+    # ── 缩放到量级 ~1 后再拟合，防止真实定标流量（~1e-19，physical
+    # erg/s/cm2/A 单位）在 specutils 内部被当成 0 ──────────────────
+    # CONFIRMED 2026-07-28: fit_generic_continuum given real flux-calibrated
+    # data (~1e-19) tagged as u.Jy returns an all-zero continuum model --
+    # verified in isolation (same magnitude input -> exactly 0.0 output).
+    # Rescaling to order-unity before the fit and rescaling the evaluated
+    # continuum back down afterward reproduces the correct, real continuum
+    # (verified against the same isolated test). This is a numerical-scale
+    # workaround for specutils/astropy's own internal handling, not a
+    # change to the fit itself -- Chebyshev1D is scale-covariant, so this
+    # does not change the fitted shape, only avoids the tiny-magnitude
+    # collapse.
+    flux_scale = 1.0 / (np.max(np.abs(flux_fit)) or 1.0)
+    sp_fit = Spectrum(flux=(flux_fit * flux_scale) * u.Jy, spectral_axis=wave_fit * u.AA)
 
     if chebyshev_degree is None:
         chebyshev_degree = select_chebyshev_degree(
@@ -967,8 +979,8 @@ def run_continuum_fitting_masked(
         warnings.simplefilter('ignore')
         cf = fit_generic_continuum(sp_fit, model=models.Chebyshev1D(degree=chebyshev_degree))
 
-    # 在完整波长数组上求値（包括被 mask 的点）
-    continuum_flux = cf(wavelengths * u.AA).value
+    # 在完整波长数组上求値（包括被 mask 的点），再缩放回真实量级
+    continuum_flux = cf(wavelengths * u.AA).value / flux_scale
 
     # ── 计算单调区间和自然语言描述 ───────────────────────────────
     continuum_flux_safe = np.maximum(np.abs(continuum_flux), 1e-10)
