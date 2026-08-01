@@ -22,6 +22,27 @@ identified; nothing below it is required for steps 1–5 to work.
 
 Everything below is what is strictly necessary to run FORMA-LRD.
 
+## What FORMA is, and what we adapted
+
+**FORMA** stands for **Formalized Observational Reasoning with Auditable Decisions**
+(Wang, Tan et al., Shanghai Astronomical Observatory, Chinese Academy of Sciences —
+the same institution this adaptation was built at). It was originally built as a
+verification layer for DESI optical spectra: LLM agents perform human-like
+astrophysical inference on 1D spectra — specifically **source classification**
+(galaxy: LRG/ELG, QSO) and **redshift estimation for QSOs** — by generating candidate
+interpretations, testing them against the spectrum's own evidence and rival
+explanations, and returning a credibility score rather than a bare label. Applied to
+the DESI EDR expert-review catalogue, it reached 95.5% binary agreement with
+expert-adjudicated classifications at medium-or-higher credibility.
+
+For FORMA-LRD, the multi-agent architecture itself is unchanged; what moved is the
+domain it verifies. Instead of DESI optical spectra and QSO/ELG/LRG classification,
+this fork audits **broad-line identifications and LRD-vs-classical-AGN
+classifications in JWST/NIRCam F356W grism spectra** (EIGER survey, Kapoor+26
+sample) — replacing the DESI line tables, redshift engine (Redrock), and knowledge
+base with rest-frame near-infrared content built for this domain, and later adding
+an optional blind-search stage (below) to find candidates with no prior claim at all.
+
 ## How it works — where the "AI agents" come from
 
 The agents are not shipped software or local models — they are ordinary Python
