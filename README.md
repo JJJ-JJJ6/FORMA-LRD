@@ -8,11 +8,9 @@ reproduced. **This verification pipeline is the core of the project and is what
 steps 1–5 below set up.**
 
 Blind search — scanning many sources with no prior claim to find new candidates,
-*before* handing them to the same verification pipeline — is a separate, optional
-add-on described at the end, under
+before handing them to the same verification pipeline — is a separate, optional
+add-on described under
 ["Optional: blind search"](#optional-blind-search-finding-new-candidates-first).
-Skip that section entirely if you only want to verify a source you've already
-identified; nothing below it is required for steps 1–5 to work.
 
 - **Branch `lrd` (this branch)**: all of the adaptation work. Branch
   `upstream-baseline` is the untouched upstream commit this work forked from.
@@ -20,63 +18,47 @@ identified; nothing below it is required for steps 1–5 to work.
 - **Exactly what was added/changed vs. upstream**:
   [upstream-baseline...lrd compare view](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/upstream-baseline...lrd)
 
-Everything below is what is strictly necessary to run FORMA-LRD.
-
 ## What FORMA is, and what we adapted
 
 **FORMA** stands for **Formalized Observational Reasoning with Auditable Decisions**
-(Wang, Tan et al., Shanghai Astronomical Observatory, Chinese Academy of Sciences —
-the same institution this adaptation was built at). It was originally built as a
-verification layer for DESI optical spectra: LLM agents perform human-like
-astrophysical inference on 1D spectra — specifically **source classification**
-(galaxy: LRG/ELG, QSO) and **redshift estimation for QSOs** — by generating candidate
-interpretations, testing them against the spectrum's own evidence and rival
-explanations, and returning a credibility score rather than a bare label. Applied to
-the DESI EDR expert-review catalogue, it reached 95.5% binary agreement with
-expert-adjudicated classifications at medium-or-higher credibility.
+(Wang, Tan et al., Shanghai Astronomical Observatory, Chinese Academy of Sciences).
+It was originally built as a verification layer for DESI optical spectra: LLM agents
+perform human-like astrophysical inference on 1D spectra — specifically **source
+classification** (galaxy: LRG/ELG, QSO) and **redshift estimation for QSOs** — by
+generating candidate interpretations, testing them against the spectrum's own
+evidence and rival explanations, and returning a credibility score rather than a
+bare label. Applied to the DESI EDR expert-review catalogue, it reached 95.5% binary
+agreement with expert-adjudicated classifications at medium-or-higher credibility.
 
 For FORMA-LRD, the multi-agent architecture itself is unchanged; what moved is the
 domain it verifies. Instead of DESI optical spectra and QSO/ELG/LRG classification,
 this fork audits **broad-line identifications and LRD-vs-classical-AGN
 classifications in JWST/NIRCam F356W grism spectra** (EIGER survey, Kapoor+26
 sample) — replacing the DESI line tables, redshift engine (Redrock), and knowledge
-base with rest-frame near-infrared content built for this domain, and later adding
-an optional blind-search stage (below) to find candidates with no prior claim at all.
+base with rest-frame near-infrared content, and later adding an optional
+blind-search stage (below) to find candidates with no prior claim at all.
 
-## How it works — where the "AI agents" come from
+## Architecture
 
-The agents are not shipped software or local models — they are ordinary Python
-classes in this repo, and their reasoning comes from a remote LLM API:
-
-- **Agent machinery (local, in this repo)**: the six agents
-  (`VisualInterpreter`, `HypothesisAnalyst`, feature/result auditors,
-  `ReportWriter`, `SelfEvolve`) live in `src/FORMA/agents/multi_agents/` and are
-  wired into a pipeline by `workflow_orchestrator.py` (LangGraph). Each agent is
-  a system prompt (the skill files under `harness/skills/`), a set of callable
-  analysis tools (peak/doublet/BIC fitting, CSV/report writing), and a loop that
-  alternates between asking the LLM what to do next and executing the chosen
-  tool locally.
-- **The actual reasoning (remote)**: every agent "thought" is an HTTPS call to
-  the configured LLM endpoint (`LLM_BASE_URL`/`LLM_MODEL`, ~50 calls per
-  source). No language model runs on your machine. Without internet access or a
-  valid `LLM_API_KEY`, the deterministic parts (converters, CWT detection, BIC
-  fits) still work, but every agent fails at its first LLM call.
-- **Docker is irrelevant to all of this**: it would only ever have packaged the
-  Python environment, and this repo has no Dockerfile — the venv below fills
-  that role. The only "AI" ingredient you supply is the API key.
+Six agents — `VisualInterpreter`, `HypothesisAnalyst`, feature/result auditors,
+`ReportWriter`, `SelfEvolve` — live in `src/FORMA/agents/multi_agents/`, orchestrated
+by `workflow_orchestrator.py` (LangGraph). Each agent pairs a system prompt (skill
+files under `harness/skills/`) with callable tools (peak/doublet/BIC fitting,
+CSV/report writers) and reasons via calls to the configured `LLM_BASE_URL`/
+`LLM_MODEL` endpoint.
 
 ## Requirements
 
-- **Python ≥ 3.12** (plain venv — no Docker involved)
+- **Python ≥ 3.12** (plain venv)
 - **An LLM API key** for any OpenAI-compatible endpoint (developed and tested
   against DeepSeek `deepseek-v4-pro`)
 - Input data: grizli extraction products for your sources — either `*.1D.fits`
   (preferred) or `*.stack.fits` (2D)
 
-**Explicitly NOT needed** (all upstream features that are disabled or replaced on
-this branch): PaddleOCR / Tesseract (the PNG input channel is commented out
-upstream — skip any OCR setup), Redrock and its templates (replaced by the
-paper-claim-driven hypothesis provider), VLM/vision credentials, Docker.
+**Not needed** on this branch: PaddleOCR / Tesseract (PNG input is disabled
+upstream), Redrock and its templates (replaced by the hypothesis provider),
+VLM/vision credentials, Docker (no Dockerfile in this repo — the venv below
+fills that role).
 
 ## 1. Install
 
@@ -88,9 +70,9 @@ python -m venv .venv
 pip install -e .
 ```
 
-> Known quirk: if `import langchain` fails complaining about
-> `langgraph.runtime`, the pinned langgraph is too old for the installed
-> langchain — run `pip install -U langgraph`.
+> If `import langchain` fails complaining about `langgraph.runtime`, the
+> pinned langgraph is too old for the installed langchain — run
+> `pip install -U langgraph`.
 
 Verify the install:
 
@@ -179,7 +161,7 @@ feature_auditor/  hypothesis_synthesis/  result_auditor/  report_writer/
 ```
 
 A source with no detectable features exits early with a placeholder report
-(`Unknown / human_review=Yes`) — that is calibrated behavior, not a failure.
+(`Unknown`, `human_review=Yes`) — expected, calibrated behavior, not a failure.
 
 ## 5. Tests (optional, no pytest needed — run each file directly)
 
@@ -194,11 +176,10 @@ python lrd_adapt/eval/test_metrics.py
 
 ## Optional: blind search (finding new candidates first)
 
-**This entire section is optional.** Steps 1–5 above are the complete, standalone
-verification pipeline; skip this if you already have a specific source and a
-claim to audit. Blind search is a separate pre-processing stage that only
-decides *which sources are worth feeding into steps 3–4* — it does not change
-how the core pipeline runs.
+Optional. Steps 1–5 above are the complete, standalone verification pipeline —
+skip this if you already have a specific source and a claim to audit. Blind
+search is a pre-processing stage that decides which sources are worth feeding
+into steps 3–4; it does not change how the core pipeline runs.
 
 1. **Triage** (`lrd_adapt/blind/triage.py`): scans a folder of `*.stack.fits`
    files with **no redshift, no registered claim, no LLM call** — just CWT line

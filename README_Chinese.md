@@ -7,9 +7,8 @@ Little Red Dot（LRD）与经典 AGN 的宽线证认**（EIGER 巡天，Kapoor+2
 本项目的核心，下面第 1–5 步搭建的正是它。**
 
 盲搜索——在没有任何先验声明的情况下扫描大量源，找出新候选体，再交给同一个核验
-流水线——是文末描述的一个独立、可选的附加功能，参见
-["可选：盲搜索"](#可选盲搜索寻找新候选体)。如果你只想核验一个已经确定的源，
-完全可以跳过该章节；第 1–5 步不依赖它。
+流水线——是一个独立、可选的附加功能，参见
+["可选：盲搜索"](#可选盲搜索寻找新候选体)。
 
 - **分支 `lrd`（当前分支）**：全部改编工作。分支 `upstream-baseline`
   是本工作分叉时未经改动的上游提交。
@@ -17,16 +16,13 @@ Little Red Dot（LRD）与经典 AGN 的宽线证认**（EIGER 巡天，Kapoor+2
 - **与上游的完整差异**：
   [upstream-baseline...lrd 对比视图](https://github.com/JJJ-JJJ6/FORMA-LRD/compare/upstream-baseline...lrd)
 
-以下内容即运行 FORMA-LRD 所需的全部步骤。
-
 ## FORMA 是什么，我们改编了什么
 
 **FORMA** 的全称是 **Formalized Observational Reasoning with Auditable Decisions**
-（形式化、可审计决策的观测推理，Wang, Tan 等人，中国科学院上海天文台 ——
-与本改编工作同一机构）。它最初是为 DESI 光学光谱构建的核验层：LLM 智能体在
-一维光谱上执行类人的天体物理推断，具体是**源分类**（星系：LRG/ELG、类星体 QSO）
-和**类星体的红移估计**——通过生成候选解释、用光谱自身的证据和竞争性解释对其
-进行检验，最终给出一个可信度分数，而不是一个孤立的标签。应用于 DESI EDR
+（Wang, Tan 等人，中国科学院上海天文台）。它最初是为 DESI 光学光谱构建的核验层：
+LLM 智能体在一维光谱上执行类人的天体物理推断，具体是**源分类**（星系：LRG/ELG、
+类星体 QSO）和**类星体的红移估计**——通过生成候选解释、用光谱自身的证据和竞争性
+解释对其进行检验，最终给出一个可信度分数，而不是一个孤立的标签。应用于 DESI EDR
 专家复核目录时，在中等及以上可信度下，与专家判定类别的二元一致率达到 95.5%。
 
 对于 FORMA-LRD，多智能体架构本身没有改变；改变的是它所核验的领域。本分支
@@ -36,35 +32,24 @@ Little Red Dot（LRD）与经典 AGN 的宽线证认**（EIGER 巡天，Kapoor+2
 静止系内容，后续还加入了一个可选的盲搜索阶段（见下文），用于在完全没有先验
 声明的情况下寻找候选体。
 
-## 工作原理 —— "AI 智能体"从哪里来
+## 系统架构
 
-智能体既不是随仓库分发的成品软件，也不是本地运行的模型 —— 它们只是本仓库中的
-普通 Python 类，其"推理能力"来自远程 LLM API：
-
-- **智能体框架（本地，在本仓库中）**：六个智能体（`VisualInterpreter`、
-  `HypothesisAnalyst`、特征/结果审计器、`ReportWriter`、`SelfEvolve`）位于
-  `src/FORMA/agents/multi_agents/`，由 `workflow_orchestrator.py`（LangGraph）
-  串联成流水线。每个智能体 = 一份系统提示词（`harness/skills/` 下的 skill
-  文件）+ 一组可调用的分析工具（峰/双线/BIC 拟合、CSV 与报告写出）+ 一个循环：
-  反复询问 LLM 下一步做什么，并在本地执行它选择的工具。
-- **真正的推理（远程）**：智能体的每一次"思考"都是对配置的 LLM 端点
-  （`LLM_BASE_URL`/`LLM_MODEL`）的一次 HTTPS 调用（每个源约 50 次）。你的机器上
-  不运行任何语言模型。没有网络或有效的 `LLM_API_KEY` 时，确定性部分（转换器、
-  CWT 特征检测、BIC 拟合）仍可工作，但每个智能体都会在第一次 LLM 调用处失败。
-- **Docker 与此完全无关**：它至多只是打包 Python 环境的一种方式，而本仓库并无
-  Dockerfile —— 下文的 venv 就承担了这个角色。你唯一需要提供的"AI"要素就是
-  API key。
+六个智能体——`VisualInterpreter`、`HypothesisAnalyst`、特征/结果审计器、
+`ReportWriter`、`SelfEvolve`——位于 `src/FORMA/agents/multi_agents/`，由
+`workflow_orchestrator.py`（LangGraph）编排。每个智能体将一份系统提示词
+（`harness/skills/` 下的 skill 文件）与一组可调用工具（峰/双线/BIC 拟合、
+CSV 与报告写出）配对，通过调用配置的 `LLM_BASE_URL`/`LLM_MODEL` 端点进行推理。
 
 ## 环境要求
 
-- **Python ≥ 3.12**（普通 venv 即可，不需要 Docker）
+- **Python ≥ 3.12**（普通 venv 即可）
 - **一个 LLM API key**，任何 OpenAI 兼容端点均可（开发与测试使用 DeepSeek
   `deepseek-v4-pro`）
 - 输入数据：目标源的 grizli 抽谱产品 —— `*.1D.fits`（优先）或 `*.stack.fits`（2D）
 
-**明确不需要**（上游的这些功能在本分支已禁用或被替换）：PaddleOCR / Tesseract
-（PNG 输入通道已在上游注释掉，OCR 相关安装全部跳过）、Redrock 及其模板
-（已被基于论文假设的 hypothesis provider 替代）、VLM/视觉模型凭据、Docker。
+**不需要**：PaddleOCR / Tesseract（上游已禁用 PNG 输入通道）、Redrock 及其模板
+（已被 hypothesis provider 替代）、VLM/视觉模型凭据、Docker（本仓库没有
+Dockerfile —— 下文的 venv 承担了这个角色）。
 
 ## 1. 安装
 
@@ -76,8 +61,8 @@ python -m venv .venv
 pip install -e .
 ```
 
-> 已知问题：若 `import langchain` 报 `langgraph.runtime` 相关错误，说明锁定的
-> langgraph 版本过旧，运行 `pip install -U langgraph` 即可。
+> 若 `import langchain` 报 `langgraph.runtime` 相关错误，说明锁定的 langgraph
+> 版本过旧，运行 `pip install -U langgraph` 即可。
 
 验证安装：
 
@@ -164,7 +149,7 @@ feature_auditor/  hypothesis_synthesis/  result_auditor/  report_writer/
 ```
 
 若某个源未检测到任何特征，流程会提前结束并输出占位报告
-（`Unknown / human_review=Yes`）—— 这是设计内的校准行为，不是运行失败。
+（`Unknown`、`human_review=Yes`）—— 预期内的校准行为，不是运行失败。
 
 ## 5. 测试（可选，无需 pytest，直接运行各文件）
 
@@ -179,9 +164,9 @@ python lrd_adapt/eval/test_metrics.py
 
 ## 可选：盲搜索（寻找新候选体）
 
-**本节完全可选。** 上面第 1–5 步就是完整、独立的核验流水线；如果你已经有确定的
-源和待核验的声明，可以跳过本节。盲搜索只是一个独立的前置筛选阶段，决定"哪些源
-值得送进第 3–4 步"——它不会改变核心流水线本身的运行方式。
+可选。上面第 1–5 步就是完整、独立的核验流水线——如果你已经有确定的源和待核验
+的声明，可以跳过本节。盲搜索是一个前置筛选阶段，决定哪些源值得送进第 3–4 步；
+它不会改变核心流水线本身的运行方式。
 
 1. **粗筛**（`lrd_adapt/blind/triage.py`）：扫描一个装有 `*.stack.fits` 文件的
    文件夹，**不需要红移、不需要先验声明、不调用 LLM**——只做 CWT 谱线检测，
