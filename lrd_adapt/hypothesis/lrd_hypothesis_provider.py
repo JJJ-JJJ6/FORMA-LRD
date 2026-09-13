@@ -35,16 +35,19 @@ REST_WAVELENGTHS_ANG = {
     "Paalpha": 18756.0,
 }
 
-# F356W grism redshift windows, Kapoor+26 Section 3.2 — defines the rival
-# hypothesis space for any single detected line (CLAUDE.md science constants).
-REDSHIFT_WINDOWS = {
-    "Paalpha": (0.68, 1.10),
-    "Pabeta": (1.45, 2.08),
-    "HeI_Pagamma": (1.91, 2.64),
-    "SIII": (2.30, 3.14),
-    "OI_8446": (2.73, 3.68),
-    "Halpha": (3.80, 5.02),
-}
+# Redshift windows define the rival hypothesis space for any single detected
+# line. These used to be six hand-written (z_min, z_max) pairs transcribed
+# from Kapoor+26 Section 3.2 for the F356W grism. They are in fact pure
+# bandpass arithmetic -- a line is observable exactly when
+# lambda_min <= lambda_rest * (1 + z) <= lambda_max -- so they are now DERIVED
+# from the active instrument profile instead of asserted. Deriving them
+# reproduces the published F356W values to <0.007 in z (rounding), and means
+# retargeting the pipeline to another instrument cannot silently leave a stale
+# window behind. See lrd_adapt/instrument/profile.py.
+from lrd_adapt.instrument.profiles import get_profile  # noqa: E402
+
+DEFAULT_PROFILE = get_profile(os.environ.get("ARM_NAME", "F356W"))
+REDSHIFT_WINDOWS = DEFAULT_PROFILE.redshift_windows(REST_WAVELENGTHS_ANG)
 
 
 def _score_for_window(z, z_min, z_max):
@@ -84,6 +87,7 @@ def generate_lrd_hypotheses(
     external_z_prior=None,
     external_z_prior_sigma=None,
     external_z_prior_source=None,
+    profile=None,
 ):
     """
     Parameters
@@ -143,10 +147,18 @@ def generate_lrd_hypotheses(
             f"Unknown primary_line {primary_line!r}; known: {sorted(REST_WAVELENGTHS_ANG)}"
         )
 
+    # Windows come from the active instrument profile; passing an explicit
+    # profile is how a second instrument reuses this provider unchanged.
+    windows = (
+        profile.redshift_windows(REST_WAVELENGTHS_ANG)
+        if profile is not None
+        else REDSHIFT_WINDOWS
+    )
+
     hypotheses = []
     for line, rest_ang in REST_WAVELENGTHS_ANG.items():
         z = observed_wavelength_ang / rest_ang - 1.0
-        z_min, z_max = REDSHIFT_WINDOWS[line]
+        z_min, z_max = windows[line]
 
         if not (z_min <= z <= z_max):
             continue  # not physically plausible at this observed wavelength

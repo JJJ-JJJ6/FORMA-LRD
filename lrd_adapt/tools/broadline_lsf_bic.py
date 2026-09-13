@@ -52,17 +52,30 @@ def lsf_sigma_ang(wavelength_ang, R):
     return wavelength_ang / (R * SIGMA_TO_FWHM)
 
 
-def extended_lsf_sigma_ang(wavelength_ang, r_circ_mas=None, R_extended=R_EXTENDED_DEFAULT):
+def extended_lsf_sigma_ang(wavelength_ang, r_circ_mas=None, R_extended=R_EXTENDED_DEFAULT,
+                           profile=None):
     """
     Effective LSF sigma (Angstrom) for a spatially-extended source along the
     dispersion direction.
 
     If `r_circ_mas` (measured circularized half-light radius, Kapoor+26
     Fig. 5) is given, the extra smearing is derived directly from the
-    source's physical size via the pixel scale (1 LW pixel = 0.063" =
-    9.8 A) and added in quadrature to the point-source LSF. Otherwise falls
-    back to a fixed effective resolving power (CLAUDE.md: R ~= 400-600).
+    source's physical size via the DETECTOR pixel scale (1 LW pixel = 0.063"
+    = 9.8 A -- note this is the detector dispersion, NOT the ~19.8 A/px
+    spacing of grizli's extracted grid; see lrd_adapt/instrument/profile.py)
+    and added in quadrature to the point-source LSF. Otherwise falls back to
+    a fixed effective resolving power (CLAUDE.md: R ~= 400-600).
+
+    Pass `profile` to use another instrument's LSF model. This matters far
+    more than a constant swap: the source-size term exists because SLITLESS
+    optics smear an extended source along the dispersion axis, which is the
+    entire premise of the three-model BIC comparison below. A slit or
+    microshutter instrument does not work this way and needs its own model --
+    reusing this one there returns confident, wrong widths rather than an
+    error. See InstrumentProfile.lsf_sigma_ang.
     """
+    if profile is not None:
+        return float(profile.lsf_sigma_ang(wavelength_ang, r_circ_mas))
     point_sigma = lsf_sigma_ang(wavelength_ang, R_POINT_SOURCE)
     if r_circ_mas is not None:
         extra_fwhm_ang = (r_circ_mas / (NIRCAM_LW_PIXEL_ARCSEC * 1000.0)) * NIRCAM_LW_PIXEL_ANG
