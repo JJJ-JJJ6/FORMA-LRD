@@ -673,8 +673,13 @@ def _build_feature_audit_user_message(
         parts.append(f"- Edge zone features: {stats['n_edge_blue']} blue + {stats['n_edge_red']} red")
     else:
         parts.append(f"- Contamination-flagged features: {stats['n_contaminated']}")
-    parts.append(f"- Median |amplitude|: {stats['median_amplitude']:.4f} (features near/below this are at noise floor)")
-    parts.append(f"- Top quartile |amplitude|: {stats['top_quartile_amplitude']:.4f}")
+    # .4g not .4f: these two numbers go straight into the FeatureAuditor's
+    # prompt as its noise-floor reference. On real flux-calibrated data
+    # (~1e-19) four decimal places render both as "0.0000", telling the LLM
+    # every feature sits at a zero noise floor. Same class as the 2026-07-28
+    # precision sweep, which missed these two sites.
+    parts.append(f"- Median |amplitude|: {stats['median_amplitude']:.4g} (features near/below this are at noise floor)")
+    parts.append(f"- Top quartile |amplitude|: {stats['top_quartile_amplitude']:.4g}")
     parts.append("")
 
     # ── Hypothesis summary ──
@@ -1777,7 +1782,7 @@ class FeatureAuditor(BaseAgent):
             f"{len(stats['hypothesis_indices'])} hypotheses. "
             f"Edge: {stats['n_edge_blue']}B + {stats['n_edge_red']}R, "
             f"contaminated: {stats.get('n_contaminated', 0)}. "
-            f"Median |amp|: {stats['median_amplitude']:.4f}"
+            f"Median |amp|: {stats['median_amplitude']:.4g}"
         )
 
         # ── Build prompts ──
@@ -1832,13 +1837,24 @@ class FeatureAuditor(BaseAgent):
             return _detect_oii_slope_change_core(_wl, _fl, target_wl, search_window)
 
         # ── Run LLM with retry on JSON parse failure ──
+        # detect_oii_slope_change resolves the optical [O II] 3726/3729 doublet.
+        # In the LRD/F356W domain (31500-39500 A) that doublet would need
+        # z ~ 7.5-9.6, far outside this project's z windows (Pabeta z=1.55 to
+        # O I z=3.18), so the tool can never return a meaningful answer here.
+        # Offering it anyway is a confabulation vector of exactly the kind
+        # already seen twice in this project (the ReportWriter inventing
+        # "[O III]b+Hbeta+[O III]a" at an impossible z). Withheld for LRD runs.
+        _fa_tools = [read_spectrum_region, grep_kb]
+        if not is_lrd:
+            _fa_tools.append(detect_oii_slope_change)
+
         MAX_RETRIES = 3
         parsed = None
         for attempt in range(MAX_RETRIES):
             parsed = await _run_llm_agent(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                tools=[read_spectrum_region, grep_kb, detect_oii_slope_change],
+                tools=_fa_tools,
                 hypothesis_dir=hypothesis_dir,
                 stream_filename="feature_auditor/stream.md",
                 stream_title="Feature Audit — Cross-Hypothesis Verification",
@@ -2111,11 +2127,15 @@ class AnalysisAuditor(BaseAgent):
             }
 
         # ── Run LLM ──
+        # see the FeatureAuditor note above: [O II] is unreachable in F356W
+        _ra_tools = [read_spectrum_region, grep_kb, query_cwt_catalog]
+        if not is_lrd:
+            _ra_tools.insert(2, detect_oii_slope_change)
+
         parsed = await _run_llm_agent(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            tools=[read_spectrum_region, grep_kb, detect_oii_slope_change,
-                   query_cwt_catalog],
+            tools=_ra_tools,
             hypothesis_dir=hypothesis_dir,
             stream_filename="result_auditor/stream.md",
             stream_title="Auditor — Synthesis Audit",

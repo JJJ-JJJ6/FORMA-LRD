@@ -161,6 +161,33 @@ def _gaussian_plus_linear(x, amp, center, sigma, slope, intercept):
     return amp * np.exp(-(x - center) ** 2 / (2 * sigma ** 2)) + slope * x + intercept
 
 
+def _flux_norm(values) -> float:
+    """Scale factor bringing a flux array to order unity for ``curve_fit``.
+
+    scipy's finite-difference step is ABSOLUTE (~1.5e-8), so on real
+    flux-calibrated data (~1e-19 erg/s/cm2/A) the Jacobian columns for every
+    amplitude-like parameter are pure numerical noise: the optimizer
+    terminates on iteration 0 and hands back the initial guess as though it
+    were a converged fit.  Confirmed 2026-09-13 -- _do_fit_peak returned an
+    amplitude pinned at exactly 1e-10 and an identical local_snr=426.16 for
+    true amplitudes of 8e-18, 8e-20 and 8e-22, with center and sigma frozen
+    at p0.  It does not raise; it returns a confident wrong number.
+
+    Fitting flux/k and scaling the amplitude-like results back by k is exact
+    for models linear in those parameters, which all the models here are.
+    Ratios (local_snr, delta_chi2_per_n, doublet amplitude ratios) are
+    scale-invariant and are therefore computed in normalized space.
+    Note ``x_scale='jac'`` does NOT fix this -- it was tested and rejected.
+    """
+    arr = np.abs(np.asarray(values, dtype=float))
+    if arr.size == 0:
+        # empty window (center outside the spectrum) -- callers handle that
+        # with their own too-few-points guard, so don't raise ahead of it
+        return 1.0
+    k = float(np.max(arr))
+    return k if np.isfinite(k) and k > 0 else 1.0
+
+
 def _do_fit_peak(
     wl_full: np.ndarray,
     flux_full: np.ndarray,
@@ -173,6 +200,11 @@ def _do_fit_peak(
     mask = (wl_full >= center_guess - window_half) & (wl_full <= center_guess + window_half)
     wl = wl_full[mask]
     flux = flux_full[mask]
+
+    # Fit in normalized flux and scale amplitude-like results back (see
+    # _flux_norm): curve_fit does not converge at real ~1e-19 flux scale.
+    _k = _flux_norm(flux)
+    flux = flux / _k
 
     if len(wl) < 10:
         return {
@@ -252,6 +284,10 @@ def _do_fit_peak(
     chi2_linear = np.sum(((flux - linear_only) / local_rms) ** 2)
     delta_chi2_per_n = round((chi2_linear - chi2_full) / n, 3)
     local_snr = round(abs(amp) / local_rms, 2)
+    # back to physical flux units for everything reported outward
+    amp_phys = amp * _k
+    amp_err_phys = perr[0] * _k if perr[0] is not None else None
+    local_rms_phys = local_rms * _k
     fwhm = sigma * 2.35482
     fwhm_km_s = fwhm / center * 2.99792458e5 if center != 0 else None
 
@@ -264,19 +300,19 @@ def _do_fit_peak(
     return {
         "center": round(center, 3),
         "center_err": round(perr[1], 4) if perr[1] is not None else None,
-        "amplitude": _sigfig(amp),
-        "amplitude_err": _sigfig(perr[0]) if perr[0] is not None else None,
+        "amplitude": _sigfig(amp_phys),
+        "amplitude_err": _sigfig(amp_err_phys) if amp_err_phys is not None else None,
         "sigma": round(sigma, 3),
         "fwhm": round(fwhm, 3),
         "fwhm_km_s": round(fwhm_km_s, 1) if fwhm_km_s is not None else None,
         "delta_chi2_per_n": delta_chi2_per_n,
-        "local_rms": _sigfig(local_rms),
+        "local_rms": _sigfig(local_rms_phys),
         "local_snr": local_snr,
         "n_points": n,
         "flags": flags,
         "message": (
             f"Fit {'OK' if not flags else 'with warnings'}. "
-            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp:.3g}, "
+            f"center={center:.2f}±{perr[1]:.3f} Å, amp={amp_phys:.3g}, "
             f"FWHM={fwhm:.1f} Å ({fwhm_km_s:.0f} km/s), "
             f"S/N={local_snr:.1f}, Δχ²/n={delta_chi2_per_n:.1f}"
         ),
@@ -359,6 +395,10 @@ def _do_fit_doublet(
     mask = (wl_full >= mid - half) & (wl_full <= mid + half)
     wl = wl_full[mask]
     flux = flux_full[mask]
+
+    # see _flux_norm: fit normalized, scale amplitude-like results back
+    _k = _flux_norm(flux)
+    flux = flux / _k
 
     min_pts = 20
     if len(wl) < min_pts:
@@ -446,8 +486,12 @@ def _do_fit_doublet(
             "fwhm_km_s": round(float(fwhm_kms), 1) if fwhm_kms is not None else None,
         }
 
-    c1_info = _comp_stats(1, amp1, c1, s1, perr[0], perr[1])
-    c2_info = _comp_stats(2, amp2, c2, s2, perr[3], perr[4])
+    # amplitudes (and their errors) reported in physical flux units; amp1/amp2
+    # stay normalized below so local_snr remains a like-for-like ratio
+    c1_info = _comp_stats(1, amp1 * _k, c1, s1,
+                          perr[0] * _k if perr[0] is not None else None, perr[1])
+    c2_info = _comp_stats(2, amp2 * _k, c2, s2,
+                          perr[3] * _k if perr[3] is not None else None, perr[4])
 
     # ── Statistics ─────────────────────────────────────────────
     fitted = _doublet_model(wl, *popt)
@@ -521,7 +565,7 @@ def _do_fit_doublet(
         "component_1": c1_info,
         "component_2": c2_info,
         "delta_chi2_per_n": delta_chi2_per_n,
-        "local_rms": _sigfig(local_rms),
+        "local_rms": _sigfig(local_rms * _k),
         "local_snr": local_snr,
         "separation_check": sep_check,
         "amp_ratio_check": amp_check,
@@ -561,6 +605,9 @@ def _try_fit_single(wl, flux, center_guess, width_3sigma, line_type, window_half
     w = wl[mask]; f = flux[mask]
     if len(w) < 10:
         return None
+    # see _flux_norm -- this fallback fitter had the same non-convergence
+    _k = _flux_norm(f)
+    f = f / _k
     lin = np.polyfit(w, f, 1)
     s0, i0 = lin[0], lin[1]
     fa = np.interp(center_guess, w, f)
@@ -587,7 +634,9 @@ def _try_fit_single(wl, flux, center_guess, width_3sigma, line_type, window_half
         return {
             "center": round(float(c), 3),
             "center_err": None,
-            "amplitude": round(float(amp), 6),
+            # _sigfig on the rescaled amplitude, not round(x, 6): six decimal
+            # places collapses any real ~1e-19 flux amplitude to exactly 0.0
+            "amplitude": _sigfig(float(amp) * _k),
             "amplitude_err": None,
             "sigma": round(float(s), 3),
             "fwhm": round(float(fwhm), 3),

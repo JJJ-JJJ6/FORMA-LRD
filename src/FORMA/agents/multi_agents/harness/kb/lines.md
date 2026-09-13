@@ -65,6 +65,28 @@ content lands (CLAUDE.md build order A4).
 
 ## Doublet Rules
 
+> **Domain applicability.** Every rule in this section and in "Line Blend
+> Disentanglement" below concerns **rest-optical/UV** features. In the
+> LRD/JWST domain (NIRCam F356W, observed 31500-39500 A) these rest
+> wavelengths only enter the bandpass at redshifts far above this sample's
+> range (Pa-beta z=1.55 through O I z=3.18):
+>
+> | Feature | lambda_rest (A) | z needed for F356W |
+> |---|---|---|
+> | [O II] 3727 | 3727 | 7.5 - 9.6 |
+> | Ca K/H | 3935 / 3970 | 7.0 - 9.0 |
+> | H-beta + [O III] | 4863 - 5008 | 5.3 - 7.1 |
+> | H-alpha + [N II] | 6550 - 6585 | 3.8 - 5.0 |
+> | [S II] | 6718 / 6733 | 3.7 - 4.9 |
+> | Mg II | 2800 | 10.3 - 13.1 |
+> | Ly-alpha | 1216 | 24.9 - 31.5 |
+>
+> **If you are working an LRD/F356W spectrum, none of these identifications
+> is available to you** and `detect_oii_slope_change` is not in your tool
+> list. Do not name an optical line as a candidate identity here. For the
+> lines that ARE reachable in this bandpass, see the rest-NIR rows of the
+> table above and `kb/lrd_classification.md`.
+
 **General principle — spacing alone does NOT confirm a doublet.** The targeted search harness pre-selects features whose observed wavelengths are near the predicted line positions. Matching spacing is therefore *expected* for any candidate hypothesis — it is not an independent verification. The real diagnostic question is whether **both components are physically real features**. Specifically:
 - Is the weaker component a genuine peak/trough, or just noise at roughly the right position?
 - If the weaker line falls in a grism-contamination-flagged (masked) region, suspect overlapping-source flux masquerading as the doublet partner. Flag explicitly.

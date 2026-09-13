@@ -22,6 +22,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 from lrd_adapt.tools.broadline_lsf_bic import (
+    _flux_norm,
     C_KMS,
     SIGMA_TO_FWHM,
     R_POINT_SOURCE,
@@ -80,6 +81,9 @@ def fit_blueshifted_absorption_bic(
     mask = (wl_full >= center_guess - window_half_ang) & (wl_full <= center_guess + window_half_ang)
     x = wl_full[mask]
     y = flux_full[mask]
+    # see broadline_lsf_bic._flux_norm -- fit normalized, report scaled back
+    _k = _flux_norm(y)
+    y = y / _k
     n = len(x)
     if n < 15:
         raise ValueError(f"Too few points ({n}) for a blueshifted-absorption BIC comparison.")
@@ -94,8 +98,10 @@ def fit_blueshifted_absorption_bic(
     def continuum(x_, cont_amp, cont_index):
         return _power_law_continuum(x_, cont_amp, cont_index, pivot)
 
-    amp0 = max(np.max(y) - np.median(y), 1e-6)
-    cont0 = max(np.median(y), 1e-6)
+    # Scale-relative floors, not absolute 1e-6 -- see broadline_lsf_bic.
+    eps = (float(np.max(np.abs(y))) or 1.0) * 1e-6
+    amp0 = max(np.max(y) - np.median(y), eps)
+    cont0 = max(np.median(y), eps)
 
     def base_model(x_, amp_n, amp_b, center, v_off_b, v_sigma_n, v_sigma_b, cont_amp, cont_index):
         sigma_n_ang = np.hypot(velocity_sigma_to_ang(v_sigma_n, center_guess), sigma_lsf_point)
@@ -143,7 +149,8 @@ def fit_blueshifted_absorption_bic(
 
     return {
         "n_points": n,
-        "local_rms": local_rms,
+        "local_rms": local_rms * _k,
+        "flux_scale": _k,
         "base_bic": bic_base,
         "with_absorption_bic": bic_abs,
         "delta_bic": float(delta_bic),

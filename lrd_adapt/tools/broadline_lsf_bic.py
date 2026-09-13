@@ -83,12 +83,38 @@ def _power_law_continuum(x, amp, index, pivot):
     return amp * (x / pivot) ** index
 
 
+def _flux_norm(values) -> float:
+    """Scale factor bringing a flux array to order unity for ``curve_fit``.
+
+    scipy's finite-difference step is ABSOLUTE (~1.5e-8), so at real
+    flux-calibrated scale (~1e-19 erg/s/cm2/A) the Jacobian columns for the
+    amplitude/continuum parameters are numerical noise and the optimizer
+    terminates at p0.  Confirmed 2026-09-13: this tool recovered a broad
+    FWHM of 2970 km/s for an injected 1800 km/s line at 1e-19 (correct at
+    unit scale), putting it outside Kapoor+26's 1400-2100 km/s window, and
+    the blueshifted-absorption sibling inverted its verdict outright.
+    chi2/BIC are ratios against local_rms and so are scale-invariant once
+    the fit itself is done in normalized units.
+    """
+    arr = np.abs(np.asarray(values, dtype=float))
+    if arr.size == 0:
+        # empty window (center outside the spectrum) -- callers handle that
+        # with their own too-few-points guard, so don't raise ahead of it
+        return 1.0
+    k = float(np.max(arr))
+    return k if np.isfinite(k) and k > 0 else 1.0
+
+
 def _estimate_local_rms(x, y):
     """Robust noise estimate via a quick single-Gaussian+linear reference
     fit, MAD of its residuals — same formula as harness/tools.py's
     _do_fit_peak local_rms, reimplemented standalone (see module docstring)."""
     slope0, intercept0 = np.polyfit(x, y, 1)
-    amp0 = float(np.max(y) - np.median(y)) or 1e-6
+    # Scale-relative floor, not an absolute 1e-6: real flux-calibrated grizli
+    # data is ~1e-19, so an absolute floor is ~13 orders of magnitude too large
+    # (same defect fixed in harness/tools.py fit_peak, 2026-07-28).
+    _eps = (float(np.max(np.abs(y))) or 1.0) * 1e-6
+    amp0 = float(np.max(y) - np.median(y)) or _eps
     center0 = float(x[np.argmax(y)])
     sigma0 = (x.max() - x.min()) / 8.0
 
@@ -106,8 +132,11 @@ def _estimate_local_rms(x, y):
         resid = y - (slope0 * x + intercept0)
 
     local_rms = 1.4826 * np.median(np.abs(resid - np.median(resid)))
-    if local_rms < 1e-10:
-        local_rms = np.std(resid) or 1e-10
+    # <= 0, not < 1e-10: at real flux scale a perfectly valid robust MAD is
+    # ~1e-20, so the absolute threshold fired every time and silently swapped
+    # the robust estimator for a non-robust np.std.
+    if not np.isfinite(local_rms) or local_rms <= 0:
+        local_rms = np.std(resid) or _eps
     return float(local_rms)
 
 
@@ -158,6 +187,10 @@ def fit_broadline_lsf_bic(
     mask = (wl_full >= center_guess - window_half_ang) & (wl_full <= center_guess + window_half_ang)
     x = wl_full[mask]
     y = flux_full[mask]
+    # Fit in normalized flux (see _flux_norm); local_rms is scaled back on
+    # the way out, chi2/BIC are scale-invariant.
+    _k = _flux_norm(y)
+    y = y / _k
     n = len(x)
     if n < 15:
         raise ValueError(
@@ -175,8 +208,10 @@ def fit_broadline_lsf_bic(
     sigma_lsf_point = lsf_sigma_ang(center_guess, R_POINT_SOURCE)
     sigma_lsf_ext = extended_lsf_sigma_ang(center_guess, r_circ_mas, R_extended)
 
-    amp0 = max(np.max(y) - np.median(y), 1e-6)
-    cont0 = max(np.median(y), 1e-6)
+    # Scale-relative floors -- see _estimate_local_rms above.
+    eps = (float(np.max(np.abs(y))) or 1.0) * 1e-6
+    amp0 = max(np.max(y) - np.median(y), eps)
+    cont0 = max(np.median(y), eps)
 
     def continuum(x_, cont_amp, cont_index):
         return _power_law_continuum(x_, cont_amp, cont_index, pivot)
@@ -262,7 +297,10 @@ def fit_broadline_lsf_bic(
 
     return {
         "n_points": n,
-        "local_rms": local_rms,
+        "local_rms": local_rms * _k,
+        # amplitude-like entries in each model's "params" are in units of
+        # flux / flux_scale; velocities, widths and centers are unaffected.
+        "flux_scale": _k,
         "models": results,
         "best_model": best_name,
         "delta_bic_vs_null": float(delta_bic_vs_null),
