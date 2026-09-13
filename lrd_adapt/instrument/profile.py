@@ -284,3 +284,72 @@ def unsupported_lsf_model(instrument_name: str) -> Callable[..., float]:
         )
 
     return _lsf
+
+
+# ------------------------------------------------- per-source real coverage
+
+# Mask bits written by lrd_adapt/converter/grizli_to_forma.py.
+MASK_BAD_FLAT = 1
+MASK_BAD_ERR = 2
+MASK_CONTAMINATED = 4
+
+
+def measure_valid_coverage(wavelength_ang, mask=None) -> Tuple[float, float]:
+    """Wavelength range where a given source actually has usable data.
+
+    A profile's ``bandpass_ang`` is the instrument's NOMINAL coverage. What a
+    particular extraction actually calibrates is narrower (or shifted), and
+    assuming otherwise produces exactly the error found in SRC04's H1 report
+    on 2026-09-13: it stated "No other lines are predicted in the F356W
+    window at this redshift" when [S III] 9533 *was* predicted in the nominal
+    band at 31706 A. The real j1030_01539 extraction has valid calibration
+    only over 33721-40308 A -- below that, flat = 0 and err = 0, so the flux
+    is identically zero and no masking change can recover it. The nominal
+    band also understated the red end by ~800 A.
+
+    So: read coverage from the file, like dispersion.
+    """
+    wl = np.asarray(wavelength_ang, dtype=float)
+    good = np.isfinite(wl)
+    if mask is not None:
+        m = np.asarray(mask, dtype=int)
+        # bad flat / bad error mean "no data here", as distinct from
+        # contamination, which means "data present but untrustworthy".
+        good &= (m & (MASK_BAD_FLAT | MASK_BAD_ERR)) == 0
+    if not good.any():
+        raise ValueError("No pixels with valid calibration in this spectrum.")
+    return float(wl[good].min()), float(wl[good].max())
+
+
+def classify_line_availability(
+    obs_ang: float,
+    wavelength_ang,
+    mask=None,
+    profile: Optional[InstrumentProfile] = None,
+) -> str:
+    """Why a predicted line can or cannot be evaluated.
+
+    Collapsing these into "no other lines are predicted" is what turned a
+    data-coverage limit into a claim of irreducible physical degeneracy in
+    SRC04's report. They are scientifically different conclusions:
+    NO_COVERAGE is a property of this extraction, CONTAMINATED may be
+    revisitable, OUT_OF_BAND is a property of the instrument.
+
+    Returns one of: OUT_OF_BAND, NO_COVERAGE, CONTAMINATED, AVAILABLE.
+    """
+    if profile is not None and not profile.covers(obs_ang):
+        return "OUT_OF_BAND"
+
+    wl = np.asarray(wavelength_ang, dtype=float)
+    lo, hi = measure_valid_coverage(wl, mask)
+    if not (lo <= obs_ang <= hi):
+        return "NO_COVERAGE"
+
+    if mask is not None:
+        m = np.asarray(mask, dtype=int)
+        i = int(np.argmin(np.abs(wl - obs_ang)))
+        if m[i] & (MASK_BAD_FLAT | MASK_BAD_ERR):
+            return "NO_COVERAGE"
+        if m[i] & MASK_CONTAMINATED:
+            return "CONTAMINATED"
+    return "AVAILABLE"

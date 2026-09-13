@@ -23,9 +23,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from lrd_adapt.instrument.profile import (  # noqa: E402
     measure_extracted_dispersion,
+    measure_valid_coverage,
+    classify_line_availability,
     slitless_lsf_model,
     unsupported_lsf_model,
     InstrumentProfile,
+    MASK_BAD_FLAT,
+    MASK_BAD_ERR,
+    MASK_CONTAMINATED,
 )
 from lrd_adapt.instrument.profiles import (  # noqa: E402
     F356W_EIGER,
@@ -164,10 +169,17 @@ def test_observable_lines_grows_with_coverage():
         lsf_sigma_ang=unsupported_lsf_model("WIDE_TEST"),
     )
     wide = wide_profile.observable_lines(REST_WAVELENGTHS_ANG, z=2.328)
-    # At SRC04's claimed z=2.328 F356W covers TWO of our lines, not one:
-    # He I 10833 -> 36052 A (the validated detection at 36030) and
-    # [S III] 9533 -> 31724 A, just inside the blue edge. That second line is
-    # a genuine, independent corroboration channel for this source.
+    # At SRC04's claimed z=2.328 the NOMINAL F356W band covers two of our
+    # lines: He I 10833 -> 36052 A (the validated detection at 36030) and
+    # [S III] 9533 -> 31724 A near the blue edge.
+    #
+    # IMPORTANT: nominal band coverage is NOT observability. Checked against
+    # the real j1030_01539.1D.fits on 2026-09-13: that source's valid
+    # calibration (flat > 0) spans 33721-40308 A, so [S III] at 31724 A has
+    # no data at all -- flat=0, err=0, flux identically 0. It is not
+    # contamination-masked and cannot be recovered by relaxing contam_frac.
+    # Per-source coverage must be read from the file; see
+    # measure_valid_coverage().
     assert set(narrow) == {"HeI_Pagamma", "SIII"}, narrow
     assert len(wide) > len(narrow), (
         "wider coverage must expose more corroborating lines: %s vs %s" % (wide, narrow)
@@ -221,6 +233,71 @@ def test_measure_dispersion_rejects_degenerate_input():
             pass
         else:
             raise AssertionError("accepted a grid too short to measure: %r" % (bad,))
+
+
+# ------------------------------------------- per-source coverage vs nominal
+
+
+def _fake_spectrum():
+    """A grid shaped like the real j1030_01539: no calibration blueward.
+
+    Real numbers, measured 2026-09-13: valid calibration (flat > 0) spans
+    33721-40308 A, while the nominal F356W band is 31500-39500 A.
+    """
+    wl = np.arange(30510.0, 40990.0, 19.778)
+    mask = np.zeros(wl.size, dtype=int)
+    mask[wl < 33721.0] |= MASK_BAD_FLAT | MASK_BAD_ERR
+    mask[wl > 40308.0] |= MASK_BAD_FLAT | MASK_BAD_ERR
+    # He I region is contaminated but calibrated (contam/flux = 0.66 > 0.5)
+    mask[(wl > 35970.0) & (wl < 36340.0)] |= MASK_CONTAMINATED
+    return wl, mask
+
+
+def test_valid_coverage_is_narrower_than_the_nominal_band():
+    wl, mask = _fake_spectrum()
+    lo, hi = measure_valid_coverage(wl, mask)
+    nlo, nhi = F356W_EIGER.bandpass_ang
+    assert lo > nlo, "valid coverage should start redward of the nominal band"
+    assert abs(lo - 33721.0) < 25.0, lo
+    assert hi > nhi, "real data extends past the nominal red edge"
+
+
+def test_availability_distinguishes_no_coverage_from_contamination():
+    """The distinction SRC04's report collapsed into 'not predicted'."""
+    wl, mask = _fake_spectrum()
+
+    # [S III]b at H1's redshift: inside the nominal band, but no calibration.
+    assert classify_line_availability(31705.8, wl, mask, F356W_EIGER) == "NO_COVERAGE"
+    # Pa-delta: same.
+    assert classify_line_availability(33431.9, wl, mask, F356W_EIGER) == "NO_COVERAGE"
+    # He I: calibrated, but contamination-dominated -- a different conclusion.
+    assert classify_line_availability(36029.5, wl, mask, F356W_EIGER) == "CONTAMINATED"
+    # Something outside the instrument entirely.
+    assert classify_line_availability(12000.0, wl, mask, F356W_EIGER) == "OUT_OF_BAND"
+    # A clean, calibrated position.
+    assert classify_line_availability(34500.0, wl, mask, F356W_EIGER) == "AVAILABLE"
+
+
+def test_no_coverage_is_not_recoverable_by_relaxing_contamination():
+    """Guard the wrong inference: NO_COVERAGE has no contamination bit set."""
+    wl, mask = _fake_spectrum()
+    i = int(np.argmin(np.abs(wl - 31705.8)))
+    assert mask[i] & (MASK_BAD_FLAT | MASK_BAD_ERR)
+    assert not (mask[i] & MASK_CONTAMINATED), (
+        "if this were contamination it could be revisited by changing "
+        "contam_frac; it is not -- there is simply no data there"
+    )
+
+
+def test_measure_valid_coverage_rejects_a_fully_masked_spectrum():
+    wl = np.arange(31500.0, 39500.0, 20.0)
+    mask = np.full(wl.size, MASK_BAD_FLAT, dtype=int)
+    try:
+        measure_valid_coverage(wl, mask)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted a spectrum with no valid pixels")
 
 
 if __name__ == "__main__":
